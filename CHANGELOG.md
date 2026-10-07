@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0]
+## [0.1.0] - 2026-10-07
 
 First public release.
 
@@ -20,3 +20,12 @@ First public release.
   palette, which-key popup, remappable keys
 - Nine built-in themes, custom themes, settings screen, 256-colour fallback
 - `--demo`, `--dry-run`, `--probe` and `--dump`
+
+Download `virsh-tui-v0.1.0-x86_64-unknown-linux-gnu.tar.gz` from the release
+page, or build from source with
+`cargo install --locked --git https://github.com/SyscallBrain/virsh-tui --tag v0.1.0`.
+The [user guide](https://syscallbrain.github.io/virsh-tui/) covers
+requirements and setup.
+
+[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/SyscallBrain/virsh-tui/releases/tag/v0.1.0
