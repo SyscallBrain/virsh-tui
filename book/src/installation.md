@@ -14,7 +14,7 @@ Rust toolchain to build.
 
 A terminal with truecolor support gives the best result. On terminals without
 it, virsh-tui falls back to the xterm 256-colour palette. The layout needs at
-least 100 columns by 30 rows; 160 columns or more gives the two-column layout
+least 100 columns by 30 rows; 153 columns or more gives the side-by-side layout
 shown in the screenshots.
 
 A font with box-drawing and braille characters is needed for the borders and

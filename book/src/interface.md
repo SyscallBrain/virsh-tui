@@ -21,9 +21,10 @@
   command, the command follows the `──` separator. `:messages` shows the full
   history of messages.
 
-At 160 columns or more the dashboard uses two columns. Between 100 and 159 it
-stacks the panels. Below 100 × 30 it shows a "terminal too small" notice
-instead of a broken layout.
+At 153 columns or more the dashboard shows the domain list and the metrics
+side by side. Between 100 and 152 it stacks the panels and the metrics move
+to tabs (Overview, CPU, Mem, Disk, Net) under the list. Below 100 × 30 it
+shows a "terminal too small" notice instead of a broken layout.
 
 ## Modes
 

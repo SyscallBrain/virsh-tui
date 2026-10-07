@@ -3,7 +3,8 @@
 /// Terminal size class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Breakpoint {
-    /// 160+ columns: reference two-column layouts.
+    /// 160+ columns: reference two-column layouts (the dashboard already goes
+    /// side by side from 153, see `dashboard::render_body`).
     Wide,
     /// 100-159 columns: stacked single column.
     Compact,

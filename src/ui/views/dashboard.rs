@@ -491,20 +491,31 @@ fn panel_block(theme: &Theme, focused: bool, title: &str, right: Option<&str>) -
 
 fn render_body(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {
     let body = Rect::new(area.x + 1, area.y, area.width.saturating_sub(2), area.height);
-    if body.width < 160 {
+    // Side by side, the metrics panel keeps its reference width (70) and the
+    // domains list gives up its spare columns first (101 down to 86). Below
+    // that the panel may shrink to 64; narrower terminals get the tabbed layout.
+    const LEFT_MAX: u16 = 101;
+    const LEFT_MIN: u16 = 86;
+    const RIGHT_PREF: u16 = 70;
+    const RIGHT_MIN: u16 = 64;
+    if body.width < LEFT_MIN + 1 + RIGHT_MIN {
         render_compact(frame, theme, state, body);
         return;
     }
+    let left = body
+        .width
+        .saturating_sub(1 + RIGHT_PREF)
+        .clamp(LEFT_MIN, LEFT_MAX);
     let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(101), Constraint::Min(0)])
+        .constraints([Constraint::Length(left), Constraint::Min(0)])
         .spacing(1)
         .split(body);
     render_left(frame, theme, state, cols[0]);
     render_right(frame, theme, state, cols[1]);
 }
 
-/// Compact layout (100-159 cols): domains table, one tabbed detail panel
+/// Compact layout (100-152 terminal cols): domains table, one tabbed detail panel
 /// (`[`/`]` switch between Overview, CPU, Mem, Disk, Net), events, host.
 fn render_compact(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {
     let rows = Layout::default()
