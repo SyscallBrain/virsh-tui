@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Domains dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pbl{position:absolute;bottom:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
+.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+.tab b{color:var(--orange)}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; {{vars}}">
+
+  <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span class="tab on"><b>1</b> Domains</span>
+    <span class="tab"><b>2</b> Host</span>
+    <span class="tab"><b>3</b> Networks</span>
+    <span class="tab"><b>4</b> Storage</span>
+    <span class="tab"><b>5</b> Events</span>
+    <span style="flex: 1"></span>
+    <span class="d">⌁ </span><span class="f2">qemu:///system</span><span class="d">  │  </span><span class="f2">forge</span><span class="d">  │  ⟳ </span><span class="f2">1s</span><span class="d">  │  </span><span class="f2">14:32:07  </span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: 790px minmax(0, 1fr); gap: 12px; padding: 18px 12px 10px; min-height: 0">
+
+    <div style="display: flex; flex-direction: column; gap: 18px; min-height: 0">
+      <div class="p f" style="flex: 1; min-height: 0">
+        <span class="pt">Domains</span>
+        <span class="pr">15 total</span>
+        <div style="display: flex; gap: 8px; white-space: pre; margin-bottom: 8px">
+          <span class="d">/ filter…</span><span style="flex: 1"></span>
+          <span class="chip" style="background: var(--sel); color: var(--fg)">all 15</span>
+          <span class="chip"><span class="gr">●</span> running 9</span>
+          <span class="chip"><span class="ye">‖</span> paused 1</span>
+          <span class="chip"><span class="rd">✗</span> crashed 1</span>
+          <span class="chip"><span class="d">○</span> off 4</span>
+        </div>
+        <div class="d b" style="display: grid; grid-template-columns: 1ch 1ch 2ch 17ch 9ch 4ch 10ch minmax(0, 1fr) 9ch 2ch; column-gap: 8px; white-space: pre; border-bottom: 1px solid var(--hl); padding-bottom: 2px; margin-bottom: 2px">
+          <span></span><span></span><span></span><span>NAME</span><span>STATE ▾</span><span>CPU</span><span>MEMORY</span><span>CPU%</span><span>UPTIME</span><span>A</span>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="15">
+          <div style="display: grid; grid-template-columns: 1ch 1ch 2ch 17ch 9ch 4ch 10ch minmax(0, 1fr) 9ch 2ch; column-gap: 8px; white-space: pre; line-height: 24px; {{r.rowStyle}}">
+            <span class="bl">{{r.bar}}</span>
+            <span class="mg">{{r.mark}}</span>
+            <span style="{{r.stStyle}}">{{r.glyph}}</span>
+            <span style="{{r.nameStyle}}">{{r.name}}</span>
+            <span style="{{r.stStyle}}">{{r.state}}</span>
+            <span class="f2">{{r.cpu}}</span>
+            <span class="f2">{{r.mem}}</span>
+            <span><span style="{{r.cpuStyle}}">{{r.fill}}</span><span style="color: var(--hl)">{{r.rest}}</span><span style="{{r.cpuStyle}}">{{r.pct}}</span></span>
+            <span class="f2">{{r.up}}</span>
+            <span class="gr">{{r.auto}}</span>
+          </div>
+        </sc-for>
+        <span class="pbl">sort: state › name</span>
+        <span class="pb">2/15 · 3 marked</span>
+      </div>
+
+      <div class="p" style="height: 118px">
+        <span class="pt">Events</span>
+        <span class="pr">libvirt event stream</span>
+        <div class="pre"><span class="d">14:31:55  </span><span class="gr">● </span><span>k8s-worker-02   </span><span class="gr">started    </span><span class="d">booted</span></div>
+        <div class="pre"><span class="d">14:29:02  </span><span class="rd">✗ </span><span>ubuntu-24-ci    </span><span class="rd">crashed    </span><span class="d">guest-panicked</span></div>
+        <div class="pre"><span class="d">14:12:40  </span><span class="ye">‖ </span><span>nixos-lab       </span><span class="ye">suspended  </span><span class="d">paused by user</span></div>
+        <div class="pre"><span class="d">13:58:11  </span><span class="mg">◆ </span><span>arch-dev        </span><span class="mg">snapshot   </span><span class="d">created "pre-kernel-6.17"</span></div>
+      </div>
+
+      <div class="p" style="height: 112px">
+        <span class="pt">Host · forge</span>
+        <span class="pr">Ryzen 9 7950X · 32t · 64 GiB</span>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px">
+          <sc-for list="{{host}}" as="g" hint-placeholder-count="6">
+            <div class="pre"><span class="d">{{g.label}}</span><span style="{{g.style}}">{{g.on}}</span><span style="color: var(--hl)">{{g.off}}</span><span class="f2"> {{g.val}}</span></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; min-height: 0">
+      <div class="p" style="height: 198px">
+        <span class="pt">arch-dev</span>
+        <span class="pr"><span class="gr">● running</span></span>
+        <div style="display: grid; grid-template-columns: 1.2fr 1fr; column-gap: 16px">
+          <div class="pre"><span class="d">OS       </span>Arch Linux · x86_64</div>
+          <div class="pre"><span class="d">Uptime  </span>3d 04h 17m</div>
+          <div class="pre"><span class="d">Machine  </span>pc-q35-10.1 · KVM</div>
+          <div class="pre"><span class="d">IP      </span><span class="cy">192.168.122.48</span></div>
+          <div class="pre"><span class="d">Firmware </span>UEFI · OVMF · SB off</div>
+          <div class="pre"><span class="d">Display </span>SPICE :5901</div>
+          <div class="pre"><span class="d">vCPU     </span>8 · host-passthrough</div>
+          <div class="pre"><span class="d">Agent   </span><span class="gr">qemu-ga ✓</span></div>
+          <div class="pre"><span class="d">Disks    </span>vda 120G qcow2 · sda iso</div>
+          <div class="pre"><span class="d">Auto    </span><span class="gr">✓ on boot</span></div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; white-space: pre">
+          <span class="chip"><span class="k">S</span> shutdown</span>
+          <span class="chip"><span class="k">r</span> reboot</span>
+          <span class="chip"><span class="k">p</span> pause</span>
+          <span class="chip"><span class="k">c</span> console</span>
+          <span class="chip"><span class="k">v</span> viewer</span>
+          <span class="chip"><span class="k">␣s</span> snapshot</span>
+          <span class="chip"><span class="k">e</span> edit xml</span>
+        </div>
+      </div>
+
+      <div class="p" style="height: 182px">
+        <span class="pt">CPU</span>
+        <span class="pr"><span class="bl b">42%</span> · 8 vCPU · 60s</span>
+        <sc-for list="{{cpuRows}}" as="r" hint-placeholder-count="8">
+          <div style="display: flex; line-height: 15px"><span class="d br" style="width: 5ch">{{r.lab}}</span><span class="br" style="color: {{r.c}}">{{r.t}}</span></div>
+        </sc-for>
+        <div class="d pre" style="display: flex; justify-content: space-between; padding-left: 5ch; margin-top: 4px"><span>-60s</span><span>-30s</span><span>now</span></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; height: 150px">
+        <div class="p">
+          <span class="pt">Memory</span>
+          <span class="pr"><span class="mg">12.4</span>/16 GiB</span>
+          <div class="pre"><span class="mg">{{memG.on}}</span><span style="color: var(--hl)">{{memG.off}}</span><span class="f2"> 78%</span></div>
+          <sc-for list="{{memRows}}" as="r" hint-placeholder-count="3">
+            <div class="br mg">{{r}}</div>
+          </sc-for>
+          <div class="d pre" style="margin-top: 4px">rss 13.1G · swap-in 0 · balloon</div>
+        </div>
+        <div class="p">
+          <span class="pt">Disk I/O · vda</span>
+          <span class="pr">1.2k IOPS</span>
+          <div class="pre"><span class="gr">read  </span><span class="f2">12.4 MiB/s</span></div>
+          <sc-for list="{{rdRows}}" as="r" hint-placeholder-count="2">
+            <div class="br gr">{{r}}</div>
+          </sc-for>
+          <div class="pre"><span class="or">write </span><span class="f2"> 3.1 MiB/s</span></div>
+          <sc-for list="{{wrRows}}" as="r" hint-placeholder-count="2">
+            <div class="br or">{{r}}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div class="p" style="flex: 1">
+        <span class="pt">Network · vnet3</span>
+        <span class="pr"><span class="cy">↓ 48.2 Mb/s</span>  <span class="ye">↑ 6.1 Mb/s</span></span>
+        <sc-for list="{{rxRows}}" as="r" hint-placeholder-count="4">
+          <div class="br cy">{{r}}</div>
+        </sc-for>
+        <div style="border-top: 1px dashed var(--gutter)"></div>
+        <sc-for list="{{txRows}}" as="r" hint-placeholder-count="3">
+          <div class="br ye">{{r}}</div>
+        </sc-for>
+        <div class="d pre" style="margin-top: 6px">total ↓ 18.4 GiB  ↑ 2.1 GiB  · drops 0 · errs 0 · bridge virbr0</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">domains › arch-dev</span>
+    <span class="d" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">⏎</span> open  <span class="k">s</span> start  <span class="k">S</span> shutdown  <span class="k">p</span> pause  <span class="k">m</span> mark  <span class="k">␣</span> leader  <span class="k">:</span> cmd  <span class="k">?</span> help</span>
+    <span style="flex: 1"></span>
+    <span style="padding: 0 10px; background: var(--hl)"><span class="gr">● 9</span>  <span class="ye">‖ 1</span>  <span class="rd">✗ 1</span>  <span class="d">○ 4</span></span>
+    <span class="pill" style="background: var(--magenta); color: var(--bg2)">3 marked</span>
+  </div>
+  <div style="height: 20px; line-height: 20px; padding: 0 10px; white-space: pre"><span class="gr">✓ </span>Started k8s-worker-02<span class="d">  ── virsh start k8s-worker-02</span></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+function rng(seed) { let s = seed >>> 0 || 1; return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+function series(seed, n, base, amp, pull) { const r = rng(seed); let v = base; const out = []; for (let i = 0; i < n; i++) { v += (r() - 0.5) * amp; v += (base - v) * (pull || 0.15); v = Math.max(0.02, Math.min(0.98, v)); out.push(v); } return out; }
+function sample(d, x, W) { const t = x * (d.length - 1) / Math.max(1, W - 1); const i = Math.floor(t); const f = t - i; return d[i] * (1 - f) + d[Math.min(i + 1, d.length - 1)] * f; }
+function braille(d, w, h, mode) {
+  const W = w * 2, H = h * 4, g = [];
+  for (let y = 0; y < H; y++) g.push(new Array(W).fill(0));
+  let py = null;
+  for (let x = 0; x < W; x++) {
+    const v = sample(d, x, W);
+    if (mode === 'down') { const y = Math.round(v * (H - 1)); for (let yy = 0; yy <= y; yy++) g[yy][x] = 1; }
+    else if (mode === 'fill') { const y = Math.round((1 - v) * (H - 1)); for (let yy = y; yy < H; yy++) g[yy][x] = 1; }
+    else { const y = Math.round((1 - v) * (H - 1)); if (py === null) py = y; for (let yy = Math.min(py, y); yy <= Math.max(py, y); yy++) g[yy][x] = 1; py = y; }
+  }
+  const bits = [[0x1, 0x8], [0x2, 0x10], [0x4, 0x20], [0x40, 0x80]], rows = [];
+  for (let r = 0; r < h; r++) { let s = ''; for (let c = 0; c < w; c++) { let code = 0; for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) if (g[r * 4 + dy][c * 2 + dx]) code |= bits[dy][dx]; s += String.fromCharCode(0x2800 + code); } rows.push(s); }
+  return rows;
+}
+const BL = '▁▂▃▄▅▆▇█';
+function sparkRows(d, w, h) { const rows = []; for (let r = 0; r < h; r++) { let s = ''; for (let x = 0; x < w; x++) { const lv = Math.round(sample(d, x, w) * h * 8) - (h - 1 - r) * 8; s += lv <= 0 ? ' ' : BL[Math.min(7, lv - 1)]; } rows.push(s); } return rows; }
+function hbar(v, w) { const tot = Math.round(v * w * 8); const full = Math.floor(tot / 8), rem = tot % 8; const fill = '█'.repeat(full) + (rem ? '▏▎▍▌▋▊▉'[rem - 1] : ''); return { fill: fill, rest: '░'.repeat(Math.max(0, w - fill.length)) }; }
+function lg(v, w) { const n = Math.round(v * w); return { on: '━'.repeat(n), off: '━'.repeat(w - n) }; }
+function lvl(v) { return v < 0.5 ? 'var(--green)' : v < 0.8 ? 'var(--yellow)' : 'var(--red)'; }
+function grad(rows, cols) { return rows.map(function (t, i) { return { t: t, c: cols[Math.min(cols.length - 1, Math.floor(i * cols.length / rows.length))] }; }); }
+
+class Component extends DCLogic {
+  renderVals() {
+    const ST = { running: ['●', 'var(--green)', 'running'], paused: ['‖', 'var(--yellow)', 'paused'], off: ['○', 'var(--comment)', 'shut off'], crashed: ['✗', 'var(--red)', 'crashed'] };
+    const raw = [
+      ['alpine-edge', 'running', 1, '0.3/0.5G', 0.02, '9d 02h', 1, 0],
+      ['arch-dev', 'running', 8, '12.4/16G', 0.42, '3d 04h', 1, 0],
+      ['haos', 'running', 2, '2.8/4G', 0.08, '47d 11h', 1, 0],
+      ['k8s-cp-01', 'running', 4, '5.1/8G', 0.23, '12d 06h', 1, 1],
+      ['k8s-worker-01', 'running', 4, '6.7/8G', 0.55, '12d 06h', 1, 1],
+      ['k8s-worker-02', 'running', 4, '1.9/8G', 0.61, '0d 00h', 1, 1],
+      ['openbsd-fw', 'running', 2, '0.4/1G', 0.04, '47d 11h', 1, 0],
+      ['truenas-scale', 'running', 4, '14.2/16G', 0.12, '47d 11h', 1, 0],
+      ['win11-gaming', 'running', 12, '28.6/32G', 0.87, '5h 12m', 0, 0],
+      ['nixos-lab', 'paused', 4, '3.2/4G', 0, '—', 0, 0],
+      ['ubuntu-24-ci', 'crashed', 2, '—/4G', 0, '—', 0, 0],
+      ['debian-bookworm', 'off', 2, '—/2G', 0, '—', 0, 0],
+      ['fedora-41-test', 'off', 4, '—/4G', 0, '—', 0, 0],
+      ['kali-pentest', 'off', 4, '—/8G', 0, '—', 0, 0],
+      ['windows-srv-22', 'off', 4, '—/8G', 0, '—', 1, 0]
+    ];
+    const rows = raw.map(function (r, i) {
+      const s = ST[r[1]], sel = i === 1, run = r[1] === 'running', hb = hbar(r[4], 16);
+      return {
+        bar: sel ? '▌' : ' ', mark: r[7] ? '◆' : ' ', glyph: s[0], name: r[0], state: s[2], cpu: String(r[2]), mem: r[3],
+        fill: run ? hb.fill : '', rest: run ? hb.rest : '', pct: run ? (' ' + Math.round(r[4] * 100) + '%').padStart(5) : '  —',
+        up: r[5], auto: r[6] ? '✓' : '·',
+        rowStyle: sel ? 'background: var(--sel)' : '', stStyle: 'color: ' + s[1], cpuStyle: 'color: ' + (run ? lvl(r[4]) : 'var(--comment)'),
+        nameStyle: sel ? 'color: var(--fg); font-weight: 700' : (run ? 'color: var(--fg)' : 'color: var(--fg2)')
+      };
+    });
+    const hostRaw = [['CPU   ', 0.38, '38%'], ['Pool  ', 0.66, '612/931G'], ['RAM   ', 0.64, '41.2/64G'], ['NVMe  ', 0.67, '1.2/1.8T'], ['Swap  ', 0.05, '0.4/8G'], ['Huge  ', 0.5, '8/16 1G']];
+    const host = hostRaw.map(function (h) { const g = lg(h[1], 22); return { label: h[0], on: g.on, off: g.off, val: h[2], style: 'color: ' + lvl(h[1]) }; });
+    const cpu = series(7, 90, 0.42, 0.22, 0.1);
+    const cpuRows = grad(braille(cpu, 60, 8, 'fill'), ['var(--red)', 'var(--magenta)', 'var(--magenta)', 'var(--blue)', 'var(--blue)', 'var(--cyan)', 'var(--cyan)', 'var(--teal)'])
+      .map(function (r, i) { r.lab = i === 0 ? '100%' : i === 4 ? ' 50%' : i === 7 ? '  0%' : ''; return r; });
+    return {
+      vars: themeVars(this.props.theme ?? 'tokyo-night'),
+      rows: rows, host: host, cpuRows: cpuRows,
+      memG: lg(0.78, 22), memRows: sparkRows(series(11, 60, 0.74, 0.06, 0.2), 28, 3),
+      rdRows: sparkRows(series(21, 60, 0.35, 0.5, 0.2), 28, 2), wrRows: sparkRows(series(23, 60, 0.15, 0.3, 0.3), 28, 2),
+      rxRows: braille(series(31, 90, 0.45, 0.35, 0.12), 64, 4, 'fill'), txRows: braille(series(37, 90, 0.2, 0.25, 0.2), 64, 3, 'down')
+    };
+  }
+}
+</script>
+</body>
+</html>

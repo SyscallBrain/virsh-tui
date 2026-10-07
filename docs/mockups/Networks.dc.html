@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Networks</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
+.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+.tab b{color:var(--orange)}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+.th{display:grid;column-gap:12px;white-space:pre;color:var(--comment);font-weight:700;border-bottom:1px solid var(--hl);padding-bottom:2px;margin-bottom:2px}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; {{vars}}">
+
+  <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span class="tab"><b>1</b> Domains</span>
+    <span class="tab"><b>2</b> Host</span>
+    <span class="tab on"><b>3</b> Networks</span>
+    <span class="tab"><b>4</b> Storage</span>
+    <span class="tab"><b>5</b> Events</span>
+    <span style="flex: 1"></span>
+    <span class="d">⌁ </span><span class="f2">qemu:///system</span><span class="d">  │  </span><span class="f2">forge</span><span class="d">  │  ⟳ </span><span class="f2">1s</span><span class="d">  │  </span><span class="f2">14:35:12  </span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: 560px minmax(0, 1fr); gap: 12px; padding: 18px 12px 10px; min-height: 0">
+
+    <div style="display: flex; flex-direction: column; gap: 18px; min-height: 0">
+      <div class="p f" style="height: 210px">
+        <span class="pt">Virtual networks</span>
+        <span class="pr">3/4 active</span>
+        <div class="th" style="grid-template-columns: 1ch 2ch 13ch 9ch 8ch minmax(0, 1fr) 2ch"><span></span><span></span><span>NAME</span><span>MODE</span><span>BRIDGE</span><span>SUBNET</span><span>A</span></div>
+        <sc-for list="{{nets}}" as="n" hint-placeholder-count="4">
+          <div style="display: grid; grid-template-columns: 1ch 2ch 13ch 9ch 8ch minmax(0, 1fr) 2ch; column-gap: 12px; white-space: pre; line-height: 26px; {{n.rowStyle}}">
+            <span class="bl">{{n.bar}}</span><span style="{{n.gs}}">{{n.g}}</span><span style="{{n.ns}}">{{n.name}}</span><span class="f2">{{n.mode}}</span><span class="f2">{{n.br}}</span><span class="cy">{{n.net}}</span><span class="gr">{{n.auto}}</span>
+          </div>
+        </sc-for>
+        <span class="pb">n new · e xml · s/D start/stop</span>
+      </div>
+
+      <div class="p" style="flex: 1">
+        <span class="pt">Host interfaces</span>
+        <span class="pr">iface-list</span>
+        <div class="th" style="grid-template-columns: 2ch 10ch 8ch 8ch minmax(0, 1fr)"><span></span><span>IFACE</span><span>TYPE</span><span>SPEED</span><span>ADDRESS</span></div>
+        <sc-for list="{{ifs}}" as="n" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 2ch 10ch 8ch 8ch minmax(0, 1fr); column-gap: 12px; white-space: pre; line-height: 24px">
+            <span style="{{n.gs}}">{{n.g}}</span><span>{{n.name}}</span><span class="f2">{{n.type}}</span><span class="f2">{{n.speed}}</span><span class="d">{{n.addr}}</span>
+          </div>
+        </sc-for>
+        <div class="pre d" style="margin-top: 10px">─ attached to <span class="f2">default</span> ─────────────────────────────────</div>
+        <div class="pre" style="line-height: 24px"><span class="cy">vnet0 </span><span class="f2">k8s-cp-01      </span><span class="cy">vnet3 </span><span class="f2">arch-dev</span></div>
+        <div class="pre" style="line-height: 24px"><span class="cy">vnet1 </span><span class="f2">k8s-worker-01  </span><span class="cy">vnet5 </span><span class="f2">win11-gaming</span></div>
+        <div class="pre" style="line-height: 24px"><span class="cy">vnet2 </span><span class="f2">k8s-worker-02  </span><span class="cy">vnet7 </span><span class="f2">alpine-edge</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; min-height: 0">
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 12px; height: 210px">
+        <div class="p">
+          <span class="pt">default</span>
+          <span class="pr"><span class="gr">● active</span> · autostart · persistent</span>
+          <div class="pre"><span class="d">uuid      </span><span class="f2">4a1c6e3b-…-93d0be1c7f02</span></div>
+          <div class="pre"><span class="d">forward   </span>nat <span class="d">→</span> enp6s0 <span class="d">· ports 1024-65535</span></div>
+          <div class="pre"><span class="d">bridge    </span>virbr0 <span class="d">· stp on · delay 0 · mtu 1500</span></div>
+          <div class="pre"><span class="d">ipv4      </span><span class="cy">192.168.122.1/24</span></div>
+          <div class="pre"><span class="d">dhcp      </span>.2 – .254 <span class="d">·</span> 4 static hosts</div>
+          <div class="pre"><span class="d">dns       </span>on <span class="d">· domain</span> lab.local</div>
+          <div class="pre"><span class="d">ipv6      </span><span class="d">—</span></div>
+        </div>
+        <div class="p">
+          <span class="pt">Traffic · virbr0</span>
+          <span class="pr"><span class="cy">↓</span>/<span class="ye">↑</span></span>
+          <sc-for list="{{rx}}" as="r" hint-placeholder-count="3">
+            <div class="br cy">{{r}}</div>
+          </sc-for>
+          <sc-for list="{{tx}}" as="r" hint-placeholder-count="2">
+            <div class="br ye">{{r}}</div>
+          </sc-for>
+          <div class="pre d" style="margin-top: 6px"><span class="cy">↓ 62.4 Mb/s</span>  <span class="ye">↑ 9.8 Mb/s</span></div>
+        </div>
+      </div>
+
+      <div class="p" style="flex: 1">
+        <span class="pt">DHCP leases</span>
+        <span class="pr">7 leases · 4 static</span>
+        <div class="th" style="grid-template-columns: 2ch 18ch 16ch 16ch 19ch minmax(0, 1fr)"><span></span><span>MAC</span><span>IP</span><span>HOSTNAME</span><span>EXPIRES</span><span>DOMAIN</span></div>
+        <sc-for list="{{leases}}" as="l" hint-placeholder-count="7">
+          <div style="display: grid; grid-template-columns: 2ch 18ch 16ch 16ch 19ch minmax(0, 1fr); column-gap: 12px; white-space: pre; line-height: 26px">
+            <span style="{{l.gs}}">{{l.g}}</span><span class="d">{{l.mac}}</span><span class="cy">{{l.ip}}</span><span>{{l.host}}</span><span class="f2">{{l.exp}}</span><span class="f2">{{l.dom}}</span>
+          </div>
+        </sc-for>
+        <div class="pre d" style="margin-top: 14px"><span class="mg">◆</span> static (ip-dhcp-host)   <span class="gr">●</span> dynamic</div>
+        <div style="display: flex; gap: 8px; margin-top: 12px; white-space: pre">
+          <span class="chip"><span class="k">␣l</span> pin lease as static</span>
+          <span class="chip"><span class="k">␣L</span> remove static</span>
+          <span class="chip"><span class="k">yi</span> copy ip</span>
+          <span class="chip"><span class="k">⏎</span> go to domain</span>
+        </div>
+        <span class="pb">net-update · live + config</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">networks › default</span>
+    <span class="d" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">l</span> leases  <span class="k">s</span> start  <span class="k">D</span> destroy  <span class="k">a</span> autostart  <span class="k">e</span> edit xml  <span class="k">n</span> new  <span class="k">X</span> undefine</span>
+  </div>
+  <div style="height: 20px; line-height: 20px; padding: 0 10px; white-space: pre"><span class="d">── virsh net-dhcp-leases default</span></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+function rng(seed) { let s = seed >>> 0 || 1; return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+function series(seed, n, base, amp, pull) { const r = rng(seed); let v = base; const out = []; for (let i = 0; i < n; i++) { v += (r() - 0.5) * amp; v += (base - v) * (pull || 0.15); v = Math.max(0.02, Math.min(0.98, v)); out.push(v); } return out; }
+function sample(d, x, W) { const t = x * (d.length - 1) / Math.max(1, W - 1); const i = Math.floor(t); const f = t - i; return d[i] * (1 - f) + d[Math.min(i + 1, d.length - 1)] * f; }
+function braille(d, w, h, mode) {
+  const W = w * 2, H = h * 4, g = [];
+  for (let y = 0; y < H; y++) g.push(new Array(W).fill(0));
+  for (let x = 0; x < W; x++) {
+    const v = sample(d, x, W);
+    if (mode === 'down') { const y = Math.round(v * (H - 1)); for (let yy = 0; yy <= y; yy++) g[yy][x] = 1; }
+    else { const y = Math.round((1 - v) * (H - 1)); for (let yy = y; yy < H; yy++) g[yy][x] = 1; }
+  }
+  const bits = [[0x1, 0x8], [0x2, 0x10], [0x4, 0x20], [0x40, 0x80]], rows = [];
+  for (let r = 0; r < h; r++) { let s = ''; for (let c = 0; c < w; c++) { let code = 0; for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) if (g[r * 4 + dy][c * 2 + dx]) code |= bits[dy][dx]; s += String.fromCharCode(0x2800 + code); } rows.push(s); }
+  return rows;
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const nr = [
+      ['default', 'nat', 'virbr0', '192.168.122.0/24', 1, 1],
+      ['lab-isolated', 'isolated', 'virbr1', '10.10.0.0/24', 1, 1],
+      ['br0', 'bridge', 'br0', '— (LAN)', 1, 1],
+      ['ipv6-routed', 'route', 'virbr2', 'fd00:42::/64', 0, 0]
+    ];
+    const nets = nr.map(function (n, i) {
+      return { bar: i === 0 ? '▌' : ' ', g: n[4] ? '●' : '○', gs: 'color: ' + (n[4] ? 'var(--green)' : 'var(--comment)'), name: n[0], mode: n[1], br: n[2], net: n[3], auto: n[5] ? '✓' : '·',
+        ns: i === 0 ? 'font-weight: 700' : (n[4] ? '' : 'color: var(--comment)'), rowStyle: i === 0 ? 'background: var(--sel)' : '' };
+    });
+    const ir = [['enp6s0', 'ethernet', '2.5G', '192.168.1.20/24', 1], ['br0', 'bridge', '2.5G', '192.168.1.21/24', 1], ['virbr0', 'bridge', '—', '192.168.122.1/24', 1], ['virbr1', 'bridge', '—', '10.10.0.1/24', 1], ['wlp7s0', 'wireless', '—', 'down', 0]];
+    const ifs = ir.map(function (n) { return { g: n[4] ? '▲' : '▽', gs: 'color: ' + (n[4] ? 'var(--green)' : 'var(--comment)'), name: n[0], type: n[1], speed: n[2], addr: n[3] }; });
+    const lr = [
+      ['52:54:00:11:c0:01', '192.168.122.10', 'k8s-cp-01', 'static', 1],
+      ['52:54:00:11:c0:02', '192.168.122.11', 'k8s-worker-01', 'static', 1],
+      ['52:54:00:11:c0:03', '192.168.122.12', 'k8s-worker-02', 'static', 1],
+      ['52:54:00:a3:1f:7c', '192.168.122.48', 'arch-dev', '2026-10-06 15:31', 0],
+      ['52:54:00:5e:90:2d', '192.168.122.77', 'DESKTOP-W11G', '2026-10-06 15:12', 0],
+      ['52:54:00:0b:44:e1', '192.168.122.92', 'alpine-edge', '2026-10-06 14:58', 0],
+      ['52:54:00:7f:20:aa', '192.168.122.20', 'haos', 'static', 1]
+    ];
+    const leases = lr.map(function (l) { return { g: l[4] ? '◆' : '●', gs: 'color: ' + (l[4] ? 'var(--magenta)' : 'var(--green)'), mac: l[0], ip: l[1], host: l[2], exp: l[3], dom: l[2] === 'DESKTOP-W11G' ? 'win11-gaming' : l[2] }; });
+    return {
+      vars: themeVars(this.props.theme ?? 'tokyo-night'), nets: nets, ifs: ifs, leases: leases,
+      rx: braille(series(51, 80, 0.45, 0.4, 0.15), 38, 3, 'fill'), tx: braille(series(53, 80, 0.2, 0.3, 0.2), 38, 2, 'down')
+    };
+  }
+}
+</script>
+</body>
+</html>

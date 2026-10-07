@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Command palette</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.tab{padding:0 12px;line-height:28px;white-space:pre}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+.ghost{color:var(--gutter);white-space:pre;line-height:24px}
+.h{color:var(--blue);font-weight:700;margin:10px 0 2px;white-space:pre}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; position: relative; {{vars}}">
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre" class="ghost">
+      <span class="pill" style="line-height: 28px">◆ virsh-tui</span><span class="tab">1 Domains   2 Host   3 Networks   4 Storage   5 Events</span>
+    </div>
+    <div style="padding: 24px 24px; flex: 1">
+      <sc-for list="{{ghost}}" as="g" hint-placeholder-count="26">
+        <div class="ghost">{{g}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div class="p f" style="position: absolute; left: 100px; top: 64px; width: 1160px; height: 690px; background: var(--bg); padding: 16px 0 0; display: flex; flex-direction: column">
+    <span class="pt">Command palette</span>
+    <span class="pr">context: <span class="b f2">arch-dev</span></span>
+
+    <div style="display: flex; align-items: center; gap: 12px; margin: 0 16px 12px; padding: 6px 12px; background: var(--bg2); border-radius: 5px; white-space: pre">
+      <span class="mg b">❯</span><span class="b">snap</span><span style="background: var(--fg); color: var(--bg)"> </span>
+      <span style="flex: 1"></span>
+      <span class="d">6 / 214</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 520px minmax(0, 1fr); flex: 1; min-height: 0; border-top: 1px solid var(--hl)">
+      <div style="border-right: 1px solid var(--hl); padding: 8px 0">
+        <sc-for list="{{res}}" as="r" hint-placeholder-count="6">
+          <div style="display: flex; gap: 10px; white-space: pre; line-height: 30px; padding: 0 16px; {{r.rowStyle}}">
+            <span style="{{r.iconStyle}}">{{r.icon}}</span>
+            <span style="flex: 1"><span class="d">{{r.cat}}</span><span class="or b">{{r.m}}</span><span>{{r.rest}}</span></span>
+            <span class="k">{{r.key}}</span>
+          </div>
+        </sc-for>
+        <div class="d pre" style="padding: 16px 16px 0">recent</div>
+        <div class="pre f2" style="padding: 4px 16px; line-height: 26px"><span class="d">↺ </span>Domain: start  <span class="d">k8s-worker-02</span></div>
+        <div class="pre f2" style="padding: 4px 16px; line-height: 26px"><span class="d">↺ </span>Media: attach ISO  <span class="d">arch-dev · sda</span></div>
+        <div class="pre f2" style="padding: 4px 16px; line-height: 26px"><span class="d">↺ </span>Memory: set live  <span class="d">truenas-scale</span></div>
+      </div>
+
+      <div style="padding: 10px 20px; min-width: 0; overflow: hidden">
+        <div class="pre"><span class="gr b">virsh snapshot-create-as</span><span class="d">  — create a snapshot from a set of args</span></div>
+        <div class="h">SYNOPSIS</div>
+        <div class="pre f2">snapshot-create-as <span class="cy">&lt;domain&gt;</span> [<span class="cy">--name</span> &lt;s&gt;] [<span class="cy">--description</span> &lt;s&gt;]</div>
+        <div class="pre f2">  [--print-xml] [--no-metadata] [--halt] [--disk-only] [--reuse-external]</div>
+        <div class="pre f2">  [--quiesce] [--atomic] [--live] [--validate] [--memspec &lt;s&gt;] [--diskspec &lt;s&gt;]…</div>
+        <div class="h">OPTIONS</div>
+        <sc-for list="{{opts}}" as="o" hint-placeholder-count="12">
+          <div style="display: grid; grid-template-columns: 3ch 17ch minmax(0, 1fr); column-gap: 8px; white-space: pre; line-height: 22px">
+            <span style="{{o.boxStyle}}">{{o.box}}</span><span class="cy">{{o.f}}</span><span class="f2">{{o.desc}}</span>
+          </div>
+        </sc-for>
+        <div style="margin-top: 12px; padding: 6px 10px; background: var(--bg2); border-radius: 5px; white-space: pre"><span class="d">$ </span><span class="gr">virsh</span> <span class="bl">snapshot-create-as</span> arch-dev <span class="cy">--name</span> <span class="ye">pre-upgrade-2026-10-06</span> <span class="cy">--atomic</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 20px; padding: 8px 16px; border-top: 1px solid var(--hl); background: var(--bg2); white-space: pre; border-radius: 0 0 7px 7px" class="d">
+      <span><span class="k">⏎</span> open form</span><span><span class="k">ctrl-j/k</span> move</span><span><span class="k">⇥</span> toggle flag</span><span><span class="k">ctrl-y</span> copy cmd</span><span><span class="k">⎋</span> close</span>
+      <span style="flex: 1"></span>
+      <span><span class="mg">❯</span> actions  <span class="k">:</span> ex  <span class="k">/</span> domains  <span class="k">#</span> docs</span>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 20px; display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--magenta); color: var(--bg2)">PALETTE</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">domains › arch-dev</span>
+  </div>
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 20px; line-height: 20px; padding: 0 10px; white-space: pre" class="d">fuzzy · nucleo · 214 actions indexed from virsh help</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+
+class Component extends DCLogic {
+  renderVals() {
+    const names = ['alpine-edge', 'arch-dev', 'haos', 'k8s-cp-01', 'k8s-worker-01', 'k8s-worker-02', 'openbsd-fw', 'truenas-scale', 'win11-gaming', 'nixos-lab'];
+    const ghost = [];
+    for (let i = 0; i < 26; i++) ghost.push(('   ● ' + names[i % names.length]).padEnd(26) + 'running    4    6.7/8G    ████████░░░░░░  42%    12d 06h          ⣀⣠⣤⣴⣶⣦⣤⣀⣀⣠⣴⣶⣾⣿⣷⣶⣤⣄⣀⣀⣠⣤');
+    const raw = [
+      ['◆', 'var(--magenta)', '', 'Snap', 'shot: create…', '␣sc'],
+      ['◆', 'var(--magenta)', '', 'Snap', 'shot: revert…', '␣sr'],
+      ['◆', 'var(--magenta)', '', 'Snap', 'shot: delete…', '␣sd'],
+      ['◆', 'var(--magenta)', '', 'Snap', 'shot: tree view', 'gs'],
+      ['◆', 'var(--magenta)', '', 'Snap', 'shot: edit XML', ''],
+      ['◫', 'var(--green)', 'Disk: ', 'snap', 'shot (disk-only, external)', '']
+    ];
+    const res = raw.map(function (r, i) {
+      return { icon: r[0], iconStyle: 'color: ' + r[1], cat: r[2], m: r[3], rest: r[4], key: r[5], rowStyle: i === 0 ? 'background: var(--sel); font-weight: 700' : '' };
+    });
+    const o = [
+      [1, '--name', 'name of snapshot'],
+      [0, '--description', 'free-text description'],
+      [0, '--disk-only', 'capture disk state but not vm state'],
+      [0, '--live', 'take a live snapshot'],
+      [0, '--quiesce', 'quiesce guest fs (needs qemu-ga)'],
+      [1, '--atomic', 'require atomic operation'],
+      [0, '--halt', 'halt domain after snapshot'],
+      [0, '--no-metadata', 'create without libvirt metadata'],
+      [0, '--reuse-external', 'reuse existing external files'],
+      [0, '--memspec', '[file=]name[,snapshot=type]'],
+      [0, '--diskspec', 'disk[,snapshot=type][,file=name]…'],
+      [0, '--print-xml', 'print XML instead of creating']
+    ];
+    const opts = o.map(function (x) { return { box: x[0] ? '[x]' : '[ ]', boxStyle: 'color: ' + (x[0] ? 'var(--green)' : 'var(--comment)'), f: x[1], desc: x[2] }; });
+    return { vars: themeVars(this.props.theme ?? 'tokyo-night'), ghost: ghost, res: res, opts: opts };
+  }
+}
+</script>
+</body>
+</html>

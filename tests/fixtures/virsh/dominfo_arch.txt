@@ -1,0 +1,15 @@
+Id:             -
+Name:           archlinux-install
+UUID:           f9707ccf-54cc-4310-bf40-6f68d3b814a2
+OS Type:        hvm
+State:          shut off
+CPU(s):         2
+Max memory:     2097152 KiB
+Used memory:    2097152 KiB
+Persistent:     yes
+Autostart:      disable
+Autostart Once: disable
+Managed save:   no
+Security model: apparmor
+Security DOI:   0
+

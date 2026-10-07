@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New domain wizard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+.sec{color:var(--blue);font-weight:700;margin:10px 0 4px;white-space:pre}
+.row{display:flex;align-items:center;gap:12px;white-space:pre;line-height:26px}
+.lab{width:14ch;color:var(--fg2)}
+.fld{background:var(--hl);color:var(--fg);padding:0 1ch;white-space:pre}
+.fld.on{background:var(--sel);outline:1px solid var(--blue)}
+.ghost{color:var(--gutter);white-space:pre;line-height:24px}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; position: relative; {{vars}}">
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre" class="ghost">
+      <span class="pill" style="line-height: 28px">◆ virsh-tui</span><span class="tab" style="color: var(--gutter)">1 Domains   2 Host   3 Networks   4 Storage   5 Events</span>
+    </div>
+    <div style="padding: 24px 24px; flex: 1">
+      <sc-for list="{{ghost}}" as="g" hint-placeholder-count="26">
+        <div class="ghost">{{g}}</div>
+      </sc-for>
+    </div>
+    <div style="height: 22px; background: var(--bg2)"></div>
+    <div style="height: 20px"></div>
+  </div>
+
+  <div class="p f" style="position: absolute; left: 150px; top: 70px; width: 1060px; height: 700px; background: var(--bg); padding: 20px 20px 14px; display: flex; flex-direction: column">
+    <span class="pt">＋ New domain</span>
+    <span class="pr">step <span class="bl b">3</span> / 6</span>
+
+    <div style="display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; flex: 1; min-height: 0">
+      <div style="border-right: 1px solid var(--hl); padding-right: 16px">
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="6">
+          <div style="margin-bottom: 12px; padding: 4px 8px; {{s.box}}">
+            <div class="pre"><span style="{{s.gs}}">{{s.g}} </span><span style="{{s.ns}}">{{s.n}}</span></div>
+            <div class="pre d" style="padding-left: 2ch">{{s.sub}}</div>
+          </div>
+        </sc-for>
+        <div class="pre d" style="margin-top: 24px">osinfo · <span class="f2">fedora42</span></div>
+        <div class="pre d">min  <span class="f2">2 vCPU · 2 GiB · 20G</span></div>
+        <div class="pre d">rec  <span class="f2">4 vCPU · 4 GiB · 30G</span></div>
+        <div class="pre gr" style="margin-top: 4px">✓ meets recommended</div>
+      </div>
+
+      <div style="min-width: 0">
+        <div class="sec" style="margin-top: 0">vCPUs</div>
+        <div class="row">
+          <span class="lab">count</span>
+          <span><span class="bl">{{cpuOn}}</span><span class="bl b">●</span><span style="color: var(--gutter)">{{cpuOff}}</span></span>
+          <span class="fld on">  4 </span><span class="d">of 32 host threads</span>
+        </div>
+        <div class="row"><span class="lab">maximum</span><span class="fld">  8 </span><span class="d">hot-plug ceiling</span></div>
+        <div class="row"><span class="lab">topology</span><span class="bl">(●)</span><span>auto</span><span class="d">1s · 2c · 2t</span><span class="d">( )</span><span class="f2">manual</span></div>
+
+        <div class="sec">CPU model</div>
+        <div style="display: grid; grid-template-columns: 14ch minmax(0, 1fr); column-gap: 12px">
+          <span></span>
+          <div style="border: 1px solid var(--gutter); border-radius: 5px; padding: 4px 0; width: 520px">
+            <div class="pre" style="background: var(--sel); padding: 0 10px"><span class="bl">❯ </span><span class="b">host-passthrough</span><span class="gr">   recommended · nested ok</span></div>
+            <div class="pre f2" style="padding: 0 10px">  host-model<span class="d">         migratable · safer</span></div>
+            <div class="pre f2" style="padding: 0 10px">  EPYC-Genoa<span class="d">         named model · v1</span></div>
+            <div class="pre f2" style="padding: 0 10px">  qemu64<span class="d">             max compatibility</span></div>
+          </div>
+        </div>
+
+        <div class="sec">Memory</div>
+        <div class="row">
+          <span class="lab">current</span>
+          <span><span class="mg">{{memOn}}</span><span class="mg b">●</span><span style="color: var(--gutter)">{{memOff}}</span></span>
+          <span class="fld">8 GiB</span>
+        </div>
+        <div class="row">
+          <span class="lab"></span>
+          <span class="chip">2G</span><span class="chip">4G</span><span class="chip" style="background: var(--magenta); color: var(--bg2)">8G</span><span class="chip">16G</span><span class="chip">32G</span>
+          <span class="d">host free 22.8 GiB</span>
+        </div>
+        <div class="row"><span class="lab">maximum</span><span class="fld">16 GiB</span><span class="d">balloon can grow to this</span></div>
+        <div class="row"><span class="lab">options</span><span class="gr">[x]</span><span>virtio balloon</span><span class="d">[ ]</span><span class="f2">hugepages 1G</span><span class="d">[ ]</span><span class="f2">shared (virtiofs)</span></div>
+      </div>
+    </div>
+
+    <div class="p" style="margin-top: 20px; height: 196px; background: var(--bg2)">
+      <span class="pt" style="background: var(--bg)">Equivalent command</span>
+      <span class="pr" style="background: var(--bg)">y copy · ctrl-e edit as XML</span>
+      <div class="pre"><span class="gr">virt-install</span> <span class="d">\</span></div>
+      <div class="pre">  <span class="cy">--name</span> fedora-42-ws <span class="cy">--osinfo</span> fedora42 <span class="d">\</span></div>
+      <div class="pre">  <span class="cy">--cdrom</span> <span class="ye">/var/lib/libvirt/isos/Fedora-WS-Live-42.iso</span> <span class="d">\</span></div>
+      <div class="pre" style="background: var(--hl)">  <span class="cy">--vcpus</span> <span class="or">4</span>,maxvcpus=<span class="or">8</span> <span class="cy">--cpu</span> host-passthrough <span class="d">\</span>          <span class="bl">◂ this step</span></div>
+      <div class="pre" style="background: var(--hl)">  <span class="cy">--memory</span> <span class="or">8192</span>,maxmemory=<span class="or">16384</span> <span class="d">\</span></div>
+      <div class="pre">  <span class="cy">--boot</span> uefi <span class="d">\</span></div>
+      <div class="pre d">  --disk …  --network …        # steps 4–5</div>
+    </div>
+
+    <div class="pre d" style="margin-top: 12px; display: flex; gap: 20px">
+      <span><span class="k">⇥</span> next field</span><span><span class="k">h/l</span> adjust</span><span><span class="k">H/L</span> ×step</span><span><span class="k">⏎</span> select</span><span><span class="k">ctrl-n/p</span> next/prev step</span><span><span class="k">⎋</span> cancel</span>
+      <span style="flex: 1"></span>
+      <span class="chip" style="background: var(--blue); color: var(--bg2)"><span class="b">ctrl-n</span> Storage ›</span>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 20px; display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--green); color: var(--bg2)">INSERT</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">new domain › cpu &amp; memory › vcpus</span>
+    <span style="flex: 1"></span>
+    <span style="padding: 0 10px; background: var(--hl)" class="f2">draft autosaved</span>
+  </div>
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 20px; line-height: 20px; padding: 0 10px; white-space: pre" class="d">-- INSERT --</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+
+class Component extends DCLogic {
+  renderVals() {
+    const names = ['alpine-edge', 'arch-dev', 'haos', 'k8s-cp-01', 'k8s-worker-01', 'k8s-worker-02', 'openbsd-fw', 'truenas-scale', 'win11-gaming', 'nixos-lab', 'ubuntu-24-ci', 'debian-bookworm', 'fedora-41-test', 'kali-pentest', 'windows-srv-22'];
+    const ghost = [];
+    for (let i = 0; i < 26; i++) { const n = names[i % names.length]; ghost.push(('   ● ' + n).padEnd(26) + 'running    4    6.7/8G    ████████░░░░░░  42%    12d 06h          ⠀⣀⣠⣤⣴⣶⣦⣤⣀⣀⣠⣴⣶⣾⣿⣷⣶⣤⣄⣀'); }
+    const st = [
+      ['done', '1  Name & OS', 'fedora-42-ws · Fedora 42'],
+      ['done', '2  Install media', 'ISO · Fedora-WS-Live-42'],
+      ['now', '3  CPU & Memory', '4 vCPU · 8 GiB'],
+      ['todo', '4  Storage', 'new qcow2 on nvme-fast'],
+      ['todo', '5  Network', 'default · virtio'],
+      ['todo', '6  Review & create', 'start · autostart']
+    ];
+    const steps = st.map(function (s) {
+      const done = s[0] === 'done', now = s[0] === 'now';
+      return {
+        g: done ? '✓' : now ? '●' : '○', n: s[1], sub: s[2],
+        gs: 'color: ' + (done ? 'var(--green)' : now ? 'var(--blue)' : 'var(--comment)'),
+        ns: now ? 'color: var(--fg); font-weight: 700' : done ? 'color: var(--fg2)' : 'color: var(--comment)',
+        box: now ? 'background: var(--sel); border-radius: 4px' : ''
+      };
+    });
+    const W = 36;
+    const c = Math.round(4 / 32 * W), m = Math.round(8 / 32 * W);
+    return {
+      vars: themeVars(this.props.theme ?? 'tokyo-night'), ghost: ghost, steps: steps,
+      cpuOn: '━'.repeat(c), cpuOff: '─'.repeat(W - c), memOn: '━'.repeat(m), memOff: '─'.repeat(W - m)
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keybindings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.gr{color:var(--green)}.rd{color:var(--red)}.mg{color:var(--magenta)}.b{font-weight:700}
+.tab{padding:0 12px;line-height:28px;white-space:pre}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.ghost{color:var(--gutter);white-space:pre;line-height:24px}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; position: relative; {{vars}}">
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre" class="ghost">
+      <span class="pill" style="line-height: 28px">◆ virsh-tui</span><span class="tab">1 Domains   2 Host   3 Networks   4 Storage   5 Events</span>
+    </div>
+  </div>
+
+  <div class="p f" style="position: absolute; left: 60px; top: 56px; width: 1240px; height: 740px; background: var(--bg); padding: 22px 24px 16px; display: flex; flex-direction: column">
+    <span class="pt">? Keybindings</span>
+    <span class="pr">/ search · ⎋ close</span>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; flex: 1; min-height: 0">
+      <sc-for list="{{cols}}" as="col" hint-placeholder-count="4">
+        <div>
+          <sc-for list="{{col}}" as="sec" hint-placeholder-count="2">
+            <div style="margin-bottom: 16px">
+              <div class="pre b" style="color: {{sec.c}}; border-bottom: 1px solid var(--hl); margin-bottom: 4px">{{sec.title}}</div>
+              <sc-for list="{{sec.items}}" as="it" hint-placeholder-count="8">
+                <div style="display: grid; grid-template-columns: 11ch minmax(0, 1fr); column-gap: 8px; white-space: pre; line-height: 21px">
+                  <span class="k">{{it.k}}</span><span style="{{it.s}}">{{it.d}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; gap: 16px; border-top: 1px solid var(--hl); padding-top: 10px; white-space: pre" class="d">
+      <span><span class="rd">●</span> asks for confirmation</span>
+      <span><span class="k">3j</span> counts work everywhere</span>
+      <span><span class="k">.</span> repeats last action</span>
+      <span style="flex: 1"></span>
+      <span>remap in <span class="f2">~/.config/virsh-tui/keymap.toml</span></span>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 20px; display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">help</span>
+  </div>
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 20px; line-height: 20px; padding: 0 10px; white-space: pre" class="d">:help &lt;topic&gt; for details</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+
+function sec(title, c, items) {
+  return { title: title, c: c, items: items.map(function (x) { return { k: x[0], d: x[1], s: x[2] ? 'color: var(--red)' : 'color: var(--fg2)' }; }) };
+}
+class Component extends DCLogic {
+  renderVals() {
+    const cols = [
+      [
+        sec('Navigation', 'var(--blue)', [['j / k', 'down / up'], ['gg / G', 'top / bottom'], ['C-d / C-u', 'half page'], ['h / l', 'focus pane ← →'], ['H / L', 'prev / next tab'], ['1 … 5', 'switch view'], ['⏎', 'open'], ['⌫ / q', 'back'], ['/', 'filter'], ['n / N', 'next / prev match']]),
+        sec('Modes', 'var(--green)', [['i / a', 'edit field (INSERT)'], ['⎋', 'back to NORMAL'], ['V', 'visual select'], ['m', 'mark / unmark'], [':', 'ex command'], ['C-p', 'command palette']])
+      ],
+      [
+        sec('Domain', 'var(--magenta)', [['s', 'start'], ['S', 'shutdown (ACPI)'], ['D', 'destroy (force off)', 1], ['r', 'reboot'], ['R', 'reset', 1], ['p', 'pause / resume'], ['Z', 'suspend to disk'], ['a', 'toggle autostart'], ['c', 'serial console'], ['v', 'graphical viewer'], ['e', 'edit XML ($EDITOR)'], ['X', 'undefine', 1]]),
+        sec('Yank', 'var(--cyan)', [['yy', 'name'], ['yu', 'uuid'], ['yi', 'ip address'], ['yc', 'last virsh command']])
+      ],
+      [
+        sec('Leader  ␣', 'var(--orange)', [['␣n', 'new domain'], ['␣c', 'clone'], ['␣r', 'rename'], ['␣M', 'migrate'], ['␣s c/r/d', 'snapshot new/revert/del'], ['␣mi / ␣me', 'insert / eject ISO'], ['␣da / ␣dr', 'disk attach / resize'], ['␣ia / ␣il', 'NIC attach / link'], ['␣x', 'export XML'], ['␣b', 'boot order']]),
+        sec('Monitor', 'var(--teal)', [['t', '60s · 5m · 1h'], ['+ / -', 'refresh interval'], ['o', 'cycle sort'], ['g c/m/d/n', 'focus graph']])
+      ],
+      [
+        sec('Ex commands', 'var(--yellow)', [[':start', 'arch-dev'], [':setmem', 'arch-dev 8G --live'], [':attach-iso', 'arch-dev ~/iso/…'], [':connect', 'qemu+ssh://h/system'], [':theme', 'tokyo-night'], [':sort', 'cpu | mem | name'], [':w / :q', 'apply / close'], [':!virsh', 'raw passthrough']]),
+        sec('App', 'var(--blue)', [['?', 'this help'], [',', 'settings'], ['C-r', 'force refresh'], ['C-l', 'redraw'], ['ZZ / :qa', 'quit']])
+      ]
+    ];
+    return { vars: themeVars(this.props.theme ?? 'tokyo-night'), cols: cols };
+  }
+}
+</script>
+</body>
+</html>

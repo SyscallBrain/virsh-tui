@@ -1,0 +1,46 @@
+---
+source: tests/p6_snapshots.rs
+expression: "buffer_text(DetailTab::Console)"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ domains › arch-dev ● running  3d 04h    Overview  Monitor  Hardware  Snapshots  Console  XML    H/L switch tab  ⌫ back                                                       
+                                                                                                                                                                              
+ ╭ Console ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ 
+ │ Serial console via `virsh console` (Ctrl-] returns).                                                                                                                     │ 
+ │ Graphical viewer via virt-viewer (detached).                                                                                                                             │ 
+ │                                                                                                                                                                          │ 
+ │  c serial console    v open viewer                                                                                                                                       │ 
+ │                                                                                                                                                                          │ 
+ │ Graphics  spice://127.0.0.1:5901                                                                                                                                         │ 
+ │ Domain    arch-dev                                                                                                                                                       │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ NORMAL  detail › arch-dev › console   H/L tab  e edit  ⏎ open  ⌫ back  ? help

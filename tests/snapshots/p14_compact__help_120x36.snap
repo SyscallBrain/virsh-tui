@@ -1,0 +1,38 @@
+---
+source: tests/p14_compact.rs
+expression: "shot(120, 36, |f|\noverlays::help::render(f, &th, \"\", &virsh_tui::input::keymap::default_map()))"
+---
+                                                                                                                        
+                                                                                                                        
+  ╭ ? Keybindings ─────────────────────────────────────────────────────────────────────────────── / search · ⎋ close ╮  
+  │ Navigation                  Domain                       Leader  ␣                   Ex commands                 │  
+  │ j / k       down / up       s           start            ␣n          new domain      :start      arch-dev        │  
+  │ gg / G      top / bottom    S           shutdown (ACPI)  ␣c          clone           :setmem     arch-dev 8G --l │  
+  │ C-d / C-u   half page       D           destroy (force o ␣r          rename          :attach-iso arch-dev ~/iso/ │  
+  │ h / l       focus pane ← →  r           reboot           ␣M          migrate         :connect    qemu+ssh://h/sy │  
+  │ H / L       prev / next tab R           reset            ␣s c/r/d    snapshot new/re :theme      tokyo-night     │  
+  │ 1 … 5       switch view     p           pause / resume   ␣mi / ␣me   insert / eject  :sort       cpu | mem | nam │  
+  │ ⏎           open            Z           suspend to disk  ␣da / ␣dr   disk attach / r :w / :q     apply / close   │  
+  │ ⌫ / q       back            a           toggle autostart ␣ia / ␣il   NIC attach / li :!virsh     raw passthrough │  
+  │ /           filter          c           serial console   ␣x          export XML                                  │  
+  │ n / N       next / prev mat v           graphical viewer ␣b          boot order      App                         │  
+  │                             e           edit XML ($EDITO                             ?           this help       │  
+  │ Modes                       X           undefine         Monitor                     ,           settings        │  
+  │ i / a       edit field (INS                              t           60s · 5m · 1h   C-r         force refresh   │  
+  │ ⎋           back to NORMAL  Yank                         o           cycle sort      C-l         redraw          │  
+  │ V           visual select   yy          name             f / F       cycle filter ch ZZ / :qa    quit            │  
+  │ m           mark / unmark   yu          uuid                                                                     │  
+  │ :           ex command      yi          ip address                                                               │  
+  │ : ⇥         complete in : l yc          last virsh comma                                                         │  
+  │ C-p         command palette                                                                                      │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │                                                                                                                  │  
+  │ ● asks for confirmation  3j counts work everywhere  . repeats last action                                        │  
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

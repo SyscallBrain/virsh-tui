@@ -1,0 +1,40 @@
+---
+source: tests/p10_snapshots.rs
+expression: "buffer_text(120, 36, &state)"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:36:02  
+ ╭ Pools ─────────────────────────────────────────────────────────────────────────────────────────────── 5 · 4 active ╮ 
+ │ ● default  dir · /var/lib/libvirt/images                                                                           │ 
+ │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 612 / 931 GiB                                                                 │ 
+ │ ●                                                                                                                  │ 
+ │     ╭ ◎ Insert media ────────────────────────────────────────────────────────── arch-dev › sda (cdrom, sata) ╮     │ 
+ │ ●   │ current: archlinux-2026.09.01-x86_64.iso  will be ejected                                              │     │ 
+ │     │                                                                                                        │     │ 
+ │ ●   │ ❯ arch█   pool: isos ▾   3 / 3                                                                         │     │ 
+ │     │                                                                                                        │     │ 
+ │ ○   │ ◎ archlinux-2026.10.01-x86_64.iso  1.2G      5 days ago                                                │     │ 
+ │     │ ◎ archlinux-2026.09.01-x86_64.iso  1.2G      5 weeks ago                                               │     │ 
+ ╰───  │ ◎ Archcraft-Linux-2026.08-desktop.iso  3.4G      2 months ago                                          │  ───╯ 
+ ╭ Vo  │                                                                                                        │  iB ╮ 
+ │     │ [x] live  [x] config  [ ] boot from cdrom next  [ ] browse filesystem…                                 │     │ 
+ │ ▌   │                                                                                                        │     │ 
+ │     │ $ virsh change-media arch-dev sda /var/lib/libvirt/isos/archlinux-2026.10.01-x86_64.iso --update --liv │     │ 
+ │     │                                                                                                        │     │ 
+ │     │  ⏎ insert  C-j/k move  C-e eject only  ⇥ pool  ⎋ cancel                                                │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     │                                                                                                        │     │ 
+ │     ╰────────────────────────────────────────────────────────────────────────────────────────────────────────╯     │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ PICKER  storage › nvme-fast › arch-dev.qcow2                                                         ␣mi from any view 
+-- insert media --

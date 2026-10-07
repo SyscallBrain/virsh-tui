@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings themes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden;transition:background .2s}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
+.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab b{color:var(--orange)}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+.tb{display:flex;align-items:center;gap:12px;width:100%;background:transparent;border:0;border-radius:4px;font:inherit;color:var(--fg2);text-align:left;padding:8px 10px;cursor:pointer;white-space:pre;min-height:44px}
+.tb:hover{background:var(--hl)}
+.sec{color:var(--blue);font-weight:700;margin:12px 0 4px;white-space:pre}
+.row{display:flex;gap:12px;white-space:pre;line-height:26px}
+.lab{width:13ch;color:var(--fg2)}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; {{vars}}">
+
+  <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span class="tab"><b>1</b> Domains</span>
+    <span class="tab"><b>2</b> Host</span>
+    <span class="tab"><b>3</b> Networks</span>
+    <span class="tab"><b>4</b> Storage</span>
+    <span class="tab"><b>5</b> Events</span>
+    <span style="flex: 1"></span>
+    <span class="d">⚙ settings  │  </span><span class="f2">14:40:03  </span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: 230px 400px minmax(0, 1fr); gap: 12px; padding: 18px 12px 10px; min-height: 0">
+
+    <div class="p">
+      <span class="pt">Settings</span>
+      <sc-for list="{{cats}}" as="c" hint-placeholder-count="7">
+        <div class="pre" style="line-height: 32px; padding: 0 8px; {{c.st}}"><span style="{{c.gs}}">{{c.g}} </span>{{c.n}}</div>
+      </sc-for>
+    </div>
+
+    <div class="p f">
+      <span class="pt">Theme</span>
+      <span class="pr">{{count}} built-in</span>
+      <sc-for list="{{themes}}" as="th" hint-placeholder-count="9">
+        <button type="button" class="tb" onClick="{{th.pick}}" style="{{th.st}}">
+          <span class="bl" style="width: 1ch">{{th.cur}}</span>
+          <span style="flex: 1; {{th.ns}}">{{th.name}}</span>
+          <span class="br" style="display: flex">
+            <sc-for list="{{th.sw}}" as="s" hint-placeholder-count="8">
+              <span style="color: {{s}}">██</span>
+            </sc-for>
+          </span>
+        </button>
+      </sc-for>
+      <div class="pre d" style="margin-top: 10px; padding: 0 10px">+ custom: ~/.config/virsh-tui/themes/*.toml</div>
+      <span class="pb">⏎ apply · live preview</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; min-height: 0">
+      <div class="p" style="height: 300px">
+        <span class="pt">Appearance</span>
+        <div class="sec" style="margin-top: 0">Borders</div>
+        <div class="row"><span class="bl">(●)</span><span>╭─╮ rounded</span><span class="d">( )</span><span class="f2">┌─┐ plain</span><span class="d">( )</span><span class="f2">╔═╗ double</span><span class="d">( )</span><span class="f2">┏━┓ thick</span></div>
+        <div class="sec">Icons</div>
+        <div class="row"><span class="bl">(●)</span><span>unicode ● ◆ ◎</span><span class="d">( )</span><span class="f2">nerd font</span><span class="d">( )</span><span class="f2">ascii * # o</span></div>
+        <div class="sec">Graphs</div>
+        <div class="row"><span class="bl">(●)</span><span>braille ⣿</span><span class="d">( )</span><span class="f2">block █</span><span class="d">( )</span><span class="f2">tty</span><span style="width: 16px"></span><span class="gr">[x]</span><span>vertical gradient</span></div>
+        <div class="sec">Background</div>
+        <div class="row"><span class="d">[ ]</span><span class="f2">transparent (inherit terminal)</span><span class="gr">[x]</span><span>dim behind modals</span></div>
+      </div>
+
+      <div class="p" style="flex: 1">
+        <span class="pt">Preview · {{selName}}</span>
+        <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px">
+          <sc-for list="{{pal}}" as="s" hint-placeholder-count="16">
+            <div>
+              <div style="height: 22px; border-radius: 3px; background: {{s.c}}; border: 1px solid var(--gutter)"></div>
+              <div class="pre d" style="font-size: 11px">{{s.n}}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px">
+          <div>
+            <div class="pre" style="background: var(--sel); padding: 0 6px"><span class="bl">▌</span><span class="gr">● </span><span class="b">arch-dev        </span><span class="gr">running</span></div>
+            <div class="pre" style="padding: 0 6px"> <span class="ye">‖ </span>nixos-lab       <span class="ye">paused</span></div>
+            <div class="pre" style="padding: 0 6px"> <span class="rd">✗ </span>ubuntu-24-ci    <span class="rd">crashed</span></div>
+            <div class="pre" style="padding: 0 6px"> <span class="d">○ </span><span class="f2">debian-bookworm </span><span class="d">shut off</span></div>
+            <div class="pre" style="margin-top: 8px"><span class="d">CPU  </span><span class="gr">━━━━━━━━━━━</span><span class="ye">━━━━</span><span style="color: var(--hl)">━━━━━━━</span><span class="f2"> 68%</span></div>
+          </div>
+          <div>
+            <sc-for list="{{prev}}" as="r" hint-placeholder-count="5">
+              <div class="br" style="color: {{r.c}}">{{r.t}}</div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">settings › appearance › theme</span>
+    <span class="d" style="padding: 0 12px"><span class="k">j/k</span> preview theme  <span class="k">⏎</span> apply  <span class="k">h/l</span> pane  <span class="k">⎋</span> revert &amp; close</span>
+  </div>
+  <div style="height: 20px; line-height: 20px; padding: 0 10px; white-space: pre" class="d">saved to ~/.config/virsh-tui/config.toml · theme = "{{selName}}"</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+function rng(seed) { let s = seed >>> 0 || 1; return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+function series(seed, n, base, amp, pull) { const r = rng(seed); let v = base; const out = []; for (let i = 0; i < n; i++) { v += (r() - 0.5) * amp; v += (base - v) * (pull || 0.15); v = Math.max(0.02, Math.min(0.98, v)); out.push(v); } return out; }
+function sample(d, x, W) { const t = x * (d.length - 1) / Math.max(1, W - 1); const i = Math.floor(t); const f = t - i; return d[i] * (1 - f) + d[Math.min(i + 1, d.length - 1)] * f; }
+function braille(d, w, h) {
+  const W = w * 2, H = h * 4, g = [];
+  for (let y = 0; y < H; y++) g.push(new Array(W).fill(0));
+  for (let x = 0; x < W; x++) { const y = Math.round((1 - sample(d, x, W)) * (H - 1)); for (let yy = y; yy < H; yy++) g[yy][x] = 1; }
+  const bits = [[0x1, 0x8], [0x2, 0x10], [0x4, 0x20], [0x40, 0x80]], rows = [];
+  for (let r = 0; r < h; r++) { let s = ''; for (let c = 0; c < w; c++) { let code = 0; for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) if (g[r * 4 + dy][c * 2 + dx]) code |= bits[dy][dx]; s += String.fromCharCode(0x2800 + code); } rows.push(s); }
+  return rows;
+}
+
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: null }; }
+  renderVals() {
+    const self = this;
+    const sel = this.state.sel || this.props.theme || 'tokyo-night';
+    const names = Object.keys(THEMES);
+    const themes = names.map(function (n) {
+      const v = THEMES[n].split(' ');
+      const on = n === sel;
+      return {
+        name: n, cur: on ? '❯' : ' ', sw: [v[8], v[9], v[10], v[11], v[12], v[13], v[14], v[15]],
+        st: on ? 'background: var(--sel)' : '', ns: on ? 'color: var(--fg); font-weight: 700' : '',
+        pick: function () { self.setState({ sel: n }); }
+      };
+    });
+    const v = THEMES[sel].split(' ');
+    const pal = KEYS.map(function (k, i) { return { n: k, c: v[i] }; });
+    const prev = braille(series(61, 60, 0.5, 0.35, 0.12), 36, 5).map(function (t, i) { return { t: t, c: ['var(--red)', 'var(--magenta)', 'var(--blue)', 'var(--cyan)', 'var(--teal)'][i] }; });
+    const cats = [['⚙', 'General'], ['◐', 'Appearance'], ['⌨', 'Keybindings'], ['⌁', 'Connections'], ['∿', 'Monitoring'], ['⚠', 'Confirmations'], ['▭', 'Console & viewer']]
+      .map(function (c, i) { return { g: c[0], n: c[1], gs: 'color: ' + (i === 1 ? 'var(--blue)' : 'var(--comment)'), st: i === 1 ? 'background: var(--hl); font-weight: 700' : 'color: var(--fg2)' }; });
+    return { vars: themeVars(sel), themes: themes, count: names.length, selName: sel, pal: pal, prev: prev, cats: cats };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Snapshots and confirm</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+.tab b{color:var(--orange)}
+.itab{padding:0 10px;color:var(--comment);white-space:pre}
+.itab.on{background:var(--sel);color:var(--fg);font-weight:700}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+.dim{opacity:.4}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; position: relative; {{vars}}">
+
+  <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span class="tab on"><b>1</b> Domains</span>
+    <span class="tab"><b>2</b> Host</span>
+    <span class="tab"><b>3</b> Networks</span>
+    <span class="tab"><b>4</b> Storage</span>
+    <span class="tab"><b>5</b> Events</span>
+    <span style="flex: 1"></span>
+    <span class="d">⌁ </span><span class="f2">qemu:///system</span><span class="d">  │  </span><span class="f2">forge</span><span class="d">  │  ⟳ </span><span class="f2">1s</span><span class="d">  │  </span><span class="f2">14:38:51  </span>
+  </div>
+
+  <div class="dim" style="flex: 1; display: flex; flex-direction: column; min-height: 0">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 0; white-space: pre">
+      <span class="d">domains ›</span><span class="b">arch-dev</span><span class="gr">● running</span><span class="d">3d 04h</span>
+      <span style="width: 24px"></span>
+      <span class="itab">Overview</span><span class="itab">Monitor</span><span class="itab">Hardware</span><span class="itab on">Snapshots</span><span class="itab">Console</span><span class="itab">XML</span>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 720px minmax(0, 1fr); gap: 12px; padding: 20px 12px 10px; min-height: 0">
+      <div class="p f">
+        <span class="pt">Snapshot tree</span>
+        <span class="pr">7 snapshots · internal</span>
+        <sc-for list="{{snaps}}" as="s" hint-placeholder-count="7">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 12ch 9ch 10ch; column-gap: 12px; white-space: pre; line-height: 30px; padding: 0 6px; {{s.rowStyle}}">
+            <span><span class="d">{{s.tree}}</span><span style="{{s.gs}}">{{s.g}} </span><span style="{{s.ns}}">{{s.name}}</span><span class="gr">{{s.cur}}</span></span>
+            <span class="f2">{{s.date}}</span><span style="{{s.ss}}">{{s.state}}</span><span class="d">{{s.kind}}</span>
+          </div>
+        </sc-for>
+        <span class="pb">␣sc new · ␣sr revert · ␣sd delete · e edit</span>
+      </div>
+      <div class="p">
+        <span class="pt">pre-kernel-6.16</span>
+        <div class="pre"><span class="d">created   </span>2026-09-01 14:02:17</div>
+        <div class="pre"><span class="d">state     </span><span class="gr">running</span> <span class="d">(memory included)</span></div>
+        <div class="pre"><span class="d">parent    </span>pre-kde-6</div>
+        <div class="pre"><span class="d">children  </span>1 <span class="d">· pre-kernel-6.17</span></div>
+        <div class="pre"><span class="d">disks     </span>vda <span class="d">internal ·</span> vdb <span class="d">excluded</span></div>
+        <div class="pre"><span class="d">size      </span>~4.2 GiB <span class="d">memory state</span></div>
+        <div class="pre d" style="margin-top: 10px">description</div>
+        <div class="f2">before pacman -Syu with linux 6.16; nvidia-open 570 working.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p" style="position: absolute; left: 340px; top: 220px; width: 680px; height: 400px; background: var(--bg); border-color: var(--red); padding: 22px 24px 16px; display: flex; flex-direction: column">
+    <span class="pt" style="color: var(--red)">⚠ Revert snapshot</span>
+    <span class="pr">snapshot-revert</span>
+    <div class="pre b" style="font-size: 14px">Revert <span class="bl">arch-dev</span> to <span class="mg">pre-kernel-6.16</span>?</div>
+    <div class="f2" style="margin-top: 10px">The current running state is discarded. Work done since the last snapshot <span class="mg">pre-kernel-6.17</span> (today 13:58) is lost.</div>
+    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 16px; white-space: pre">
+      <div><span class="d">after revert   </span><span class="bl">(●)</span> running   <span class="d">( )</span> <span class="f2">paused</span>   <span class="d">( )</span> <span class="f2">as saved</span></div>
+      <div><span class="d">options        </span><span class="d">[ ]</span> <span class="f2">--force</span> <span class="d">(risky; ABI changes)</span></div>
+      <div><span class="d">               </span><span class="gr">[x]</span> snapshot current state first <span class="d">(auto-safety)</span></div>
+    </div>
+    <div style="margin-top: 16px; padding: 8px 12px; background: var(--bg2); border-radius: 5px; white-space: pre"><div><span class="d">$ </span><span class="gr">virsh</span> <span class="bl">snapshot-create-as</span> arch-dev <span class="cy">--name</span> <span class="ye">auto-before-revert-1438</span> <span class="cy">--atomic</span></div><div><span class="d">$ </span><span class="gr">virsh</span> <span class="bl">snapshot-revert</span> arch-dev <span class="ye">pre-kernel-6.16</span> <span class="cy">--running</span></div></div>
+    <div style="display: flex; gap: 12px; margin-top: auto; white-space: pre">
+      <span style="flex: 1"></span>
+      <span class="chip" style="padding: 2px 14px"><span class="k">n</span> cancel</span>
+      <span class="chip" style="padding: 2px 14px; background: var(--red); color: var(--bg2)"><span class="b">y</span> revert</span>
+    </div>
+  </div>
+
+  <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--red); color: var(--bg2)">CONFIRM</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">arch-dev › snapshots › pre-kernel-6.16</span>
+    <span style="flex: 1"></span>
+    <span style="padding: 0 10px; background: var(--hl)" class="d">confirm style: y/n · type-name for undefine</span>
+  </div>
+  <div style="height: 20px; line-height: 20px; padding: 0 10px; white-space: pre" class="d">-- awaiting confirmation --</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+
+class Component extends DCLogic {
+  renderVals() {
+    const sr = [
+      ['', 'base-install', '2026-07-02', 'shutoff', 'disk', 0],
+      ['├─ ', 'post-config', '2026-07-03', 'shutoff', 'disk', 0],
+      ['│  ├─ ', 'pre-kde-6', '2026-08-14', 'running', 'mem+disk', 0],
+      ['│  │  └─ ', 'pre-kernel-6.16', '2026-09-01', 'running', 'mem+disk', 2],
+      ['│  │     └─ ', 'pre-kernel-6.17', '2026-10-06', 'running', 'mem+disk', 1],
+      ['│  └─ ', 'experiment-zfs', '2026-08-20', 'shutoff', 'disk', 0],
+      ['└─ ', 'minimal-clean', '2026-07-05', 'shutoff', 'disk', 0]
+    ];
+    const snaps = sr.map(function (s) {
+      const sel = s[5] === 2, cur = s[5] === 1;
+      return { tree: s[0], g: cur ? '●' : '◆', gs: 'color: ' + (cur ? 'var(--green)' : 'var(--magenta)'), name: s[1], cur: cur ? '  ← current' : '', date: s[2], state: s[3], kind: s[4],
+        ss: 'color: ' + (s[3] === 'running' ? 'var(--green)' : 'var(--comment)'), ns: sel ? 'font-weight: 700' : '', rowStyle: sel ? 'background: var(--sel)' : '' };
+    });
+    return { vars: themeVars(this.props.theme ?? 'tokyo-night'), snaps: snaps };
+  }
+}
+</script>
+</body>
+</html>

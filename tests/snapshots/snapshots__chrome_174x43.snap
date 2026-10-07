@@ -1,0 +1,46 @@
+---
+source: tests/snapshots.rs
+expression: text
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events  ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07                                                            
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+ NORMAL  domains   q quit

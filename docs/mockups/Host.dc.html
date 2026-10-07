@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Host monitor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace;font-size:13px;line-height:20px;color:var(--fg);background:var(--bg);box-sizing:border-box;overflow:hidden}
+.t *{box-sizing:border-box}
+.pre{white-space:pre}
+.p{position:relative;border:1px solid var(--gutter);border-radius:7px;padding:14px 12px 10px}
+.p.f{border-color:var(--blue)}
+.pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
+.p.f>.pt{color:var(--blue)}
+.pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pbl{position:absolute;bottom:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
+.bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
+.br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
+.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+.tab b{color:var(--orange)}
+.pill{padding:0 10px;font-weight:700;white-space:pre}
+.chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
+</style>
+</helmet>
+<div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; {{vars}}">
+
+  <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span class="tab"><b>1</b> Domains</span>
+    <span class="tab on"><b>2</b> Host</span>
+    <span class="tab"><b>3</b> Networks</span>
+    <span class="tab"><b>4</b> Storage</span>
+    <span class="tab"><b>5</b> Events</span>
+    <span style="flex: 1"></span>
+    <span class="d">⌁ </span><span class="f2">qemu:///system</span><span class="d">  │  </span><span class="f2">forge</span><span class="d">  │  ⟳ </span><span class="f2">1s</span><span class="d">  │  </span><span class="f2">14:32:07  </span>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 18px 12px 10px; min-height: 0">
+
+    <div style="display: grid; grid-template-columns: 1.45fr 1fr; gap: 12px; height: 236px">
+      <div class="p">
+        <span class="pt">CPU · AMD Ryzen 9 7950X</span>
+        <span class="pr"><span class="bl b">38%</span> · 5.2 GHz · <span class="ye">61°C</span> · load 9.42 8.71 7.90</span>
+        <sc-for list="{{cpuRows}}" as="r" hint-placeholder-count="6">
+          <div style="display: flex; line-height: 15px"><span class="d br" style="width: 5ch">{{r.lab}}</span><span class="br" style="color: {{r.c}}">{{r.t}}</span></div>
+        </sc-for>
+        <div class="d pre" style="padding-left: 5ch; margin: 2px 0 8px">per-thread ─────────────────────────────────────────────────────────────────────────</div>
+        <div style="display: flex; gap: 1ch; padding-left: 5ch">
+          <sc-for list="{{threads}}" as="th" hint-placeholder-count="32">
+            <div style="display: flex; flex-direction: column; width: 2ch">
+              <sc-for list="{{th.rows}}" as="c" hint-placeholder-count="3">
+                <div class="br" style="color: {{c.c}}">{{c.t}}</div>
+              </sc-for>
+              <div class="br d">{{th.n}}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div class="p">
+        <span class="pt">Memory · 64 GiB</span>
+        <span class="pr"><span class="mg b">41.2</span> used · 22.8 free</span>
+        <div class="d pre">host RSS by domain</div>
+        <div class="pre" style="display: flex; margin: 2px 0 8px">
+          <sc-for list="{{segs}}" as="s" hint-placeholder-count="10">
+            <span style="color: {{s.c}}">{{s.bar}}</span>
+          </sc-for>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px">
+          <sc-for list="{{legend}}" as="s" hint-placeholder-count="10">
+            <div class="pre"><span style="color: {{s.c}}">■ </span><span class="f2">{{s.name}}</span><span class="d">{{s.gib}}</span></div>
+          </sc-for>
+        </div>
+        <div class="pre d" style="margin-top: 6px">hugepages 1G <span class="f2">8/16</span> · KSM <span class="f2">2.1G</span> · swap <span class="f2">0.4/8G</span></div>
+      </div>
+    </div>
+
+    <div class="p f" style="flex: 1; min-height: 0">
+      <span class="pt">Running domains</span>
+      <span class="pr">9 running · 47 vCPU on 32 threads · overcommit 1.47×</span>
+      <div class="d b" style="display: grid; grid-template-columns: 1ch 16ch 5ch 6ch 32ch 10ch 18ch 22ch minmax(0, 1fr); column-gap: 12px; white-space: pre; border-bottom: 1px solid var(--hl); padding-bottom: 2px; margin-bottom: 2px">
+        <span></span><span>NAME</span><span>vCPU</span><span>CPU ▾</span><span>CPU · 60s</span><span>MEM</span><span>MEM · 60s</span><span>DISK  R / W</span><span>NET  ↓ / ↑</span>
+      </div>
+      <sc-for list="{{doms}}" as="r" hint-placeholder-count="9">
+        <div style="display: grid; grid-template-columns: 1ch 16ch 5ch 6ch 32ch 10ch 18ch 22ch minmax(0, 1fr); column-gap: 12px; white-space: pre; line-height: 25px; {{r.rowStyle}}">
+          <span class="bl">{{r.bar}}</span>
+          <span style="{{r.nameStyle}}">{{r.name}}</span>
+          <span class="f2">{{r.vcpu}}</span>
+          <span style="{{r.cpuStyle}}">{{r.pct}}</span>
+          <span class="br" style="line-height: 25px; {{r.cpuStyle}}">{{r.spark}}</span>
+          <span class="f2">{{r.mem}}</span>
+          <span class="br mg" style="line-height: 25px">{{r.mspark}}</span>
+          <span><span class="gr">{{r.rd}}</span><span class="d"> / </span><span class="or">{{r.wr}}</span></span>
+          <span><span class="cy">{{r.rx}}</span><span class="d"> / </span><span class="ye">{{r.tx}}</span></span>
+        </div>
+      </sc-for>
+      <span class="pb">⏎ open · o sort · f filter</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; height: 148px">
+      <div class="p">
+        <span class="pt">System</span>
+        <div class="pre"><span class="d">kernel   </span>6.17.2-arch1-1</div>
+        <div class="pre"><span class="d">libvirt  </span>12.8.0 <span class="d">·</span> QEMU 10.1.0</div>
+        <div class="pre"><span class="d">kvm      </span><span class="gr">✓ amd-v</span> <span class="d">·</span> nested <span class="gr">✓</span> <span class="d">·</span> iommu <span class="gr">✓</span></div>
+        <div class="pre"><span class="d">numa     </span>1 node <span class="d">·</span> 16c/32t <span class="d">·</span> SEV <span class="d">✗</span></div>
+        <div class="pre"><span class="d">uptime   </span>47d 11h 03m</div>
+      </div>
+      <div class="p">
+        <span class="pt">Storage pools</span>
+        <span class="pr">4/4 active</span>
+        <sc-for list="{{pools}}" as="g" hint-placeholder-count="4">
+          <div class="pre"><span style="{{g.dot}}">{{g.glyph}} </span><span class="f2">{{g.label}}</span><span style="{{g.style}}">{{g.on}}</span><span style="color: var(--hl)">{{g.off}}</span><span class="d"> {{g.val}}</span></div>
+        </sc-for>
+      </div>
+      <div class="p">
+        <span class="pt">Networks</span>
+        <span class="pr">3/4 active</span>
+        <div class="pre"><span class="gr">● </span><span class="f2">default      </span><span class="d">nat      </span><span class="cy">{{nspark1}}</span></div>
+        <div class="pre"><span class="gr">● </span><span class="f2">lab-isolated </span><span class="d">isolated </span><span class="cy">{{nspark2}}</span></div>
+        <div class="pre"><span class="gr">● </span><span class="f2">br0          </span><span class="d">bridge   </span><span class="cy">{{nspark3}}</span></div>
+        <div class="pre"><span class="d">○ </span><span class="d">ipv6-routed  route    inactive</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
+    <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
+    <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">host › running</span>
+    <span class="d" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">⏎</span> open domain  <span class="k">o</span> sort  <span class="k">+/-</span> interval  <span class="k">t</span> 60s/5m/1h  <span class="k">␣</span> leader  <span class="k">?</span> help</span>
+    <span style="flex: 1"></span>
+    <span style="padding: 0 10px; background: var(--hl)" class="f2">history 60s</span>
+  </div>
+  <div style="height: 20px; line-height: 20px; padding: 0 10px; white-space: pre" class="d">-- sampling virConnectGetAllDomainStats every 1000 ms --</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["tokyo-night","tokyo-night-storm","tokyo-night-day","catppuccin-mocha","gruvbox-dark","nord","dracula","kanagawa","everforest"],"default":"tokyo-night"},"$preview":{"width":1360,"height":860}}'>
+const KEYS = 'bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal'.split(' ');
+const THEMES = {
+  'tokyo-night': '#1a1b26 #16161e #292e42 #283457 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-storm': '#24283b #1f2335 #292e42 #2e3c64 #3b4261 #565f89 #c0caf5 #a9b1d6 #7aa2f7 #7dcfff #bb9af7 #9ece6a #e0af68 #ff9e64 #f7768e #73daca',
+  'tokyo-night-day': '#e1e2e7 #d0d5e3 #c4c8da #b7c1e3 #a8aecb #6172b0 #3760bf #4c5a8f #2e7de9 #007197 #9854f1 #587539 #8c6c3e #b15c00 #f52a65 #118c74',
+  'catppuccin-mocha': '#1e1e2e #181825 #313244 #45475a #45475a #7f849c #cdd6f4 #bac2de #89b4fa #89dceb #cba6f7 #a6e3a1 #f9e2af #fab387 #f38ba8 #94e2d5',
+  'gruvbox-dark': '#282828 #1d2021 #3c3836 #504945 #504945 #928374 #ebdbb2 #d5c4a1 #83a598 #8ec07c #d3869b #b8bb26 #fabd2f #fe8019 #fb4934 #8ec07c',
+  'nord': '#2e3440 #272c36 #3b4252 #434c5e #4c566a #7b88a1 #eceff4 #d8dee9 #81a1c1 #88c0d0 #b48ead #a3be8c #ebcb8b #d08770 #bf616a #8fbcbb',
+  'dracula': '#282a36 #21222c #343746 #44475a #44475a #6272a4 #f8f8f2 #e2e2dc #bd93f9 #8be9fd #ff79c6 #50fa7b #f1fa8c #ffb86c #ff5555 #8be9fd',
+  'kanagawa': '#1f1f28 #16161d #2a2a37 #2d4f67 #363646 #727169 #dcd7ba #c8c093 #7e9cd8 #7fb4ca #957fb8 #98bb6c #e6c384 #ffa066 #e46876 #7aa89f',
+  'everforest': '#2d353b #232a2e #343f44 #475258 #475258 #859289 #d3c6aa #9da9a0 #7fbbb3 #83c092 #d699b6 #a7c080 #dbbc7f #e69875 #e67e80 #83c092'
+};
+function themeVars(n) { const v = (THEMES[n] || THEMES['tokyo-night']).split(' '); return KEYS.map(function (k, i) { return '--' + k + ':' + v[i]; }).join(';'); }
+function rng(seed) { let s = seed >>> 0 || 1; return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+function series(seed, n, base, amp, pull) { const r = rng(seed); let v = base; const out = []; for (let i = 0; i < n; i++) { v += (r() - 0.5) * amp; v += (base - v) * (pull || 0.15); v = Math.max(0.02, Math.min(0.98, v)); out.push(v); } return out; }
+function sample(d, x, W) { const t = x * (d.length - 1) / Math.max(1, W - 1); const i = Math.floor(t); const f = t - i; return d[i] * (1 - f) + d[Math.min(i + 1, d.length - 1)] * f; }
+function braille(d, w, h, mode) {
+  const W = w * 2, H = h * 4, g = [];
+  for (let y = 0; y < H; y++) g.push(new Array(W).fill(0));
+  let py = null;
+  for (let x = 0; x < W; x++) {
+    const v = sample(d, x, W);
+    if (mode === 'down') { const y = Math.round(v * (H - 1)); for (let yy = 0; yy <= y; yy++) g[yy][x] = 1; }
+    else if (mode === 'fill') { const y = Math.round((1 - v) * (H - 1)); for (let yy = y; yy < H; yy++) g[yy][x] = 1; }
+    else { const y = Math.round((1 - v) * (H - 1)); if (py === null) py = y; for (let yy = Math.min(py, y); yy <= Math.max(py, y); yy++) g[yy][x] = 1; py = y; }
+  }
+  const bits = [[0x1, 0x8], [0x2, 0x10], [0x4, 0x20], [0x40, 0x80]], rows = [];
+  for (let r = 0; r < h; r++) { let s = ''; for (let c = 0; c < w; c++) { let code = 0; for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) if (g[r * 4 + dy][c * 2 + dx]) code |= bits[dy][dx]; s += String.fromCharCode(0x2800 + code); } rows.push(s); }
+  return rows;
+}
+const BL = '▁▂▃▄▅▆▇█';
+function sparkRows(d, w, h) { const rows = []; for (let r = 0; r < h; r++) { let s = ''; for (let x = 0; x < w; x++) { const lv = Math.round(sample(d, x, w) * h * 8) - (h - 1 - r) * 8; s += lv <= 0 ? ' ' : BL[Math.min(7, lv - 1)]; } rows.push(s); } return rows; }
+function spark(d, w) { return sparkRows(d, w, 1)[0]; }
+function lg(v, w) { const n = Math.round(v * w); return { on: '━'.repeat(n), off: '━'.repeat(w - n) }; }
+function lvl(v) { return v < 0.5 ? 'var(--green)' : v < 0.8 ? 'var(--yellow)' : 'var(--red)'; }
+function grad(rows, cols) { return rows.map(function (t, i) { return { t: t, c: cols[Math.min(cols.length - 1, Math.floor(i * cols.length / rows.length))] }; }); }
+
+class Component extends DCLogic {
+  renderVals() {
+    const HOT = ['var(--red)', 'var(--magenta)', 'var(--blue)', 'var(--blue)', 'var(--cyan)', 'var(--teal)'];
+    const cpuRows = grad(braille(series(5, 120, 0.38, 0.2, 0.08), 92, 6, 'fill'), HOT)
+      .map(function (r, i) { r.lab = i === 0 ? '100%' : i === 3 ? ' 50%' : i === 5 ? '  0%' : ''; return r; });
+    const r = rng(99);
+    const threads = [];
+    for (let i = 0; i < 32; i++) {
+      const v = Math.min(0.98, Math.max(0.03, (i % 4 === 0 ? 0.7 : 0.25) + (r() - 0.5) * 0.6));
+      const rows = sparkRows([v, v], 2, 3);
+      threads.push({ n: String(i).padStart(2), rows: rows.map(function (t, j) { return { t: t, c: ['var(--red)', 'var(--blue)', 'var(--cyan)'][j] }; }) });
+    }
+    const PAL = ['var(--orange)', 'var(--blue)', 'var(--magenta)', 'var(--cyan)', 'var(--green)', 'var(--yellow)', 'var(--teal)', 'var(--red)', 'var(--fg2)'];
+    const mem = [['win11-gaming', 16.4], ['arch-dev', 9.8], ['truenas-scale', 6.1], ['k8s-worker-01', 3.2], ['k8s-cp-01', 2.4], ['haos', 1.1], ['k8s-worker-02', 0.9], ['other (5)', 1.3]];
+    const W = 62;
+    const segs = mem.map(function (m, i) { return { c: PAL[i], bar: '█'.repeat(Math.max(1, Math.round(m[1] / 64 * W))) }; });
+    segs.push({ c: 'var(--hl)', bar: '█'.repeat(Math.max(0, W - segs.reduce(function (a, s) { return a + s.bar.length; }, 0))) });
+    const legend = mem.map(function (m, i) { return { c: PAL[i], name: m[0].padEnd(15), gib: (m[1].toFixed(1) + 'G').padStart(6) }; });
+    const domRaw = [
+      ['win11-gaming', 12, 0.87, '16.4G', 0.9, '84.1M', '22.0M', '312M', '18.4M', 3],
+      ['k8s-worker-02', 4, 0.61, '0.9G', 0.3, '41.6M', '12.1M', '22.0M', '4.1M', 7],
+      ['k8s-worker-01', 4, 0.55, '3.2G', 0.8, '6.2M', '9.8M', '18.7M', '6.3M', 11],
+      ['arch-dev', 8, 0.42, '9.8G', 0.78, '12.4M', '3.1M', '6.0M', '0.8M', 13],
+      ['k8s-cp-01', 4, 0.23, '2.4G', 0.64, '1.1M', '4.4M', '9.3M', '9.0M', 17],
+      ['truenas-scale', 4, 0.12, '6.1G', 0.88, '0.4M', '61.2M', '48.0M', '2.2M', 19],
+      ['haos', 2, 0.08, '1.1G', 0.7, '0.1M', '0.3M', '0.2M', '0.1M', 23],
+      ['openbsd-fw', 2, 0.04, '0.4G', 0.4, '0.0M', '0.1M', '54.2M', '53.9M', 29],
+      ['alpine-edge', 1, 0.02, '0.2G', 0.6, '0.0M', '0.0M', '0.1M', '0.0M', 31]
+    ];
+    const doms = domRaw.map(function (d, i) {
+      const sel = i === 0;
+      return {
+        bar: sel ? '▌' : ' ', name: d[0], vcpu: String(d[1]), pct: (Math.round(d[2] * 100) + '%').padStart(4),
+        spark: spark(series(d[9], 60, d[2], 0.25, 0.15), 32), mem: d[3], mspark: spark(series(d[9] + 1, 40, d[4], 0.05, 0.3), 18),
+        rd: d[5].padStart(6), wr: d[6].padStart(6), rx: d[7].padStart(6) + '/s', tx: d[8].padStart(6) + '/s',
+        rowStyle: sel ? 'background: var(--sel)' : '', cpuStyle: 'color: ' + lvl(d[2]),
+        nameStyle: sel ? 'color: var(--fg); font-weight: 700' : 'color: var(--fg)'
+      };
+    });
+    const poolRaw = [['default   ', 0.66, '612/931G', 1], ['nvme-fast ', 0.67, '1.2/1.8T', 1], ['isos      ', 0.31, ' 62/200G', 1], ['nfs-backup', 0.82, '6.6/8.0T', 1]];
+    const pools = poolRaw.map(function (p) { const g = lg(p[1], 14); return { glyph: '●', dot: 'color: var(--green)', label: p[0] + ' ', on: g.on, off: g.off, val: p[2], style: 'color: ' + lvl(p[1]) }; });
+    return {
+      vars: themeVars(this.props.theme ?? 'tokyo-night'),
+      cpuRows: cpuRows, threads: threads, segs: segs, legend: legend, doms: doms, pools: pools,
+      nspark1: spark(series(41, 40, 0.5, 0.4, 0.2), 16), nspark2: spark(series(43, 40, 0.15, 0.2, 0.3), 16), nspark3: spark(series(47, 40, 0.35, 0.5, 0.2), 16)
+    };
+  }
+}
+</script>
+</body>
+</html>

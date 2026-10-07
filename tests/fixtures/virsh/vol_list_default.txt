@@ -1,0 +1,8 @@
+ Name                    Path                                            Type   Capacity     Allocation
+---------------------------------------------------------------------------------------------------------
+ archlinux-vm.qcow2      /var/lib/libvirt/images/archlinux-vm.qcow2      file   20.00 GiB    5.48 GiB
+ fedora-vm.qcow2         /var/lib/libvirt/images/fedora-vm.qcow2         file   20.00 GiB    1.87 GiB
+ initramfs-linux.img     /var/lib/libvirt/images/initramfs-linux.img     file   231.30 MiB   231.30 MiB
+ metasploitable2.qcow2   /var/lib/libvirt/images/metasploitable2.qcow2   file   8.00 GiB     1.76 GiB
+ vmlinuz-linux           /var/lib/libvirt/images/vmlinuz-linux           file   16.12 MiB    16.12 MiB
+

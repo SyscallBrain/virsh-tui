@@ -1,0 +1,46 @@
+---
+source: tests/p14_compact.rs
+expression: "shot(174, 43, |f| events::render(f, &th, &state))"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ ╭ Events ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 4 / 4 events ╮ 
+ │  all   lifecycle   devices   jobs   network   storage   app                                                                                                              │ 
+ │   TIME      TYPE          OBJECT              EVENT        DETAIL                                                                                                        │ 
+ │ ▌ 14:31:55  lifecycle     k8s-worker-02       Started      Booted                                                                                                        │ 
+ │   14:30:12  device-added  arch-dev            Device added vda resize 120G                                                                                               │ 
+ │   14:28:44  lifecycle     win11-gaming        Suspended    Paused by user                                                                                                │ 
+ │   14:25:01  lifecycle     nixos-lab           Suspended    Paused                                                                                                        │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ │                                                                                                                                                                          │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── event · net-event · pool-event ╯ 
+ NORMAL  events   j/k move  f/F filter  / search  ⏎ jump to object

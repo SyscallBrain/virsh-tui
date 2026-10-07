@@ -1,0 +1,39 @@
+---
+source: tests/p6_snapshots.rs
+expression: "buffer_text_sized(DetailTab::Overview, 120, 36)"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ domains › arch-dev ● running  3d 04h    Overview  Monitor  Hardware  Snapshots  Console  XML    H/L switch tab  ⌫ back 
+                                                                                                                        
+ ╭ Overview · arch-dev ───────────────────────────────────────────────────────────────────────────────────────────────╮ 
+ │ OS           pc-q35-10.1                                                                                           │ 
+ │ Firmware     efi                                                                                                   │ 
+ │ vCPU         8                                                                                                     │ 
+ │ Memory       16.0 GiB                                                                                              │ 
+ │ Disks        vda disk · vdb disk · sda cdrom                                                                       │ 
+ │ NICs         vnet3 52:54:00:a3:1f:7c                                                                               │ 
+ │ Graphics     SPICE :5901                                                                                           │ 
+ │ Autostart    ✓ on boot                                                                                             │ 
+ │ Persistent   yes                                                                                                   │ 
+ │ UUID         6f1d2c3b-4a5e-4f60-9b7a-0d1e2f3a4b5c                                                                  │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ NORMAL  detail › arch-dev › overview   H/L tab  e edit  ⏎ open  ⌫ back  ? help

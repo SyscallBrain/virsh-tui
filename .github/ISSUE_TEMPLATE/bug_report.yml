@@ -1,0 +1,47 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did (keys pressed, command typed), what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: virsh-tui version
+      description: Output of `virsh-tui -V`
+    validations:
+      required: true
+  - type: input
+    id: virsh
+    attributes:
+      label: libvirt version
+      description: Output of `virsh --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: uri
+    attributes:
+      label: Connection
+      options:
+        - qemu:///system
+        - qemu:///session
+        - remote (qemu+ssh or other)
+        - demo mode
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Distribution, terminal and size
+      placeholder: Debian 13, kitty, 174x43
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Relevant part of ~/.local/state/virsh-tui/virsh-tui.log (start with RUST_LOG=virsh_tui=debug for more detail). Remove anything private.
+      render: text

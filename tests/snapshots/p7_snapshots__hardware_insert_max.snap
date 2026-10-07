@@ -1,0 +1,47 @@
+---
+source: tests/p7_snapshots.rs
+expression: text
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ domains › arch-dev ● running  3d 04h    Overview  Monitor  Hardware  Snapshots  Console  XML    H/L switch tab  ⌫ back                                                       
+                                                                                                                                                                              
+ ╭ Devices ─────────────────────── 14 ╮ ╭ CPUs ─────────────────────────────────────────────────── ● 2 pending ╮ ╭ Pending · XML diff ────────────────────── <vcpu> · <cpu> ╮ 
+ │ ◈ Overview                         │ │ Allocation                                                           │ │   <domain type="kvm">                                    │ 
+ │ ▣ CPUs          8 / 16             │ │ vCPUs (current)     8   live · hot-plug supported                    │ │   …                                                      │ 
+ │ ▤ Memory        16 GiB             │ │ vCPUs (maximum)  ▕  16  ▏  ⚠ needs reboot                            │ │     <currentMemory unit="KiB">16777216</currentMemory>   │ 
+ │ ⏻ Boot options  uefi               │ │                                                                      │ │ -   <vcpu placement="static">8</vcpu>                    │ 
+ │ ◫ Disk vda      120G               │ │ Topology                                                             │ │ +   <vcpu current="8" placement="static">16</vcpu>       │ 
+ │ ◫ Disk vdb      500G               │ │ sockets     1   cores       8   threads     2   = 16 ✓  auto-adjuste │ │     <os firmware="efi">                                  │ 
+ │ ◎ CDROM sda     iso                │ │                                                                      │ │   …                                                      │ 
+ │ ⇄ NIC vnet3     virtio             │ │ Model                                                                │ │     <cpu check="none" mode="host-passthrough">           │ 
+ │ ▭ Display       spice              │ │ ( ) host-model   (●) host-passthrough   ( ) custom                   │ │ -     <topology cores="4" sockets="1" threads="2"/>      │ 
+ │ ▢ Video         virtio-gpu         │ │                                                                      │ │ +     <topology cores="8" sockets="1" threads="2"/>      │ 
+ │ ♪ Sound         ich9               │ │ Features                                                             │ │       <feature name="svm" policy="require"/>             │ 
+ │ ⌨ Input         tablet             │ │ [x] nested virtualization                                            │ │   …                                                      │ 
+ │ ⛨ TPM           v2.0 crb           │ │                                                                      │ │                                                          │ 
+ │ ⇢ USB redirect  ×2                 │ │ Pinning · vcpupin                                                    │ │                                                          │ 
+ │ + add hardware  a                  │ │ v0 → host           2                                                │ │                                                          │ 
+ │                                    │ │ emulatorpin         —                                                │ │                                                          │ 
+ │                                    │ │ iothreads           2                                                │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │ Apply to                                                             │ │                                                          │ 
+ │                                    │ │ [x] config (persistent, --config)   [x] live (running, --live)       │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ ╰──────────────────────────────────────────────────────────╯ 
+ │                                    │ │                                                                      │ ╭ Will run ──────────────────────────────────────── y copy ╮ 
+ │                                    │ │                                                                      │ │ $ virsh define /tmp/vt-arch-dev.xml                      │ 
+ │                                    │ │                                                                      │ │ $ virsh setvcpus arch-dev 8 --live                       │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │  :w apply   u undo field   :q! discard   gx open XML     │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ │                                    │ │                                                                      │ │                                                          │ 
+ ╰────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────╯ 
+ INSERT arch-dev › hardware › cpus › max   ⎋ normal  ⇥/⇧⇥ next/prev field  ctrl-a/x ±1  ␣ toggle  :w apply  :q close                                             [+] modified 
+-- INSERT --

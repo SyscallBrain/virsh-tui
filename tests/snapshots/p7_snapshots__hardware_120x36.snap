@@ -1,0 +1,39 @@
+---
+source: tests/p7_snapshots.rs
+expression: text
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ domains › arch-dev ● running  3d 04h    Overview  Monitor  Hardware  Snapshots  Console  XML    H/L switch tab  ⌫ back 
+                                                                                                                        
+ ╭ Devices ─────────────────────── 14 ╮ ╭ CPUs ──────────╮ ╭ Pending · XML diff ────────────────────── <vcpu> · <cpu> ╮ 
+ │ ◈ Overview                         │ │ Allocation     │ │   <domain type="kvm">                                    │ 
+ │ ▣ CPUs          8 / 16             │ │ vCPUs (current │ │   …                                                      │ 
+ │ ▤ Memory        16 GiB             │ │ vCPUs (maximum │ │                                                          │ 
+ │ ⏻ Boot options  uefi               │ │                │ │                                                          │ 
+ │ ◫ Disk vda      120G               │ │ Topology       │ │                                                          │ 
+ │ ◫ Disk vdb      500G               │ │ sockets     1  │ │                                                          │ 
+ │ ◎ CDROM sda     iso                │ │                │ │                                                          │ 
+ │ ⇄ NIC vnet3     virtio             │ │ Model          │ │                                                          │ 
+ │ ▭ Display       spice              │ │ ( ) host-model │ │                                                          │ 
+ │ ▢ Video         virtio-gpu         │ │                │ │                                                          │ 
+ │ ♪ Sound         ich9               │ │ Features       │ │                                                          │ 
+ │ ⌨ Input         tablet             │ │ [x] nested vir │ │                                                          │ 
+ │ ⛨ TPM           v2.0 crb           │ │                │ │                                                          │ 
+ │ ⇢ USB redirect  ×2                 │ │ Pinning · vcpu │ │                                                          │ 
+ │ + add hardware  a                  │ │ v0 → host      │ │                                                          │ 
+ │                                    │ │ emulatorpin    │ │                                                          │ 
+ │                                    │ │ iothreads      │ │                                                          │ 
+ │                                    │ │                │ ╰──────────────────────────────────────────────────────────╯ 
+ │                                    │ │ Apply to       │ ╭ Will run ──────────────────────────────────────── y copy ╮ 
+ │                                    │ │ [x] config (pe │ │                                                          │ 
+ │                                    │ │                │ │  :w apply   u undo field   :q! discard   gx open XML     │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ │                                    │ │                │ │                                                          │ 
+ ╰────────────────────────────────────╯ ╰────────────────╯ ╰──────────────────────────────────────────────────────────╯ 
+ NORMAL  detail › arch-dev › hardware   H/L tab  e edit  ⏎ open  ⌫ back  ? help

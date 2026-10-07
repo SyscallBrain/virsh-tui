@@ -1,0 +1,40 @@
+---
+source: tests/p3_snapshots.rs
+expression: "buffer_text(120, 36, &state)"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ ╭ Domains ───────────────────────────────────────────────────────────────────────────────────────────────── 15 total ╮ 
+ │ / filter…                                               all 15   ● running 9   ‖ paused 1   ✗ crashed 1   ○ off 4  │ 
+ │       NAME              STATE ▾   CPU MEMORY     CPU%                  UPTIME    A                                 │ 
+ │ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │ 
+ │     ● alpine-edge       running     1 0.3/0.5G   ▍░░░░░░░░░░░░░░░   2% 9d 02h    ✓                                 │ 
+ │ ▌   ● arch-dev          running     8 12.4/16G   ██████▊░░░░░░░░░  42% 3d 04h    ✓                                 │ 
+ │     ● haos              running     2 2.8/4G     █▎░░░░░░░░░░░░░░   8% 47d 11h   ✓                                 │ 
+ │   ◆ ● k8s-cp-01         running     4 5.1/8G     ███▋░░░░░░░░░░░░  23% 12d 06h   ✓                                 │ 
+ │   ◆ ● k8s-worker-01     running     4 6.7/8G     ████████▊░░░░░░░  55% 12d 06h   ✓                                 │ 
+ │   ◆ ● k8s-worker-02     running     4 1.9/8G     █████████▊░░░░░░  61% 0d 00h    ✓                                 │ 
+ ╰ sort: state › name ─────────────────────────────────────────────────────────────────────────────── 2/15 · 3 marked ╯ 
+ ╭ arch-dev ─────────────────────────────────────────────────────────────────────────────────────────────── ● running ╮ 
+ │ OS       Arch Linux · x86_64          Uptime  3d 04h 17m                                                           │ 
+ │ Machine  pc-q35-10.1 · KVM            IP      192.168.122.48                                                       │ 
+ │ Firmware UEFI · OVMF · SB off         Display SPICE :5901                                                          │ 
+ │ vCPU     8 · host-passthrough         Agent   qemu-ga ✓                                                            │ 
+ │ Disks    vda 120G qcow2 · sda iso     Auto    ✓ on boot                                                            │ 
+ │                                                                                                                    │ 
+ │  S shutdown   r reboot   p pause   c console   v viewer   ␣s snapshot   e edit xml                                 │ 
+ │                                                                                                                    │ 
+ │                                                                                                                    │ 
+ ╰─  Overview  CPU  Mem  Disk  Net ───────────────────────────────────────────────────────────────────────────────────╯ 
+ ╭ Events ────────────────────────────────────────────────────────────────────────────────────── libvirt event stream ╮ 
+ │ 14:31:55  ● k8s-worker-02   started    booted                                                                      │ 
+ │ 14:29:02  ✗ ubuntu-24-ci    crashed    guest-panicked                                                              │ 
+ │ 14:12:40  ‖ nixos-lab       suspended  paused by user                                                              │ 
+ │ 13:58:11  ◆ arch-dev        snapshot   created "pre-kernel-6.17"                                                   │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ ╭ Host · forge ──────────────────────────────────────────────────────────────────────── Ryzen 9 7950X · 32t · 64 GiB ╮ 
+ │ CPU   ━━━━━━━━━━━━━━━━━━━━━━ 38%          Pool  ━━━━━━━━━━━━━━━━━━━━━━ 612/931G                                    │ 
+ │ RAM   ━━━━━━━━━━━━━━━━━━━━━━ 41.2/64G     NVMe  ━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.8T                                    │ 
+ │ Swap  ━━━━━━━━━━━━━━━━━━━━━━ 0.4/8G       Huge  ━━━━━━━━━━━━━━━━━━━━━━ 8/16 1G                                     │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ NORMAL  domains › arch-dev   j/k move  ⏎ open  s start  S shutdown  p pause  m mark  ␣ leader  : cmd  ? help ● 9  ‖ 1  
+✓ Started k8s-worker-02  ── virsh start k8s-worker-02

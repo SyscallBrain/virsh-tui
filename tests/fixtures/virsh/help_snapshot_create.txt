@@ -1,0 +1,25 @@
+  NAME
+    snapshot-create-as - Create a snapshot from a set of args
+
+  SYNOPSIS
+    snapshot-create-as <domain> [--name <string>] [--description <string>] [--print-xml] [--no-metadata] [--halt] [--disk-only] [--reuse-external] [--quiesce] [--atomic] [--live] [--validate] [--memspec <string>] [--diskspec <string>]...
+
+  DESCRIPTION
+    Create a snapshot (disk and RAM) from arguments
+
+  OPTIONS
+    [--domain] <string>  domain name, id or uuid
+    --name <string>  name of snapshot
+    --description <string>  description of snapshot
+    --print-xml      print XML document rather than create
+    --no-metadata    take snapshot but create no metadata
+    --halt           halt domain after snapshot is created
+    --disk-only      capture disk state but not vm state
+    --reuse-external  reuse any existing external files
+    --quiesce        quiesce guest's file systems
+    --atomic         require atomic operation
+    --live           take a live snapshot
+    --validate       validate the XML against the schema
+    --memspec <string>  memory attributes: [file=]name[,snapshot=type]
+    --diskspec <string>...  disk attributes: disk[,snapshot=type][,driver=type][,stype=type][,file=name]
+

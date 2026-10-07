@@ -1,0 +1,6 @@
+total    :   8067340 KiB
+free     :    628472 KiB
+available:   4726880 KiB
+buffers  :    118296 KiB
+cached   :   4127836 KiB
+
