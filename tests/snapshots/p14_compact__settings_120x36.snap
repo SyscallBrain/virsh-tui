@@ -1,0 +1,40 @@
+---
+source: tests/p14_compact.rs
+expression: "shot(120, 36, |f| settings::render(f, &th, &cfg, &state))"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                               ⚙ settings  │  14:40:03  
+ ╭ Settings ─────────────────╮ ╭ Theme ───────────────────────────── 9 built-in ╮ ╭ Appearance ───────────────────────╮ 
+ │ ⚙ General                 │ │ ❯ tokyo-night ████████████████                 │ │ Borders                           │ 
+ │ ◐ Appearance              │ │   tokyo-night-storm ████████████████           │ │ (●) ╭─╮ rounded ( ) ┌─┐ plain ( ) │ 
+ │ ⌨ Keybindings             │ │   tokyo-night-day ████████████████             │ │ Icons                             │ 
+ │ ⌁ Connections             │ │   catppuccin-mocha ████████████████            │ │ (●) unicode ● ◆ ◎ ( ) nerd font ( │ 
+ │ ∿ Monitoring              │ │   gruvbox-dark ████████████████                │ │ Graphs                            │ 
+ │ ⚠ Confirmations           │ │   nord ████████████████                        │ │ (●) braille ⣿ ( ) block █ ( ) tty │ 
+ │ ▭ Console & viewer        │ │   dracula ████████████████                     │ │ Background                        │ 
+ │                           │ │   kanagawa ████████████████                    │ │ [ ] transparent (inherit terminal │ 
+ │                           │ │   everforest ████████████████                  │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │ + custom: ~/.config/virsh-tui/themes/*.toml    │ ╰───────────────────────────────────╯ 
+ │                           │ │                                                │ ╭ Preview ─── Preview · tokyo-night ╮ 
+ │                           │ │                                                │ │ ████████ ████████ ████████ ██████ │ 
+ │                           │ │                                                │ │ bg       bg2      hl       sel    │ 
+ │                           │ │                                                │ │ ████████ ████████ ████████ ██████ │ 
+ │                           │ │                                                │ │ blue     cyan     magenta  green  │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │ ▌● arch-dev        running        │ 
+ │                           │ │                                                │ │ CPU  ━━━━━━━━━━━━━━━━━━━━━━ 68%   │ 
+ │                           │ │                                                │ │ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀    │ 
+ │                           │ │                                                │ │ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀    │ 
+ │                           │ │                                                │ │ ⠀⢀⣀⠀⠀⠀⠀⠀⣠⣄⠀⣴⣀⢀⠀⠀⣠⣠⣿⣿⣿⣷⣷⣷⡀⠀⠀⡀⠀⠀    │ 
+ │                           │ │                                                │ │ ⣦⣿⣿⣧⣄⣦⣤⣼⣿⣿⣿⣿⣿⣿⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣠    │ 
+ │                           │ │                                                │ │ ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿    │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ │                           │ │                                                │ │                                   │ 
+ ╰───────────────────────────╯ ╰────────────────────────────────────────────────╯ ╰───────────────────────────────────╯ 
+ NORMAL  settings › appearance › theme   j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close                         
+saved to ~/.config/virsh-tui/config.toml · theme = "tokyo-night"

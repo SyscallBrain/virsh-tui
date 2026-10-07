@@ -1,0 +1,6 @@
+ Id   Name                State
+------------------------------------
+ -    guest-alpha   shut off
+ -    guest-beta      shut off
+ -    guest-gamma     shut off
+

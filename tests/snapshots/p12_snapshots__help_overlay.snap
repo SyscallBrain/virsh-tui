@@ -1,0 +1,44 @@
+---
+source: tests/p12_snapshots.rs
+expression: "buffer_text(174, 43, |f|\noverlays::help::render(f, &th, \"\", &virsh_tui::input::keymap::default_map()))"
+---
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+         ╭ ? Keybindings ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── / search · ⎋ close ╮         
+         │ Navigation                            Domain                                 Leader  ␣                             Ex commands                           │         
+         │ j / k       down / up                 s           start                      ␣n          new domain                :start      arch-dev                  │         
+         │ gg / G      top / bottom              S           shutdown (ACPI)            ␣c          clone                     :setmem     arch-dev 8G --live        │         
+         │ C-d / C-u   half page                 D           destroy (force off)        ␣r          rename                    :attach-iso arch-dev ~/iso/…          │         
+         │ h / l       focus pane ← →            r           reboot                     ␣M          migrate                   :connect    qemu+ssh://h/system       │         
+         │ H / L       prev / next tab           R           reset                      ␣s c/r/d    snapshot new/revert/del   :theme      tokyo-night               │         
+         │ 1 … 5       switch view               p           pause / resume             ␣mi / ␣me   insert / eject ISO        :sort       cpu | mem | name          │         
+         │ ⏎           open                      Z           suspend to disk            ␣da / ␣dr   disk attach / resize      :w / :q     apply / close             │         
+         │ ⌫ / q       back                      a           toggle autostart           ␣ia / ␣il   NIC attach / link         :!virsh     raw passthrough           │         
+         │ /           filter                    c           serial console             ␣x          export XML                                                      │         
+         │ n / N       next / prev match         v           graphical viewer           ␣b          boot order                App                                   │         
+         │                                       e           edit XML ($EDITOR)                                               ?           this help                 │         
+         │ Modes                                 X           undefine                   Monitor                               ,           settings                  │         
+         │ i / a       edit field (INSERT)                                              t           60s · 5m · 1h             C-r         force refresh             │         
+         │ ⎋           back to NORMAL            Yank                                   o           cycle sort                C-l         redraw                    │         
+         │ V           visual select             yy          name                       f / F       cycle filter chips        ZZ / :qa    quit                      │         
+         │ m           mark / unmark             yu          uuid                                                                                                   │         
+         │ :           ex command                yi          ip address                                                                                             │         
+         │ : ⇥         complete in : line        yc          last virsh command                                                                                     │         
+         │ C-p         command palette                                                                                                                              │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │                                                                                                                                                          │         
+         │ ● asks for confirmation  3j counts work everywhere  . repeats last action                                                                                │         
+         ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

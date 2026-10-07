@@ -1,0 +1,5 @@
+---
+source: tests/p1_gallery.rs
+expression: "format!(\"{on}{off}\")"
+---
+━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,47 @@
+---
+source: tests/p9_snapshots.rs
+expression: "buffer_text(174, 43, &state)"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:35:12  
+ ╭ Virtual networks ──────────────────────────────────────── 3/4 active ╮ ╭ default ────────── ● active · autostart · persistent ╮ ╭ Traffic · virbr0 ───────────────── ↓/↑ ╮ 
+ │   NAME          MODE      BRIDGE      SUBNET             A           │ │ uuid      4a1c6e3b-7d2e-4f0a-9b1c-93d0be1c7f02       │ │ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⠀⠀⠀⣴⡀⠀⠀⠀⠀⠀⠀⠀ │ 
+ │ ▌ ● default       nat       virbr0      192.168.122.0/24   ✓         │ │ forward   nat → enp6s0 · ports 1024-65535            │ │ ⢠⣶⣶⣷⣄⣀⣠⣀⠀⡀⣤⣶⣦⣤⣴⣾⣦⣶⣄⡀⡀⢠⣾⣿⣷⣴⣶⣤⣾⣿⣿⣿⣦⣠⣦⣤⣄⢀ │ 
+ │   ● lab-isolated  isolated  virbr1      10.10.0.0/24       ✓         │ │ bridge    virbr0 · stp on · delay 0 · mtu 1500       │ │ ⣿⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿ │ 
+ │   ● br0           bridge    br0         — (LAN)            ✓         │ │ ipv4      192.168.122.1/24                           │ │ ⠛⠿⡿⠿⠿⠿⠿⠻⠛⠛⠟⠿⠿⢿⣿⣿⣿⣿⡿⠿⠿⠿⠿⠋⠙⠿⠛⠛⠛⠛⠉⠉⠛⠛⠛⠙⠛⠿ │ 
+ │   ○ ipv6-routed   route     virbr2      fd00:42::/64       ·         │ │ dhcp      .2 – .254 · 4 static hosts                 │ │ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ │ 
+ │                                                                      │ │ dns       on · domain lab.local                      │ │ ↓ 62.4 Mb/s  ↑ 9.8 Mb/s                │ 
+ │                                                                      │ │ ipv6      —                                          │ │                                        │ 
+ │                                                                      │ │                                                      │ │                                        │ 
+ ╰──────────────────────────────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────╯ ╰────────────────────────────────────────╯ 
+ ╭ Host interfaces ───────────────────────────────────────── iface-list ╮ ╭ DHCP leases ─────────────────────────────────────────────────────────────── 7 leases · 4 static ╮ 
+ │   IFACE      TYPE     SPEED    ADDRESS                               │ │   MAC                IP               HOSTNAME         EXPIRES             DOMAIN               │ 
+ │ ▲ enp6s0     ethernet 2.5G     192.168.1.20/24                       │ │ ◆ 52:54:00:11:c0:01  192.168.122.10   k8s-cp-01        static              k8s-cp-01            │ 
+ │ ▲ br0        bridge   2.5G     192.168.1.21/24                       │ │ ◆ 52:54:00:11:c0:02  192.168.122.11   k8s-worker-01    static              k8s-worker-01        │ 
+ │ ▲ virbr0     bridge   —        192.168.122.1/24                      │ │ ◆ 52:54:00:11:c0:03  192.168.122.12   k8s-worker-02    static              k8s-worker-02        │ 
+ │ ▲ virbr1     bridge   —        10.10.0.1/24                          │ │ ● 52:54:00:a3:1f:7c  192.168.122.48   arch-dev         2026-10-06 15:31    arch-dev             │ 
+ │ ▽ wlp7s0     wireless —        down                                  │ │ ● 52:54:00:5e:90:2d  192.168.122.77   DESKTOP-W11G     2026-10-06 15:12    win11-gaming         │ 
+ │                                                                      │ │ ● 52:54:00:0b:44:e1  192.168.122.92   alpine-edge      2026-10-06 14:58    alpine-edge          │ 
+ │ ─ attached to default ─                                              │ │ ◆ 52:54:00:7f:20:aa  192.168.122.20   haos             static              haos                 │ 
+ │ vnet0 k8s-cp-01      vnet3 arch-dev                                  │ │                                                                                                 │ 
+ │ vnet1 k8s-worker-01  vnet5 win11-gaming                              │ │ ◆ static (ip-dhcp-host)   ● dynamic                                                             │ 
+ │ vnet2 k8s-worker-02  vnet7 alpine-edge                               │ │  ␣l pin lease as static   ␣L remove static   yi copy ip   ⏎ go to domain                        │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ │                                                                      │ │                                                                                                 │ 
+ ╰──────────────────────────────────────────────────────────────────────╯ ╰───────────────────────────────────────────────────────────────────── net-update · live + config ╯ 
+ NORMAL  networks › default   j/k move  l leases  s start  D destroy  a autostart  e edit xml  n new  X undefine                                                              
+── virsh net-dhcp-leases default

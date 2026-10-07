@@ -1,0 +1,38 @@
+---
+source: tests/p14_compact.rs
+expression: "shot(120, 36, |f| wizard::render(f, &th, &state))"
+---
+                                                                                                                        
+                                                                                                                        
+  ╭ ＋  New domain ─────────────────────────────────────────────────────────────────────────────────────── step 3 / 6 ╮  
+  │ ✓ 1  Name & OS                    CPU & Memory                                                                   │  
+  │   fedora-42-ws · fedora42                                                                                        │  
+  │                                   ❯ vCPUs               ━━━●───────────────────────────    4                     │  
+  │ ✓ 2  Install media                                      of 32 host threads                                       │  
+  │   ISO · Fedora-WS-Live-42.iso       maximum vCPUs          8                                                     │  
+  │                                     CPU model           (●) host-passthrough   ( ) host-model   ( ) qemu64       │  
+  │ ● 3  CPU & Memory                   memory (GiB)        ━━━━━━━━━━●────────────────────    8                     │  
+  │   4 vCPU · 8 GiB                    maximum (GiB)         16                                                     │  
+  │                                     virtio balloon      [x]                                                      │  
+  │ ○ 4  Storage                        hugepages           [ ]                                                      │  
+  │   new 30G qcow2 on nvme-fast                                                                                     │  
+  │                                                                                                                  │  
+  │ ○ 5  Network                                                                                                     │  
+  │   default · virtio                                                                                               │  
+  │                                                                                                                  │  
+  │ ○ 6  Review & create                                                                                             │  
+  │   uefi · start                                                                                                   │  
+  │                                                                                                                  │  
+  │ ✓ ready to create                                                                                                │  
+  │ ╭ Equivalent command ────────────────────────────────────────────────────────────── C-y copy · C-e edit as XML ╮ │  
+  │ │ virt-install \                                                                                               │ │  
+  │ │   --name=fedora-42-ws --osinfo=fedora42  \                                                                   │ │  
+  │ │   --cdrom=/var/lib/libvirt/isos/Fedora-WS-Live-42.iso  \                                                     │ │  
+  │ │   --vcpus=4,maxvcpus=8 --cpu=host-passthrough --memory=8192,maxmemory=16384  \   ◂ this step                 │ │  
+  │ │   --disk=pool=nvme-fast,size=30,format=qcow2,bus=virtio  \                                                   │ │  
+  │ │   --network=network=default,model=virtio  \                                                                  │ │  
+  │ │   --boot=uefi --graphics=spice --noautoconsole                                                               │ │  
+  │ │                                                                                                              │ │  
+  │ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │  
+  │ ⇥/↑↓ field  h/l ←→ ␣ change  ⌫ delete  C-n/C-p step  C-y copy  C-e XML  C-r reset  ⎋ close          ⏎ Storage ›  │  
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

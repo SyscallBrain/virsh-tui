@@ -1,0 +1,41 @@
+---
+source: tests/p12_snapshots.rs
+expression: "buffer_text(174, 43, |f| overlays::palette::render(f, &th, &st))"
+---
+                                                                                                                                                                              
+                                                                                                                                                                              
+                                                                                                                                                                              
+             ╭ Command palette ────────────────────────────────────────────────────────────────────────────────────────────────────────────── context: arch-dev ╮             
+             │  ❯ snap                                                                                                                                  4 / 10  │             
+             │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│             
+             │  ◆ Snapshot: create…                                        ␣sc  │                                                                               │             
+             │  ◆ Snapshot: delete…                                        ␣sd  │  virsh snapshot-create-as  — create a snapshot from a set of args             │             
+             │  ◆ Snapshot: revert…                                        ␣sr  │                                                                               │             
+             │  ◆ Snapshot: tree view                                       gs  │  SYNOPSIS                                                                     │             
+             │                                                                  │  snapshot-create-as <domain> [--name <s>] [--description <s>] [--print-xml]   │             
+             │  recent                                                          │  [--no-metadata]                                                              │             
+             │  ↺ Domain: start  k8s-worker-02                                  │                                                                               │             
+             │  ↺ Media: attach ISO  arch-dev · sda                             │  OPTIONS                                                                      │             
+             │  ↺ Memory: set live  truenas-scale                               │  [x] --name            name of snapshot                                       │             
+             │                                                                  │  [ ] --description     free-text description                                  │             
+             │                                                                  │  [ ] --disk-only       capture disk state but not vm state                    │             
+             │                                                                  │  [ ] --live            take a live snapshot                                   │             
+             │                                                                  │  [ ] --quiesce         quiesce guest fs (needs qemu-ga)                       │             
+             │                                                                  │  [x] --atomic          require atomic operation                               │             
+             │                                                                  │  [ ] --halt            halt domain after snapshot                             │             
+             │                                                                  │  [ ] --no-metadata     create without libvirt metadata                        │             
+             │                                                                  │  [ ] --reuse-external  reuse existing external files                          │             
+             │                                                                  │  [ ] --memspec         [file=]name[,snapshot=type]                            │             
+             │                                                                  │  [ ] --diskspec        disk[,snapshot=type][,file=name]…                      │             
+             │                                                                  │  [ ] --print-xml       print XML instead of creating                          │             
+             │                                                                  │                                                                               │             
+             │                                                                  │  $ virsh snapshot-create-as arch-dev --name pre-upgrade-2026-10-06 --atomic   │             
+             │                                                                  │                                                                               │             
+             │                                                                  │                                                                               │             
+             │                                                                  │                                                                               │             
+             │                                                                  │                                                                               │             
+             │                                                                  │                                                                               │             
+             │                                                                  │                                                                               │             
+             │                                                                  │                                                                               │             
+             │  ⏎ open in :  C-j/k move  C-l options  ⇥ toggle flag  C-y copy cmd  ⎋ close                                                     ❯ actions  : ex  │             
+             ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

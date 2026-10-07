@@ -1,0 +1,47 @@
+---
+source: tests/p8_render.rs
+expression: text
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ domains › arch-dev ● running  3d 04h    Overview  Monitor  Hardware  Snapshots  Console  XML    H/L switch tab  ⌫ back                                                       
+                                                                                                                                                                              
+ ╭ Snapshot tree ─────────────────────────────────────────────────── 7 snapshots · internal ╮ ╭ pre-kernel-6.16 ────────────────────────────────────────────────────────────╮ 
+ │ ◆ base-install                                        2026-07-02   shutoff   disk        │ │ created   2026-09-01 14:02:17                                               │ 
+ │ ├─ ◆ post-config                                      2026-07-03   shutoff   disk        │ │ state     running (memory included)                                         │ 
+ │ │  ├─ ◆ pre-kde-6                                     2026-08-14   running   mem+disk    │ │ parent    pre-kde-6                                                         │ 
+ │ │  │  └─ ◆ pre-kernel-6.16                            2026-09-01   running   mem+disk    │ │ children  1 · pre-kernel-6.17                                               │ 
+ │ │  │     └─ ● pre-kernel-6.17  ← current              2026-10-06   running   mem+disk    │ │ disks     vda internal · vdb excluded                                       │ 
+ │ │  └─ ◆ experiment-zfs                                2026-08-20   shutoff   disk        │ │ size      ~4.2 GiB memory state                                             │ 
+ │ └─ ◆ minimal-clean                                    2026-07-05   shutoff   disk        │ │                                                                             │ 
+ │                                                                                          │ │ description                                                                 │ 
+ │                                         ╭ ⚠ Revert snapshot ────────────────────────────────────────────────── snapshot-revert ╮ nvidia-open 570 working.                │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │  Revert arch-dev to pre-kernel-6.16?                                                 │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │  The current running state is discarded. Work done since the last snapshot           │                                         │ 
+ │                                         │  pre-kernel-6.17 is lost.                                                            │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │  after revert   (●) running   ( ) paused   ( ) as saved                              │                                         │ 
+ │                                         │  options        [ ] --force (risky; ABI changes)                                     │                                         │ 
+ │                                         │                 [x] snapshot current state first (auto-safety)                       │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │  $ virsh snapshot-create-as arch-dev --name auto-before-revert-1438 --atomic         │                                         │ 
+ │                                         │  $ virsh snapshot-revert arch-dev pre-kernel-6.16 --running                          │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │                                                              n cancel    y revert    │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         │                                                                                      │                                         │ 
+ │                                         ╰──────────────────────────────────────────────────────────────────────────────────────╯                                         │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ │                                                                                          │ │                                                                             │ 
+ ╰────────────────────────────────────────────── ␣sc new · ␣sr revert · ␣sd delete · e edit ╯ ╰─────────────────────────────────────────────────────────────────────────────╯ 
+ CONFIRM arch-dev › snapshots › pre-kernel-6.16                                                                                   confirm style: y/n · type-name for undefine 
+-- awaiting confirmation --

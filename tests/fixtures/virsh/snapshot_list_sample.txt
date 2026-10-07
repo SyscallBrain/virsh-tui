@@ -1,0 +1,5 @@
+ Name                 Creation Time               State       Parent            Children   Descendants
+-----------------------------------------------------------------------------------------------------
+ snap-base            2026-09-01 10:00:00 +0000   shutoff     -                 1          2
+ snap-desktop         2026-09-20 12:00:00 +0000   shutoff     snap-base         1          1
+ snap-before-upgrade  2026-10-01 09:00:00 +0000   shutoff     snap-desktop      0          0

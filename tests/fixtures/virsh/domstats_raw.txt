@@ -1,0 +1,42 @@
+Domain: 'guest-gamma'
+  state.state=5
+  state.reason=0
+  balloon.current=524288
+  balloon.maximum=524288
+  vcpu.current=1
+  vcpu.maximum=1
+  block.count=1
+  block.0.name=hda
+  block.0.path=/var/lib/libvirt/images/guest-gamma.qcow2
+  block.0.allocation=1894670336
+  block.0.capacity=8589934592
+  block.0.physical=1928069120
+
+Domain: 'guest-beta'
+  state.state=5
+  state.reason=0
+  balloon.current=1048576
+  balloon.maximum=1048576
+  vcpu.current=2
+  vcpu.maximum=2
+  block.count=1
+  block.0.name=vda
+  block.0.path=/var/lib/libvirt/images/guest-beta.qcow2
+  block.0.allocation=2012778496
+  block.0.capacity=21474836480
+  block.0.physical=2012807168
+
+Domain: 'guest-alpha'
+  state.state=5
+  state.reason=0
+  balloon.current=2097152
+  balloon.maximum=2097152
+  vcpu.current=2
+  vcpu.maximum=2
+  block.count=1
+  block.0.name=vda
+  block.0.path=/var/lib/libvirt/images/guest-alpha.qcow2
+  block.0.allocation=5885460480
+  block.0.capacity=21474836480
+  block.0.physical=5885460480
+

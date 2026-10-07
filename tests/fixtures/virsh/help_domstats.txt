@@ -1,0 +1,35 @@
+  NAME
+    domstats - get statistics about one or multiple domains
+
+  SYNOPSIS
+    domstats [--state] [--cpu-total] [--balloon] [--vcpu] [--interface] [--block] [--perf] [--iothread] [--memory] [--dirtyrate] [--vm] [--list-active] [--list-inactive] [--list-persistent] [--list-transient] [--list-running] [--list-paused] [--list-shutoff] [--list-other] [--raw] [--enforce] [--backing] [--nowait] [<domain>]...
+
+  DESCRIPTION
+    Gets statistics about one or more (or all) domains
+
+  OPTIONS
+    --state          report domain state
+    --cpu-total      report domain physical cpu usage
+    --balloon        report domain balloon statistics
+    --vcpu           report domain virtual cpu information
+    --interface      report domain network interface information
+    --block          report domain block device statistics
+    --perf           report domain perf event statistics
+    --iothread       report domain IOThread information
+    --memory         report domain memory usage
+    --dirtyrate      report domain dirty rate information
+    --vm             report hypervisor-specific statistics
+    --list-active    list only active domains
+    --list-inactive  list only inactive domains
+    --list-persistent  list only persistent domains
+    --list-transient  list only transient domains
+    --list-running   list only running domains
+    --list-paused    list only paused domains
+    --list-shutoff   list only shutoff domains
+    --list-other     list only domains in other states
+    --raw            do not pretty-print the fields
+    --enforce        enforce requested stats parameters
+    --backing        add backing chain information to block stats
+    --nowait         report only stats that are accessible instantly
+    [--domain] <string>...  list of domains to get stats for
+

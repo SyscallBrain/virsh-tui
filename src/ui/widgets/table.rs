@@ -1,0 +1,8 @@
+//! table widget.
+//! Table widget: header + hl separator + rows + selection marker.
+pub const SELECT_MARK: char = '\u{258c}';
+pub const MARK_GLYPH: char = '\u{25c6}';
+/// Build a header separator line.
+pub fn header_separator(width: usize) -> String {
+    "\u{2500}".repeat(width)
+}

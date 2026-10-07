@@ -1,0 +1,37 @@
+---
+source: tests/p14_compact.rs
+expression: "shot(120, 36, |f| overlays::palette::render(f, &th, &st))"
+---
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ╭ Command palette ────────────────────────────────────────────────────────────────────────────── context: arch-dev ╮  
+  │  ❯ snap                                                                                                  4 / 10  │  
+  │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────│  
+  │  ◆ Snapshot: create…                                        ␣sc  │                                               │  
+  │  ◆ Snapshot: delete…                                        ␣sd  │  virsh snapshot-create-as  — create a         │  
+  │  ◆ Snapshot: revert…                                        ␣sr  │  snapshot from a set of args                  │  
+  │  ◆ Snapshot: tree view                                       gs  │                                               │  
+  │                                                                  │  SYNOPSIS                                     │  
+  │  recent                                                          │  snapshot-create-as <domain> [--name <s>]     │  
+  │  ↺ Domain: start  k8s-worker-02                                  │  [--description <s>] [--print-xml]            │  
+  │  ↺ Media: attach ISO  arch-dev · sda                             │  [--no-metadata]                              │  
+  │  ↺ Memory: set live  truenas-scale                               │                                               │  
+  │                                                                  │  OPTIONS                                      │  
+  │                                                                  │  [x] --name            name of snapshot       │  
+  │                                                                  │  [ ] --description     free-text description  │  
+  │                                                                  │  [ ] --disk-only       capture disk state but │  
+  │                                                                  │  not vm state                                 │  
+  │                                                                  │  [ ] --live            take a live snapshot   │  
+  │                                                                  │  [ ] --quiesce         quiesce guest fs       │  
+  │                                                                  │  (needs qemu-ga)                              │  
+  │                                                                  │  [x] --atomic          require atomic         │  
+  │                                                                  │  operation                                    │  
+  │                                                                  │  [ ] --halt            halt domain after      │  
+  │                                                                  │  snapshot                                     │  
+  │                                                                  │  [ ] --no-metadata     create without libvirt │  
+  │                                                                  │  metadata                                     │  
+  │                                                                  │  [ ] --reuse-external  reuse existing         │  
+  │                                                                  │  external files                               │  
+  │  ⏎ open in :  C-j/k move  C-l options  ⇥ toggle flag  C-y copy cmd  ⎋ close                     ❯ actions  : ex  │  
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

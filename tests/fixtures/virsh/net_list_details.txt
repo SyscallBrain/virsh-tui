@@ -1,0 +1,5 @@
+ Name           State    Autostart   Persistent
+-------------------------------------------------
+ default        active   yes         yes
+ msf-isolated   active   yes         yes
+

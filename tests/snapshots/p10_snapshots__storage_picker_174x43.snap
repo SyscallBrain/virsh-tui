@@ -1,0 +1,47 @@
+---
+source: tests/p10_snapshots.rs
+expression: "buffer_text(174, 43, &state)"
+---
+ ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:36:02  
+ ╭ Pools ───────────────────────────────────── 5 · 4 active ╮ ╭ Volumes · nvme-fast ───────────────────────────────────────────────────────────── 9 volumes · 1.2 / 1.8 TiB ╮ 
+ │ ● default  dir · /var/lib/libvirt/images                 │ │   NAME                     FORMAT  CAPACITY  ALLOC     USAGE         USED BY                                │ 
+ │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 612 / 931 GiB       │ │ ▌ arch-dev.qcow2           qcow2   120G      48.2G     ━━━━━━━━━━━ arch-dev                                 │ 
+ │ ● nvme-fast  logical · vg_nvme                           │ │   arch-dev-data.qcow2      qcow2   500G      311G      ━━━━━━━━━━━ arch-dev                                 │ 
+ │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2 / 1.8 TiB       │ │   win11-gaming.qcow2       qcow2   256G      201G      ━━━━━━━━━━━ win11-gaming                             │ 
+ │ ● isos  dir · /var/lib/libvirt/isos                      │ │   k8s-cp-01.qcow2          qcow2   40G       18.1G     ━━━━━━━━━━━ k8s-cp-01                                │ 
+ │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62 / 200 GiB        │ │   k8s-worker-01.qcow2      qcow2   80G       52.7G     ━━━━━━━━━━━ k8s-worker-01                            │ 
+ │ ● nfs-backup  netfs · nas:/ex                                                                                                              02                            │ 
+ │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━  ╭ ◎ Insert media ────────────────────────────────────────────────────────── arch-dev › sda (cdrom, sata) ╮  f 3                           │ 
+ │ ○ zfs-tank  zfs · tank/vms     │ current: archlinux-2026.09.01-x86_64.iso  will be ejected                                              │  le                            │ 
+ │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━  │                                                                                                        │                                │ 
+ │                                │ ❯ arch█   pool: isos ▾   3 / 3                                                                         │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │ ◎ archlinux-2026.10.01-x86_64.iso  1.2G      5 days ago                                                │                                │ 
+ │                                │ ◎ archlinux-2026.09.01-x86_64.iso  1.2G      5 weeks ago                                               │                                │ 
+ │                                │ ◎ Archcraft-Linux-2026.08-desktop.iso  3.4G      2 months ago                                          │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │ [x] live  [x] config  [ ] boot from cdrom next  [ ] browse filesystem…                                 │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │ $ virsh change-media arch-dev sda /var/lib/libvirt/isos/archlinux-2026.10.01-x86_64.iso --update --liv │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │  ⏎ insert  C-j/k move  C-e eject only  ⇥ pool  ⎋ cancel                                                │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                │                                                                                                        │                                │ 
+ │                                ╰────────────────────────────────────────────────────────────────────────────────────────────────────────╯                                │ 
+ │                                                                                                                                                                          │ 
+ │                                                          │ │                                                                                                             │ 
+ │                                                          │ │                                                                                                             │ 
+ │                                                          │ │                                                                                                             │ 
+ │                                                          │ │                                                                                                             │ 
+ │                                                          │ │                                                                                                             │ 
+ ╰──────────────────────────────────────────────────────────╯ ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ PICKER  storage › nvme-fast › arch-dev.qcow2                                                                                                               ␣mi from any view 
+-- insert media --
