@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    # An older Ubuntu keeps the glibc requirement low, so the binary runs on
+    # most distributions.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package
+        run: |
+          name="virsh-tui-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu"
+          mkdir "$name"
+          cp target/release/virsh-tui README.md LICENSE CHANGELOG.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found && /^\[[^]]+\]: / { next }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "virsh-tui $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            virsh-tui-*.tar.gz virsh-tui-*.tar.gz.sha256
