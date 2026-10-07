@@ -21,7 +21,7 @@ expression: "buffer_text(120, 36, &state)"
  │ vCPU     8 · host-passthrough         Agent   qemu-ga ✓                                                            │ 
  │ Disks    vda 120G qcow2 · sda iso     Auto    ✓ on boot                                                            │ 
  │                                                                                                                    │ 
- │  S shutdown   r reboot   p pause   c console   v viewer   ␣s snapshot   e edit xml                                 │ 
+ │ S shutdown   r reboot     p pause      c console    v viewer     ␣s snapshot  e edit xml                           │ 
  │                                                                                                                    │ 
  │                                                                                                                    │ 
  ╰─  Overview  CPU  Mem  Disk  Net ───────────────────────────────────────────────────────────────────────────────────╯ 

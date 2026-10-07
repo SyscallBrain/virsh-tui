@@ -119,6 +119,11 @@ def ansi_to_html(text: str) -> tuple[str, str]:
 
 def glyph(ch: str) -> str:
     # Box-drawing glyphs are stretched to the full row so borders join up.
+    # Half blocks are drawn with CSS: font glyphs leave seams between cells.
+    if ch == "▄":
+        return '<i class="lo"> </i>'
+    if ch == "▀":
+        return '<i class="hi"> </i>'
     cls = ' class="b"' if 0x2500 <= ord(ch) <= 0x257F else ""
     return f"<i{cls}>{html.escape(ch)}</i>"
 
@@ -146,6 +151,8 @@ def page(body: str, bg: str) -> str:
   .r i {{ display: inline-block; width: 1ch; font-style: normal; text-align: center;
           overflow: visible; }}
   .r i.b {{ transform: scaleY(1.3); }}
+  .r i.lo {{ background: linear-gradient(transparent 50%, currentColor 50%); height: {ROW}px; vertical-align: top; }}
+  .r i.hi {{ background: linear-gradient(currentColor 50%, transparent 50%); height: {ROW}px; vertical-align: top; }}
 </style>
 <div class="term">{body}</div>"""
 

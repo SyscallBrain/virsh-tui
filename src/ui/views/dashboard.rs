@@ -951,11 +951,22 @@ fn render_host(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: R
 }
 
 fn render_right(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {
+    // Overview: borders, five info rows, a blank line, then the action rows.
+    // The CPU graph gives up to two rows when the terminal is short, so the
+    // chips keep their spacing.
+    let chip_rows = action_chips(
+        theme,
+        state.selected().state,
+        area.width.saturating_sub(4) as usize,
+    )
+    .len();
+    let overview_h = (2 + 5 + 1 + chip_rows) as u16;
+    let cpu_h = area.height.saturating_sub(overview_h + 8 + 9).clamp(9, 11);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(9),
-            Constraint::Length(11),
+            Constraint::Length(overview_h),
+            Constraint::Length(cpu_h),
             Constraint::Length(8),
             Constraint::Min(9),
         ])
@@ -1008,28 +1019,27 @@ fn action_chips(theme: &Theme, state: DomainState, width: usize) -> Vec<Line<'st
             ("X", "undefine"),
         ],
     };
+    // Key hints in an aligned grid (same column width on every row, two
+    // blank columns between them): the key in orange, the action as text.
+    // No chip background: one-cell-tall boxes were either glued together or
+    // a whole blank row apart.
+    let chip_w = chips
+        .iter()
+        .map(|(k, label)| k.chars().count() + 1 + label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let per_row = ((width + 2) / (chip_w + 2)).max(1);
     let mut lines = Vec::new();
-    let mut cur: Vec<Span<'static>> = Vec::new();
-    let mut w = 0;
-    for (k, label) in chips {
-        let cw = k.chars().count() + label.chars().count() + 3;
-        if w > 0 && w + 1 + cw > width {
-            lines.push(Line::from(std::mem::take(&mut cur)));
-            w = 0;
+    for row in chips.chunks(per_row) {
+        let mut cur: Vec<Span<'static>> = Vec::new();
+        for (i, (k, label)) in row.iter().enumerate() {
+            if i > 0 {
+                cur.push(Span::raw("  "));
+            }
+            let pad = chip_w - (k.chars().count() + 1 + label.chars().count());
+            cur.push(Span::styled(k.to_string(), theme.key()));
+            cur.push(Span::styled(format!(" {label}{}", " ".repeat(pad)), theme.text()));
         }
-        if w > 0 {
-            cur.push(Span::raw(" "));
-            w += 1;
-        }
-        cur.push(Span::styled(" ", chip_style(theme, false)));
-        cur.push(Span::styled(
-            k.to_string(),
-            chip_style(theme, false).patch(theme.key()),
-        ));
-        cur.push(Span::styled(format!(" {label} "), chip_style(theme, false)));
-        w += cw;
-    }
-    if !cur.is_empty() {
         lines.push(Line::from(cur));
     }
     lines
@@ -1160,8 +1170,8 @@ fn render_overview(frame: &mut Frame, theme: &Theme, state: &DashboardState, are
         ]));
     }
     let chips = action_chips(theme, sel.state, area.width.saturating_sub(4) as usize);
-    let free = (area.height as usize).saturating_sub(2 + lines.len());
-    if free > chips.len() {
+    // A blank line separates the info rows from the actions when it fits.
+    if (area.height as usize).saturating_sub(2 + lines.len()) > chips.len() {
         lines.push(Line::from(""));
     }
     lines.extend(chips);
@@ -1239,19 +1249,29 @@ fn render_cpu(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Re
             format!("42% · 8 vCPU · {}", crate::metrics::store::window_label()),
         ),
     };
-    let rows = charts::area(theme.graphs, &data, width, 8, BrailleMode::Fill);
+    // The graph takes what the panel leaves after its borders and the time
+    // axis (8 rows at the reference size, fewer on short terminals).
+    let graph_h = (area.height.saturating_sub(3) as usize).clamp(3, 8);
+    let rows = charts::area(theme.graphs, &data, width, graph_h, BrailleMode::Fill);
     let t = &theme.tokens;
     let colors = theme.chart_rows(&[
         t.red, t.magenta, t.magenta, t.blue, t.blue, t.cyan, t.cyan, t.teal,
     ]);
-    let labels = ["100%", "", "", "", " 50%", "", "", "  0%"];
+    let label = |i: usize| match i {
+        0 => "100%",
+        i if i == graph_h - 1 => "  0%",
+        i if i == graph_h / 2 => " 50%",
+        _ => "",
+    };
     let mut lines: Vec<Line> = rows
         .iter()
         .enumerate()
         .map(|(i, r)| {
+            // Keep the colour gradient top to bottom whatever the height.
+            let color = colors[(i * 8 / graph_h).min(7)];
             Line::from(vec![
-                Span::styled(format!("{:<5}", labels[i]), theme.dim()),
-                Span::styled(r.clone(), Style::default().fg(colors[i]).bg(t.bg)),
+                Span::styled(format!("{:<5}", label(i)), theme.dim()),
+                Span::styled(r.clone(), Style::default().fg(color).bg(t.bg)),
             ])
         })
         .collect();

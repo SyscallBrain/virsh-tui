@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format follows
 - The dashboard shows the metrics next to the domain list from 153 columns
   (it needed 162). The list gives up its spare columns first, so common
   159-column terminals get the same layout as the screenshots.
+- The actions in the domain overview are plain key hints (orange key,
+  action text) in an aligned grid instead of boxed chips; the CPU graph
+  adapts its height to the space left.
 
 ## [0.1.0] - 2026-10-07
 
