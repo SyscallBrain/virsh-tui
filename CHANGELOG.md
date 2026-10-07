@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The dashboard shows the metrics next to the domain list from 153 columns
+  (it needed 162). The list gives up its spare columns first, so common
+  159-column terminals get the same layout as the screenshots.
+
 ## [0.1.0] - 2026-10-07
 
 First public release.
