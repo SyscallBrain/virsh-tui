@@ -205,7 +205,7 @@ pub async fn run(cli: &Cli, config: &Config) -> Result<()> {
     let prev_view = view;
     let mut entered: std::collections::HashSet<View> = std::collections::HashSet::new();
     entered.insert(view);
-    let (loads_tx, mut loads_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (loads_tx, loads_rx) = tokio::sync::mpsc::unbounded_channel();
     if !cli.demo {
         for v in [View::Host, View::Networks, View::Storage] {
             spawn_load(&cli.connect, v, &loads_tx);
@@ -243,6 +243,7 @@ pub async fn run(cli: &Cli, config: &Config) -> Result<()> {
         prev_view,
         entered,
         loads_tx,
+        loads_rx,
         config,
         completion: None,
         virsh_index: None,
@@ -262,7 +263,7 @@ pub async fn run(cli: &Cli, config: &Config) -> Result<()> {
                     None => std::future::pending().await,
                 }
             } => app.on_live(msg),
-            Some(loaded) = loads_rx.recv() => app.on_loaded(loaded),
+            Some(loaded) = app.loads_rx.recv() => app.on_loaded(loaded),
             _ = ticker.tick() => app.on_tick().await,
             _ = tokio::time::sleep(Duration::from_millis(100)), if app.engine.has_pending_digits() => {
                 app.on_digit_timeout();
@@ -321,6 +322,7 @@ struct App {
     entered: std::collections::HashSet<View>,
     /// Background Host/Networks/Storage loads report here.
     loads_tx: tokio::sync::mpsc::UnboundedSender<Loaded>,
+    loads_rx: tokio::sync::mpsc::UnboundedReceiver<Loaded>,
     config: Config,
     /// Tab completion in progress on the `:` line.
     completion: Option<ExCompletion>,
@@ -583,9 +585,7 @@ impl App {
             self.poller = Some(poller::spawn(
                 &self.uri,
                 self.config.general.refresh_interval_secs.max(1),
-                self.config
-                    .monitoring
-                    .balloon_on
+                (!self.dry_run && self.config.monitoring.balloon_on)
                     .then_some(self.config.monitoring.balloon_period_secs.max(1)),
             ));
             self.poller_uri.clone_from(&self.uri);
@@ -835,6 +835,16 @@ impl App {
                 KeyCode::Enter => {
                     let line = ex.value().to_string();
                     self.ex_line = None;
+                    if matches!(
+                        crate::input::ex::parse(&line),
+                        Ok(crate::input::ex::ExCommand::Connect(_))
+                    ) && self.detail.as_ref().is_some_and(|d| d.hw.pending_count() > 0)
+                    {
+                        self.show_message(String::from("unsaved changes (:w apply, :q! discard)"));
+                        return false;
+                    }
+                    let old_uri = self.uri.clone();
+                    let dash_message_before = self.dash.message.clone();
                     let quit = if self.view == View::Detail {
                         run_detail_ex(
                             &line,
@@ -870,9 +880,39 @@ impl App {
                     if quit {
                         return true;
                     }
+                    if self.uri != old_uri {
+                        self.detail = None;
+                        self.view = View::Dashboard;
+                        self.dash = ui::views::dashboard::DashboardState::from_summaries(&[]);
+                        self.dash.uri = self.uri.clone();
+                        self.dash.connected = false;
+                        self.host = Default::default();
+                        self.nets = Default::default();
+                        self.store = Default::default();
+                        self.events_state = ui::views::events::EventsState::demo();
+                        self.events_state.events.clear();
+                        self.events_state.uri = self.uri.clone();
+                        self.events_rx = if self.demo {
+                            None
+                        } else {
+                            Some(crate::backend::virsh::events::subscribe(&self.uri))
+                        };
+                        self.poller = None;
+                        self.poller_uri.clear();
+                        self.sent_selection = None;
+                        self.entered.clear();
+                        (self.loads_tx, self.loads_rx) = tokio::sync::mpsc::unbounded_channel();
+                        self.virsh_index = None;
+                        self.virsh_flags.clear();
+                        self.confirm = None;
+                        self.show_message(format!("Connecting to {}…", self.uri));
+                        return false;
+                    }
                     // Results land in dash.message: show them in the current view too.
-                    let msg = self.dash.message.clone();
-                    self.show_message(msg);
+                    if self.view != View::Detail || self.dash.message != dash_message_before {
+                        let msg = self.dash.message.clone();
+                        self.show_message(msg);
+                    }
                 }
                 KeyCode::Backspace => ex.backspace(),
                 KeyCode::Left => ex.move_left(),
@@ -1136,7 +1176,18 @@ impl App {
             {
                 continue;
             }
-            if self.view == View::Networks {
+            if self.view == View::Networks
+                && !matches!(
+                    resolved.action,
+                    A::Ex
+                        | A::Palette
+                        | A::Help
+                        | A::Settings
+                        | A::NewDomain
+                        | A::InsertMedia
+                        | A::EjectMedia
+                )
+            {
                 if dispatch_networks(
                     resolved.action,
                     &mut self.nets,
@@ -1174,9 +1225,18 @@ impl App {
             match (self.view, resolved.action) {
                 (_, A::InsertMedia) => {
                     open_picker(&mut self.store, &self.detail, &self.dash, &self.uri, self.demo).await;
+                    if self.store.picker.is_some() {
+                        self.view = View::Storage;
+                    }
                     continue;
                 }
                 (_, A::NewDomain) => {
+                    if !self.demo && !is_local_uri(&self.uri) {
+                        self.show_message(String::from(
+                            "✗ wizard unavailable: remote host capacity is unknown",
+                        ));
+                        continue;
+                    }
                     let facts = wizard_host_facts(&self.dash, &self.nets, &self.store, self.demo);
                     open_wizard(&mut self.wizard, facts);
                     continue;
@@ -1247,6 +1307,9 @@ impl App {
                     continue;
                 }
                 (_, A::EjectMedia) => {
+                    if self.store.picker.is_none() {
+                        open_picker(&mut self.store, &self.detail, &self.dash, &self.uri, self.demo).await;
+                    }
                     eject_media(
                         &self.uri,
                         &mut self.store,
@@ -1256,6 +1319,10 @@ impl App {
                         &mut self.messages,
                     )
                     .await;
+                    continue;
+                }
+                (View::Storage, A::Ex) => {
+                    self.ex_line = Some(crate::input::textinput::TextInput::new());
                     continue;
                 }
                 (View::Storage, _) => {
@@ -1303,6 +1370,10 @@ impl App {
                     .await;
                     if let Some(d) = self.detail.as_mut() {
                         d.tab = crate::ui::views::detail::DetailTab::Snapshots;
+                        if resolved.action == A::SnapshotNew && !self.demo {
+                            d.snaps.create_name =
+                                format!("snap-{}", jiff::Zoned::now().strftime("%Y%m%d-%H%M%S"));
+                        }
                         d.snap_modal = match resolved.action {
                             A::SnapshotNew => crate::ui::views::detail::SnapModal::Create,
                             A::SnapshotRevert => crate::ui::views::detail::SnapModal::Revert,
@@ -1463,5 +1534,169 @@ mod tests {
         };
         assert!(!handle_key(z, &mut pending, false));
         assert!(handle_key(z, &mut pending, false));
+    }
+}
+
+#[cfg(test)]
+mod review_fixes {
+    use super::*;
+    fn app(view: View) -> App {
+        let (loads_tx, loads_rx) = tokio::sync::mpsc::unbounded_channel();
+        App {
+            theme: crate::theme::builtin::tokyo_night(),
+            dash: ui::views::dashboard::DashboardState::demo(),
+            host: ui::views::host::HostState::demo(),
+            nets: ui::views::networks::NetworksState::demo(),
+            store: ui::views::storage::StorageState::demo(),
+            events_state: ui::views::events::EventsState::demo(),
+            wizard: None,
+            settings: None,
+            palette: None,
+            help_filter: None,
+            events_rx: None,
+            view,
+            pending_quit_z: false,
+            engine: crate::input::engine::KeyEngine::new(),
+            history: crate::command::history::History::new(200),
+            uri: "qemu:///review-old".into(),
+            dry_run: true,
+            demo: true,
+            confirm: None,
+            ex_line: None,
+            messages: Vec::new(),
+            last_key: std::time::Instant::now(),
+            which_key_since: None,
+            detail: None,
+            poller: None,
+            poller_uri: String::new(),
+            sent_selection: None,
+            prev_view: view,
+            entered: Default::default(),
+            loads_tx,
+            loads_rx,
+            config: Config::default(),
+            completion: None,
+            virsh_index: None,
+            virsh_flags: Default::default(),
+        }
+    }
+    fn key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    #[tokio::test]
+    async fn network_view_handles_global_shortcuts() {
+        let mut a = app(View::Networks);
+        a.on_key(key(':')).await;
+        assert!(a.ex_line.is_some());
+        a.ex_line = None;
+        a.on_key(key('?')).await;
+        assert!(a.help_filter.is_some());
+        a.help_filter = None;
+        a.on_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL))
+            .await;
+        assert!(a.palette.is_some());
+    }
+    #[tokio::test]
+    async fn insert_media_opens_visible_picker() {
+        let mut a = app(View::Dashboard);
+        for c in [' ', 'm', 'i'] {
+            a.on_key(key(c)).await;
+        }
+        assert!(a.store.picker.is_some());
+        assert_eq!(a.view, View::Storage);
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(174, 43)).unwrap();
+        terminal.draw(|f| a.draw(f)).unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(text.contains("Insert media"));
+    }
+    #[tokio::test]
+    async fn eject_media_targets_selected_domain() {
+        crate::command::exec::set_demo(false);
+        let mut a = app(View::Dashboard);
+        a.dash.select_name("win11-gaming");
+        for c in [' ', 'm', 'e'] {
+            a.on_key(key(c)).await;
+        }
+        let cmd = a.history.last().unwrap();
+        assert!(!cmd.contains("arch-dev"), "{cmd}");
+        assert!(cmd.contains("win11-gaming"));
+    }
+    #[test]
+    fn nic_detach_uses_selected_mac() {
+        let xml = "<domain><name>vt-test-review</name><memory>1048576</memory><vcpu>1</vcpu><devices><interface type='network'><mac address='52:54:00:aa:bb:cc'/><source network='default'/><model type='virtio'/><target dev='vnet77'/></interface></devices></domain>";
+        let cfg = crate::backend::virsh::parse_xml::parse_domain_xml(xml).unwrap();
+        let mut d = ui::views::detail::DetailState::demo("vt-test-review");
+        d.hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, xml, true);
+        d.hw.selected =
+            d.hw.devices
+                .iter()
+                .position(|d| d.id.starts_with("nic-"))
+                .unwrap();
+        let mut confirm = None;
+        stage_detach(&mut d, &mut confirm);
+        let (c, _, _) = confirm.unwrap();
+        assert!(!c.commands[0].contains("52:54:00:a3:1f:7c"));
+        assert!(c.commands[0].contains("52:54:00:aa:bb:cc"));
+    }
+
+    #[tokio::test]
+    async fn detail_write_error_remains_visible() {
+        let mut a = app(View::Detail);
+        let mut d = ui::views::detail::DetailState::demo("vt-test-review");
+        d.hw.set_field("boot", "firmware", "bogus");
+        a.detail = Some(d);
+        a.dash.message = "previous dashboard message".into();
+        a.ex_line = Some(crate::input::textinput::TextInput::with("w"));
+        a.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+        assert!(a.messages.last().unwrap().contains("cannot apply"));
+        assert!(a.detail.as_ref().unwrap().message.contains("cannot apply"));
+    }
+    #[tokio::test]
+    async fn storage_handles_colon_and_iso_enter() {
+        let mut a = app(View::Storage);
+        a.on_key(key(':')).await;
+        assert!(a.ex_line.is_some());
+        a.ex_line = None;
+        assert!(!a.store.isos.is_empty());
+        a.store.volumes[0].name = "vt-test-review.iso".into();
+        a.store.vol_selected = 0;
+        a.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+        assert!(a.store.picker.is_some());
+    }
+    #[tokio::test]
+    async fn snapshot_create_name_is_editable() {
+        let mut a = app(View::Detail);
+        let mut d = ui::views::detail::DetailState::demo("vt-test-review");
+        d.tab = ui::views::detail::DetailTab::Snapshots;
+        d.snap_modal = ui::views::detail::SnapModal::Create;
+        let name = d.snaps.create_name.clone();
+        a.detail = Some(d);
+        a.on_key(key('a')).await;
+        assert_eq!(a.detail.as_ref().unwrap().snaps.create_name, format!("{name}a"));
+        a.on_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE))
+            .await;
+        assert_eq!(a.detail.as_ref().unwrap().snaps.create_name, name);
+    }
+
+    #[tokio::test]
+    async fn connect_clears_old_detail() {
+        let mut a = app(View::Detail);
+        let mut d = ui::views::detail::DetailState::demo("vt-test-old-host-vm");
+        d.uri = a.uri.clone();
+        a.detail = Some(d);
+        a.ex_line = Some(crate::input::textinput::TextInput::with(
+            "connect qemu:///review-new",
+        ));
+        a.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+        assert_eq!(a.uri, "qemu:///review-new");
+        assert!(a.detail.is_none());
+        assert_eq!(a.view, View::Dashboard);
     }
 }

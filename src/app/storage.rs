@@ -99,15 +99,7 @@ pub(super) async fn handle_storage_key(
             );
             true
         }
-        "Enter" => {
-            // ⏎ on an ISO volume opens the picker.
-            if let Some(v) = store.selected_vol()
-                && v.name.ends_with(".iso")
-            {
-                return true;
-            }
-            false
-        }
+        "Enter" => false,
         _ => false,
     }
 }
@@ -320,6 +312,9 @@ pub(super) async fn dispatch_storage(
             {
                 let domain = dash.selected().name.clone();
                 open_picker_for(uri, store, &domain, demo).await;
+                if let Some(picker) = store.picker.as_mut() {
+                    picker.live = dash.selected().state == crate::model::DomainState::Running;
+                }
                 let _ = (detail, view, dry_run, history, messages, confirm, ex_line);
             }
         }
@@ -341,6 +336,12 @@ pub(super) async fn open_picker(
         .map(|d| d.domain.clone())
         .unwrap_or_else(|| dash.selected().name.clone());
     open_picker_for(uri, store, &domain, demo).await;
+    if let Some(picker) = store.picker.as_mut() {
+        picker.live = detail.as_ref().map_or_else(
+            || dash.selected().state == crate::model::DomainState::Running,
+            |d| d.state == crate::model::DomainState::Running,
+        );
+    }
 }
 
 pub(super) async fn open_picker_for(
@@ -357,9 +358,11 @@ pub(super) async fn open_picker_for(
             String::from("archlinux-2026.09.01-x86_64.iso"),
         )
     } else {
-        cdrom_of(uri, domain)
-            .await
-            .unwrap_or((String::from("sda"), String::from("sata"), String::new()))
+        let Some(cdrom) = cdrom_of(uri, domain).await else {
+            store.message = format!("✗ {domain} has no accessible CD-ROM drive");
+            return;
+        };
+        cdrom
     };
     let mut pools: Vec<String> = store.pools.iter().map(|p| p.name.clone()).collect();
     if pools.is_empty() {
@@ -464,11 +467,14 @@ pub(super) async fn eject_media(
     history: &mut crate::command::history::History,
     messages: &mut Vec<String>,
 ) {
-    let (domain, target, live) = store
+    let Some((domain, target, live)) = store
         .picker
         .as_ref()
         .map(|p| (p.domain.clone(), p.target.clone(), p.live))
-        .unwrap_or((String::from("arch-dev"), String::from("sda"), true));
+    else {
+        store.message = String::from("✗ no CD-ROM selected");
+        return;
+    };
     store.picker = None;
     let plan = crate::command::builders::hardware::change_media(&domain, &target, None, live);
     for step in &plan.steps {

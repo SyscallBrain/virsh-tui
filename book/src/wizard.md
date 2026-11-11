@@ -2,7 +2,7 @@
 
 ![New domain wizard](images/wizard.png)
 
-`Space n` opens the new domain wizard. It collects what `virt-install` needs
+`Space n` opens the new domain wizard for local connections. The wizard is unavailable for remote connections until remote capacity can be determined reliably. It collects what `virt-install` needs
 in six steps and shows the resulting command at the bottom, highlighting the
 part that belongs to the current step. The command shown is the one that
 runs.

@@ -63,14 +63,16 @@ pub fn set_memory(domain: &str, current: &str, max: &str, live: bool, config: bo
     if config {
         max_flags.push(String::from("--config"));
     }
-    out.push(CommandPlan {
-        steps: vec![step(domain, "setmaxmem", {
-            let mut a = vec![max.to_string()];
-            a.extend(max_flags);
-            a
-        })],
-        summary: format!("Set max memory {max} on {domain}"),
-    });
+    if config || !live {
+        out.push(CommandPlan {
+            steps: vec![step(domain, "setmaxmem", {
+                let mut a = vec![max.to_string()];
+                a.extend(max_flags);
+                a
+            })],
+            summary: format!("Set max memory {max} on {domain}"),
+        });
+    }
     let mut flags = Vec::new();
     if live {
         flags.push(String::from("--live"));

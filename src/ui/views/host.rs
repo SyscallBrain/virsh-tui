@@ -164,14 +164,16 @@ impl HostState {
             self.threads.clone_from(&m.host.threads);
             self.threads_total = self.threads.len() as u32;
         }
-        let mem = crate::backend::virsh::host_local::parse_meminfo(
-            &std::fs::read_to_string("/proc/meminfo").unwrap_or_default(),
-        );
-        if mem.total_kib > 0 {
-            let gib = |k: u64| (k as f64 / 1024.0 / 1024.0 * 10.0).round() / 10.0;
-            self.mem_total_gib = gib(mem.total_kib);
-            self.mem_used_gib = gib(mem.total_kib.saturating_sub(mem.available_kib));
-            self.mem_free_gib = gib(mem.available_kib);
+        if crate::app::poller::is_local_uri(&dash.uri) {
+            let mem = crate::backend::virsh::host_local::parse_meminfo(
+                &std::fs::read_to_string("/proc/meminfo").unwrap_or_default(),
+            );
+            if mem.total_kib > 0 {
+                let gib = |k: u64| (k as f64 / 1024.0 / 1024.0 * 10.0).round() / 10.0;
+                self.mem_total_gib = gib(mem.total_kib);
+                self.mem_used_gib = gib(mem.total_kib.saturating_sub(mem.available_kib));
+                self.mem_free_gib = gib(mem.available_kib);
+            }
         }
         self.rss_by_domain = m
             .rss_by_domain()

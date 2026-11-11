@@ -12,7 +12,7 @@
 - `panel::render` allowed `clippy::too_many_arguments`; `charts::braille` allowed `clippy::needless_range_loop` to keep the 1:1 port readable.
 
 ## P2
-- Real `virsh snapshot-list --parent` columns are Name | Creation Time (date, time, tz) | State | Parent | Children | Descendants; parent is index 5, state index 4.
+- Real `virsh snapshot-list --parent` columns are Name | Creation Time (date, time, tz) | State | Parent | Children | Descendants; state is index 4; the parent at index 5 is absent for a root snapshot.
 - `virsh nodeinfo` on this machine reports `CPU model: x86_64`, `CPU(s): 6`, `Memory size: N KiB`; hostname comes from the `hostname` crate (reports `rdebian` here, `forge` in demo).
 - `virsh help` index lines are indented with 4 spaces; parser skips non-indented headers.
 - Demo memory labels (`12.4/16G`, `—/4G`) parsed as GiB floats to KiB; em-dash means 0.
@@ -140,3 +140,6 @@
 - **Known limitation.** Actions are awaited inside key handling, so a long job (migration, wipe) keeps the UI
   busy until it finishes. Moving executions to background tasks with progress in the message line is the next
   structural step.
+
+- Remote host CPU and memory sampling is unavailable; the new-domain wizard is disabled for remote connections until reliable remote capacity facts are available.
+- Snapshot creation uses Tab to select name, description, atomic, or quiesce, and Space toggles the selected option.

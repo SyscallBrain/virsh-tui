@@ -236,23 +236,34 @@ pub(super) fn stage_detach(
             std::sync::Arc::new(move |d: &str| hardware::detach_disk(d, &target, true)),
         )
     } else if dev.id.starts_with("nic") {
-        let mac = String::from("52:54:00:a3:1f:7c");
+        let mac = d.hw.field_value(&dev.id, "mac");
+        let kind = xmltree::Element::parse(d.hw.base_xml.as_bytes())
+            .ok()
+            .and_then(|root| root.get_child("devices").cloned())
+            .and_then(|devices| {
+                devices
+                    .children
+                    .into_iter()
+                    .filter_map(|n| match n {
+                        xmltree::XMLNode::Element(e) if e.name == "interface" => Some(e),
+                        _ => None,
+                    })
+                    .find(|e| e.get_child("mac").and_then(|m| m.attributes.get("address")) == Some(&mac))
+            })
+            .and_then(|e| e.attributes.get("type").cloned());
+        let Some(kind) = kind.filter(|_| !mac.is_empty()) else {
+            d.message = String::from("✗ cannot identify selected NIC");
+            return;
+        };
+        let live = d.state == crate::model::DomainState::Running;
         (
             String::from("⚠ Detach NIC"),
             std::sync::Arc::new(move |d: &str| {
-                crate::command::plan::CommandPlan::single(
-                    "virsh",
-                    vec![
-                        "detach-interface",
-                        d,
-                        "network",
-                        "--mac",
-                        &mac,
-                        "--config",
-                        "--live",
-                    ],
-                    &format!("Detached NIC on {d}"),
-                )
+                let mut args = vec!["detach-interface", d, &kind, "--mac", &mac, "--config"];
+                if live {
+                    args.push("--live");
+                }
+                crate::command::plan::CommandPlan::single("virsh", args, &format!("Detached NIC on {d}"))
             }),
         )
     } else {
@@ -297,13 +308,17 @@ pub(super) async fn handle_snap_modal(
                 d.snap_modal = SnapModal::None;
             }
             KeyCode::Enter if key.modifiers.is_empty() => {
+                if d.snaps.create_name.trim().is_empty() {
+                    d.message = String::from("✗ snapshot name is required");
+                    return true;
+                }
                 let domain = d.domain.clone();
                 let plan = crate::command::builders::snapshot::create(
                     &domain,
                     &d.snaps.create_name.clone(),
                     &d.snaps.create_desc.clone(),
-                    true,
-                    false,
+                    d.snaps.create_atomic,
+                    d.snaps.create_quiesce,
                 );
                 d.snap_modal = SnapModal::None;
                 for step in &plan.steps {
@@ -324,7 +339,26 @@ pub(super) async fn handle_snap_modal(
                 }
                 let _ = demo;
             }
-            _ => return false,
+            KeyCode::Tab => d.snaps.create_focus = (d.snaps.create_focus + 1) % 4,
+            KeyCode::Backspace => match d.snaps.create_focus {
+                0 => {
+                    d.snaps.create_name.pop();
+                }
+                1 => {
+                    d.snaps.create_desc.pop();
+                }
+                _ => {}
+            },
+            KeyCode::Char(' ') if d.snaps.create_focus == 2 => d.snaps.create_atomic = !d.snaps.create_atomic,
+            KeyCode::Char(' ') if d.snaps.create_focus == 3 => {
+                d.snaps.create_quiesce = !d.snaps.create_quiesce
+            }
+            KeyCode::Char(c) if key.modifiers.is_empty() => match d.snaps.create_focus {
+                0 => d.snaps.create_name.push(c),
+                1 => d.snaps.create_desc.push(c),
+                _ => {}
+            },
+            _ => {}
         },
         SnapModal::Revert => match key.code {
             KeyCode::Esc => d.snap_modal = SnapModal::None,
@@ -506,6 +540,10 @@ pub(super) async fn dispatch_detail(
                 return false;
             }
             A::SnapshotNew => {
+                if !demo {
+                    d.snaps.create_name = format!("snap-{}", jiff::Zoned::now().strftime("%Y%m%d-%H%M%S"));
+                }
+                d.snaps.create_focus = 0;
                 d.snap_modal = SnapModal::Create;
                 return false;
             }
@@ -518,6 +556,10 @@ pub(super) async fn dispatch_detail(
                 return false;
             }
             A::EditXml => {
+                if demo || dry_run {
+                    d.message = String::from("[dry-run] Snapshot editing is disabled");
+                    return false;
+                }
                 let snap = d.snaps.selected_name().to_string();
                 suspend_run(&[
                     "virsh",
@@ -561,7 +603,23 @@ pub(super) async fn dispatch_detail(
             }
         }
         A::EditXml if d.tab == ui::views::detail::DetailTab::Xml => {
-            d.message = edit_domain_xml(uri, &d.domain, &d.xml, dry_run, demo).await;
+            let xml = if !demo && !dry_run {
+                match crate::backend::virsh::exec::run(
+                    uri,
+                    &["dumpxml", &d.domain, "--inactive", "--security-info"],
+                )
+                .await
+                {
+                    Ok(xml) => xml,
+                    Err(_) => {
+                        d.message = String::from("✗ secure XML unavailable; edit refused");
+                        return false;
+                    }
+                }
+            } else {
+                d.xml.clone()
+            };
+            d.message = edit_domain_xml(uri, &d.domain, &xml, dry_run, demo).await;
             if !demo {
                 refresh_detail_xml(uri, d).await;
             }
@@ -708,7 +766,28 @@ pub(super) async fn apply_hardware(
                 .any(|s| s.argv.first().is_some_and(|a| a == "define"))
         })
     {
-        match crate::command::tempxml::write(&domain, &d.hw.edited_xml()) {
+        let xml = if !dry_run {
+            match crate::backend::virsh::exec::run(
+                uri,
+                &["dumpxml", &domain, "--inactive", "--security-info"],
+            )
+            .await
+            {
+                Ok(xml) => {
+                    let mut hw = d.hw.clone();
+                    hw.base_xml = xml;
+                    hw.edited_xml()
+                }
+                Err(_) => {
+                    d.message = String::from("✗ secure XML unavailable; edit refused");
+                    messages.push(d.message.clone());
+                    return;
+                }
+            }
+        } else {
+            d.hw.edited_xml()
+        };
+        match crate::command::tempxml::write(&domain, &xml) {
             Ok(tmp) => {
                 let path = crate::command::tempxml::path_arg(&tmp);
                 for step in plans.iter_mut().flat_map(|p| p.steps.iter_mut()) {
@@ -766,10 +845,13 @@ pub(super) async fn set_description(
     if demo || dry_run {
         return format!("[dry-run] Described {domain}  ── virsh define /tmp/vt-{domain}.xml");
     }
-    let xml = match crate::backend::virsh::exec::run(uri, &["dumpxml", domain, "--inactive"]).await {
-        Ok(x) => x,
-        Err(e) => return format!("✗ dumpxml failed: {}", e.to_string().lines().next().unwrap_or("")),
-    };
+    let xml =
+        match crate::backend::virsh::exec::run(uri, &["dumpxml", domain, "--inactive", "--security-info"])
+            .await
+        {
+            Ok(x) => x,
+            Err(e) => return format!("✗ dumpxml failed: {}", e.to_string().lines().next().unwrap_or("")),
+        };
     let new_xml = set_description_text(&xml, text);
     let Ok(tmp) = crate::command::tempxml::write(domain, &new_xml) else {
         return String::from("✗ cannot write temp XML");

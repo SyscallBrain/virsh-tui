@@ -117,6 +117,9 @@ pub struct SnapshotState {
     /// Create form values.
     pub create_name: String,
     pub create_desc: String,
+    pub create_focus: u8,
+    pub create_atomic: bool,
+    pub create_quiesce: bool,
     /// Frozen clock for demo/snapshots (mockup shows 1438).
     pub frozen: bool,
 }
@@ -220,6 +223,9 @@ impl SnapshotState {
             del_metadata: false,
             create_name: String::from("snap-2026-10-06-1438"),
             create_desc: String::new(),
+            create_focus: 0,
+            create_atomic: true,
+            create_quiesce: false,
             frozen: true,
         }
     }
@@ -601,14 +607,26 @@ pub fn render_create(frame: &mut Frame, theme: &Theme, area: Rect, st: &Snapshot
             ),
         ]),
         Line::from(vec![
-            Span::styled("[x]", Style::default().fg(t.green).bg(t.bg)),
+            Span::styled(
+                if st.create_atomic { "[x]" } else { "[ ]" },
+                Style::default().fg(t.green).bg(t.bg),
+            ),
             Span::styled(" --atomic", theme.secondary()),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                if st.create_quiesce { "[x]" } else { "[ ]" },
+                Style::default().fg(t.green).bg(t.bg),
+            ),
+            Span::styled(" --quiesce  (Tab to select, Space to toggle)", theme.secondary()),
         ]),
         Line::from(""),
         Line::from(vec![Span::styled(
             format!(
-                "$ virsh snapshot-create-as <domain> --name {} --atomic",
-                st.create_name
+                "$ virsh snapshot-create-as <domain> --name {}{}{}",
+                st.create_name,
+                if st.create_atomic { " --atomic" } else { "" },
+                if st.create_quiesce { " --quiesce" } else { "" }
             ),
             Style::default().fg(t.yellow).bg(t.bg2),
         )]),

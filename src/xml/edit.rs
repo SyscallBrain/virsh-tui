@@ -45,7 +45,7 @@ fn write_elem(elem: &Element, depth: usize, out: &mut String) {
     };
     let mut open = format!("<{qname}");
     for (k, v) in &attrs {
-        open.push_str(&format!(" {k}=\"{v}\""));
+        open.push_str(&format!(" {k}=\"{}\"", escape_xml(v, true)));
     }
     let elements: Vec<&Element> = elem
         .children
@@ -67,13 +67,25 @@ fn write_elem(elem: &Element, depth: usize, out: &mut String) {
     if elements.is_empty() && text.is_empty() {
         out.push_str(&format!("{pad}{open}/>\n"));
     } else if elements.is_empty() {
-        out.push_str(&format!("{pad}{open}>{text}</{qname}>\n"));
+        out.push_str(&format!("{pad}{open}>{}</{qname}>\n", escape_xml(&text, false)));
     } else {
         out.push_str(&format!("{pad}{open}>\n"));
         for child in elements {
             write_elem(child, depth + 1, out);
         }
         out.push_str(&format!("{pad}</{qname}>\n"));
+    }
+}
+
+fn escape_xml(value: &str, attribute: bool) -> String {
+    let escaped = value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    if attribute {
+        escaped.replace('"', "&quot;")
+    } else {
+        escaped
     }
 }
 
