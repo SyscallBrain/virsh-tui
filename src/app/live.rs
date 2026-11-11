@@ -7,7 +7,17 @@ use super::*;
 /// Build live host state: local /proc data plus virsh pools/networks/domains.
 pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
     use crate::backend::{Backend, virsh::VirshBackend};
-    let mut host = ui::views::host::HostState::live_local().await;
+    let mut host = if is_local_uri(uri) {
+        ui::views::host::HostState::live_local().await
+    } else {
+        ui::views::host::HostState {
+            live: true,
+            cpu_hist: Some(Vec::new()),
+            cpu_model: String::from("unavailable"),
+            message: String::from("Remote host CPU and memory metrics unavailable"),
+            ..Default::default()
+        }
+    };
     host.uri = uri.to_string();
     host.connected = true;
     host.system = host_system_facts(uri).await;

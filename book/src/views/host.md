@@ -17,6 +17,5 @@ The running domains are sorted by CPU use, busiest first.
 
 Per-thread CPU meters, temperatures and memory details are read from `/proc`
 and `/sys`, so they are only shown for local connections. For a remote URI
-the view shows what libvirt itself reports (`virsh nodeinfo`, pools,
-networks). Per-thread sampling can be turned off with
+CPU and memory sampling is unavailable; the view still shows available libvirt information, pools and networks. Per-thread sampling can be turned off with
 `monitoring.thread_sampling = false`.

@@ -376,8 +376,9 @@ pub(super) async fn dispatch_action(
         }
         A::Clone => {
             let sel = dash.selected().name.clone();
+            let uri = uri.to_string();
             let build: crate::command::plan::PlanBuilder = std::sync::Arc::new(move |d: &str| {
-                crate::command::builders::lifecycle::clone_domain(d, &format!("{d}-clone"))
+                crate::command::builders::lifecycle::clone_on(&uri, d, &format!("{d}-clone"))
             });
             let commands = build(&sel)
                 .steps

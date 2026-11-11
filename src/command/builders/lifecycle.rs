@@ -94,6 +94,15 @@ pub fn clone_domain(domain: &str, new_name: &str) -> CommandPlan {
     )
 }
 
+/// Clone on the explicitly selected libvirt connection.
+pub fn clone_on(uri: &str, domain: &str, new_name: &str) -> CommandPlan {
+    let mut plan = clone_domain(domain, new_name);
+    plan.steps[0]
+        .argv
+        .splice(0..0, [String::from("--connect"), uri.to_string()]);
+    plan
+}
+
 /// virsh undefine d [options]
 pub fn undefine(domain: &str, remove_storage: bool, nvram: bool, snapshots: bool) -> CommandPlan {
     let mut argv = vec!["undefine".to_string(), domain.to_string()];

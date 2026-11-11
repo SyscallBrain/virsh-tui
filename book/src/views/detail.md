@@ -64,7 +64,7 @@ anything changes.
 
 ![Snapshots tab](../images/snapshots.png)
 
-The snapshot tree, with the current snapshot marked.
+The snapshot tree, with the current snapshot marked. In the creation form, use Tab to select the name, description, atomic option or quiesce option; Space toggles an option. Snapshot XML editing is disabled in demo and dry-run modes.
 
 | Key | Action |
 |-----|--------|

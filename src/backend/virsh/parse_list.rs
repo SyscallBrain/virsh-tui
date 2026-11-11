@@ -120,7 +120,7 @@ pub fn parse_snapshot_list(text: &str) -> Vec<Snapshot> {
         if cols.is_empty() || cols[0] == "Name" || cols[0].starts_with('-') {
             continue;
         }
-        if cols.len() < 6 {
+        if cols.len() < 5 {
             continue;
         }
         let parent = cols.get(5).filter(|p| **p != "-").map(|s| s.to_string());
