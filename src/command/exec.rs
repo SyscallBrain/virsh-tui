@@ -39,24 +39,15 @@ pub async fn execute(uri: &str, plan: &CommandPlan, dry_run: bool) -> Result<Str
         return Ok(format!("[dry-run] {}  ── {first}", plan.summary));
     }
     let n = plan.steps.len();
+    let (_cancel, mut control) = tokio::sync::watch::channel(false);
     for (i, step) in plan.steps.iter().enumerate() {
-        let mut cmd = tokio::process::Command::new(&step.program);
-        if step.program == "virsh" {
-            cmd.arg("-c").arg(uri);
-        }
-        cmd.args(&step.argv);
-        cmd.env("LC_ALL", "C");
-        cmd.stdin(std::process::Stdio::null());
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-        cmd.kill_on_drop(true);
-        let limit = crate::backend::virsh::exec::timeout_for(
-            &step.program,
-            step.argv.first().map(String::as_str).unwrap_or(""),
-        );
-        let output = tokio::time::timeout(limit, cmd.output())
-            .await
-            .map_err(|_| eyre!("step {}/{} timed out", i + 1, n))??;
+        let output =
+            super::process::run_step(uri, step, &mut control)
+                .await
+                .map_err(|error| match error {
+                    super::process::RunError::Timeout => eyre!("step {}/{} timed out", i + 1, n),
+                    other => eyre!(other),
+                })?;
         if !output.status.success() {
             let first_line = String::from_utf8_lossy(&output.stderr)
                 .lines()

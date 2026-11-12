@@ -392,9 +392,10 @@ Use `shlex` quoting for copy-to-clipboard text.
 
 ### 6.4 Execution
 
-- `tokio::process::Command`, `LC_ALL=C`, `-c <uri>` always explicit, stdin null, 30 s default timeout
-  (configurable). Long jobs (clone, vol-upload, migrate, wipe) have no timeout and show progress in the message line
-  with a braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, blue). Cancel with `C-c` (send SIGINT, then kill after 3 s).
+- `tokio::process::Command`, `LC_ALL=C`, `-c <uri>` always explicit and stdin null. Ordinary commands have a
+  30 s timeout; long jobs (clone, vol-upload, migrate, wipe) have a 24 h timeout. Active jobs show progress in
+  the message line with a braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, blue). Cancel with `C-c` (send SIGINT,
+  then kill after 3 s). Stopping the local client does not guarantee server-side rollback.
 - `--dry-run`: `run()` does not execute. It prints `[dry-run] <command>` to the message line and log, and returns success.
 - Every executed command is appended to the history (`yc` copies the last one; `:messages` shows the log).
 - Success message format (message line): `✓ <Past-tense summary>  ── <first command>` (summary fg, `✓` green, rest comment).
@@ -833,6 +834,15 @@ touched, and a commit.
 - README: features, screenshots (generated from `--dump` and converted with `aha` or a similar tool if available,
   otherwise ANSI files), install (`cargo install --path .`), config and keymap reference, and the theme format.
 - ✅ Every FIDELITY.md section is checked. All quality gates pass. `cargo build --release` produces a working binary.
+
+**P15 — Responsive command jobs**
+- Keep input, redraws and live updates responsive during commands and reads;
+  run one owned command job at a time with cancellation and bounded output.
+- Preserve draft and connection identity, foreground terminal ownership and
+  cleanup across completion, errors and shutdown.
+- The acceptance plan and route evidence are in
+  [`superpowers/plans/2026-11-11-responsive-jobs.md`](superpowers/plans/2026-11-11-responsive-jobs.md)
+  and [`superpowers/plans/2026-11-11-responsive-jobs-evidence.md`](superpowers/plans/2026-11-11-responsive-jobs-evidence.md).
 
 ---
 

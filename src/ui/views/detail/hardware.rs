@@ -571,6 +571,72 @@ impl HardwareState {
         sections.len()
     }
 
+    /// Identify editable values independently of device and form navigation.
+    pub fn draft_fingerprint(&self) -> String {
+        let mut fields: Vec<_> = self
+            .forms
+            .iter()
+            .flat_map(|(name, form)| {
+                form.fields.iter().map(move |field| {
+                    (
+                        name.as_str(),
+                        field.id.as_str(),
+                        field.original.as_str(),
+                        field.current.as_str(),
+                    )
+                })
+            })
+            .collect();
+        fields.sort_unstable();
+        let mut explicit: Vec<_> = self.explicit.iter().collect();
+        explicit.sort_unstable();
+        format!(
+            "{:?}",
+            (
+                &self.base_xml,
+                self.apply_live,
+                self.apply_config,
+                self.running,
+                fields,
+                explicit
+            )
+        )
+    }
+
+    /// Rebase pending values on a fresh persistent configuration.
+    /// Return `None` if a dirty field no longer exists, so callers retain the draft.
+    pub fn rebase(&self, config: &crate::model::DomainConfig, xml: &str, running: bool) -> Option<Self> {
+        let mut fresh = Self::from_config(config, xml, running);
+        for (name, old_form) in &self.forms {
+            for old_field in old_form.fields.iter().filter(|field| field.dirty()) {
+                let new_field = fresh
+                    .forms
+                    .get_mut(name)?
+                    .fields
+                    .iter_mut()
+                    .find(|field| field.id == old_field.id)?;
+                new_field.current.clone_from(&old_field.current);
+            }
+            if let Some(form) = fresh.forms.get_mut(name) {
+                form.focus = old_form.focus.min(form.fields.len().saturating_sub(1));
+            }
+        }
+        fresh.explicit = self
+            .explicit
+            .iter()
+            .filter(|(name, id)| fresh.is_dirty(name, id))
+            .cloned()
+            .collect();
+        fresh.apply_live = self.apply_live;
+        fresh.apply_config = self.apply_config;
+        if let Some(selected) = self.devices.get(self.selected)
+            && let Some(index) = fresh.devices.iter().position(|device| device.id == selected.id)
+        {
+            fresh.selected = index;
+        }
+        Some(fresh)
+    }
+
     /// Edited XML with all pending (persistent) changes applied.
     ///
     /// Only dirty values are written, so an unchanged domain round-trips as-is.

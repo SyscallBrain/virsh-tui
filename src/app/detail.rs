@@ -279,14 +279,13 @@ pub(super) fn stage_detach(
 }
 
 /// Snapshot modal keys: y/n/Esc plus option toggles. Returns true when consumed.
-pub(super) async fn handle_snap_modal(
+pub(super) fn handle_snap_modal(
     key: KeyEvent,
     detail: &mut Option<ui::views::detail::DetailState>,
-    uri: &str,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
 ) -> bool {
     use crate::ui::views::detail::{SnapModal, snapshots::AfterRevert};
     let Some(d) = detail else { return false };
@@ -306,23 +305,7 @@ pub(super) async fn handle_snap_modal(
                     false,
                 );
                 d.snap_modal = SnapModal::None;
-                for step in &plan.steps {
-                    history.push(&crate::command::display::display(step));
-                }
-                match crate::command::exec::execute(uri, &plan, dry_run).await {
-                    Ok(msg) => {
-                        d.message = msg.clone();
-                        messages.push(msg);
-                        if !demo && !dry_run {
-                            refresh_snapshots(uri, d).await;
-                        }
-                    }
-                    Err(e) => {
-                        d.message = e.to_string();
-                        messages.push(e.to_string());
-                    }
-                }
-                let _ = demo;
+                preview_snapshot(&plan, d, dry_run, demo, history, messages);
             }
             _ => return false,
         },
@@ -340,22 +323,7 @@ pub(super) async fn handle_snap_modal(
                     d.snaps.safety,
                 );
                 d.snap_modal = SnapModal::None;
-                for step in &plan.steps {
-                    history.push(&crate::command::display::display(step));
-                }
-                match crate::command::exec::execute(uri, &plan, dry_run).await {
-                    Ok(msg) => {
-                        d.message = msg.clone();
-                        messages.push(msg);
-                        if !demo && !dry_run {
-                            refresh_snapshots(uri, d).await;
-                        }
-                    }
-                    Err(e) => {
-                        d.message = e.to_string();
-                        messages.push(e.to_string());
-                    }
-                }
+                preview_snapshot(&plan, d, dry_run, demo, history, messages);
             }
             KeyCode::Char('1') if key.modifiers.is_empty() => d.snaps.after = AfterRevert::Running,
             KeyCode::Char('2') if key.modifiers.is_empty() => d.snaps.after = AfterRevert::Paused,
@@ -378,22 +346,7 @@ pub(super) async fn handle_snap_modal(
                     d.snaps.del_metadata,
                 );
                 d.snap_modal = SnapModal::None;
-                for step in &plan.steps {
-                    history.push(&crate::command::display::display(step));
-                }
-                match crate::command::exec::execute(uri, &plan, dry_run).await {
-                    Ok(msg) => {
-                        d.message = msg.clone();
-                        messages.push(msg);
-                        if !demo && !dry_run {
-                            refresh_snapshots(uri, d).await;
-                        }
-                    }
-                    Err(e) => {
-                        d.message = e.to_string();
-                        messages.push(e.to_string());
-                    }
-                }
+                preview_snapshot(&plan, d, dry_run, demo, history, messages);
             }
             KeyCode::Char('c') if key.modifiers.is_empty() => {
                 d.snaps.del_children = !d.snaps.del_children;
@@ -411,23 +364,53 @@ pub(super) async fn handle_snap_modal(
 }
 
 /// Open the detail view for the dashboard selection (or host selection).
-pub(super) async fn open_detail(
-    detail: &mut Option<ui::views::detail::DetailState>,
-    view: &mut View,
-    dash: &ui::views::dashboard::DashboardState,
-    host: &ui::views::host::HostState,
-    uri: &str,
+/// Preview a snapshot operation; live operations are submitted as jobs.
+fn preview_snapshot(
+    plan: &crate::command::plan::CommandPlan,
+    detail: &mut ui::views::detail::DetailState,
+    dry_run: bool,
     demo: bool,
+    history: &mut crate::command::history::History,
+    messages: &mut MessageLog,
 ) {
-    let name = if *view == View::Host {
-        host.domains.first().map(|d| d.name.clone()).unwrap_or_default()
-    } else {
-        dash.selected().name.clone()
-    };
-    if name.is_empty() {
+    if !demo && !dry_run {
+        detail.message = "✗ Snapshot request was not submitted".into();
         return;
     }
-    let mut st = ui::views::detail::DetailState::demo(&name);
+    for step in &plan.steps {
+        history.push(&crate::command::display::display(step));
+    }
+    let first = plan
+        .steps
+        .first()
+        .map(crate::command::display::display)
+        .unwrap_or_default();
+    let prefix = if demo { "✓" } else { "[dry-run]" };
+    detail.message = format!("{prefix} {}  ── {first}", plan.summary);
+    messages.push_action(detail.message.clone(), &detail.domain, true);
+}
+
+pub(super) async fn load_detail(uri: &str, st: &mut ui::views::detail::DetailState) {
+    st.uptime = crate::backend::virsh::host_local::domain_uptime(&st.domain).unwrap_or_else(|| "—".into());
+    if let Ok(xml) = crate::backend::virsh::exec::run(uri, &["dumpxml", &st.domain, "--inactive"]).await
+        && let Ok(cfg) = crate::backend::virsh::parse_xml::parse_domain_xml(&xml)
+    {
+        let running = st.state == crate::model::DomainState::Running;
+        st.hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, &xml, running);
+        st.config = cfg;
+        st.xml = xml;
+        st.fold = ui::views::detail::XmlFold::new(st.xml.lines().count());
+    }
+    refresh_snapshots(uri, st).await;
+}
+
+pub(super) fn detail_initial(
+    name: &str,
+    dash: &ui::views::dashboard::DashboardState,
+    uri: &str,
+    demo: bool,
+) -> ui::views::detail::DetailState {
+    let mut st = ui::views::detail::DetailState::demo(name);
     st.uri = uri.to_string();
     st.connected = true;
     if !demo {
@@ -438,31 +421,23 @@ pub(super) async fn open_detail(
             .iter()
             .find(|r| r.name == name)
             .map_or(crate::model::DomainState::Other, |r| r.state);
-        st.uptime =
-            crate::backend::virsh::host_local::domain_uptime(&name).unwrap_or_else(|| String::from("—"));
+        st.uptime = String::from("—");
         st.config = crate::model::DomainConfig {
-            name: name.clone(),
+            name: name.to_string(),
             ..Default::default()
         };
         st.xml = String::new();
+        st.fold = ui::views::detail::XmlFold::new(0);
         st.hw = ui::views::detail::hardware::HardwareState::from_config(&st.config, "", false);
         st.snaps.rows.clear();
-        use crate::backend::virsh::VirshBackend;
-        let backend = VirshBackend::new(uri);
-        if let Ok(xml) = crate::backend::virsh::exec::run(uri, &["dumpxml", &name, "--inactive"]).await
-            && let Ok(cfg) = crate::backend::virsh::parse_xml::parse_domain_xml(&xml)
-        {
-            let running = st.state == crate::model::DomainState::Running;
-            st.hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, &xml, running);
-            st.config = cfg;
-            st.xml = xml;
-            st.fold = ui::views::detail::XmlFold::new(st.xml.lines().count());
-        }
-        refresh_snapshots(uri, &mut st).await;
-        let _ = backend;
+        st.snaps.details.clear();
+        st.snaps.description_title.clear();
+        st.snaps.description.clear();
+        st.snaps.current = None;
+        st.snaps.selected = 0;
+        st.snaps.frozen = false;
     }
-    *detail = Some(st);
-    *view = View::Detail;
+    st
 }
 
 /// Reload the snapshot tree (and the current snapshot) of the detail domain.
@@ -484,7 +459,7 @@ pub(super) async fn refresh_snapshots(uri: &str, d: &mut ui::views::detail::Deta
 }
 
 /// Detail-view keys. Returns true when the app should quit.
-pub(super) async fn dispatch_detail(
+pub(super) fn dispatch_detail(
     action: crate::input::engine::KeyAction,
     detail: &mut Option<ui::views::detail::DetailState>,
     view: &mut View,
@@ -519,6 +494,10 @@ pub(super) async fn dispatch_detail(
             }
             A::EditXml => {
                 let snap = d.snaps.selected_name().to_string();
+                if demo || dry_run {
+                    d.message = format!("[dry-run] Edit snapshot {snap} XML");
+                    return false;
+                }
                 suspend_run(&[
                     "virsh",
                     "-c",
@@ -561,76 +540,33 @@ pub(super) async fn dispatch_detail(
             }
         }
         A::EditXml if d.tab == ui::views::detail::DetailTab::Xml => {
-            d.message = edit_domain_xml(uri, &d.domain, &d.xml, dry_run, demo).await;
-            if !demo {
-                refresh_detail_xml(uri, d).await;
-            }
+            d.message = if demo || dry_run {
+                format!(
+                    "[dry-run] Edited {} XML  ── virsh define /tmp/vt-{}.xml",
+                    d.domain, d.domain
+                )
+            } else {
+                "✗ XML editor request was not submitted".into()
+            };
         }
+        A::Console if demo || dry_run => d.message = "[dry-run] Open console".into(),
         A::Console => external::console(uri, &d.domain),
-        A::Viewer => open_viewer(uri, &d.domain.clone()).await,
         _ => {}
     }
     let _ = view;
     false
 }
 
-/// Refresh the detail XML after an edit.
-pub(super) async fn refresh_detail_xml(uri: &str, d: &mut ui::views::detail::DetailState) {
-    if let Ok(xml) = crate::backend::virsh::exec::run(uri, &["dumpxml", &d.domain, "--inactive"]).await
-        && let Ok(cfg) = crate::backend::virsh::parse_xml::parse_domain_xml(&xml)
-    {
-        let running = d.state == crate::model::DomainState::Running;
-        d.hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, &xml, running);
-        d.config = cfg;
-        d.xml = xml;
-        d.fold = ui::views::detail::XmlFold::new(d.xml.lines().count());
-    }
-}
-
-/// `$EDITOR` loop for the XML tab: validate with `virsh define`, reopen on error
-/// (like `virsh edit`). Unchanged content is not defined.
-pub(super) async fn edit_domain_xml(uri: &str, domain: &str, xml: &str, dry_run: bool, demo: bool) -> String {
-    if demo {
-        return format!("[dry-run] Edited {domain} XML  ── virsh define /tmp/vt-{domain}.xml");
-    }
-    let mut content = xml.to_string();
-    loop {
-        let Ok(tmp) = crate::command::tempxml::write(domain, &content) else {
-            return String::from("✗ cannot write temp XML");
-        };
-        if !external::edit_file(tmp.path()) {
-            return String::from("✗ editor failed");
-        }
-        let edited = std::fs::read_to_string(tmp.path()).unwrap_or_default();
-        if edited == content {
-            // Saved without changes: nothing to define (or the user gave up after an error).
-            return if content == xml {
-                format!("no changes to {domain}")
-            } else {
-                format!("✗ edit aborted for {domain}")
-            };
-        }
-        let path = crate::command::tempxml::path_arg(&tmp);
-        if dry_run {
-            return format!("[dry-run] Edited {domain} XML  ── virsh define {path} --validate");
-        }
-        match crate::backend::virsh::exec::run(uri, &["define", &path, "--validate"]).await {
-            Ok(_) => return format!("✓ Defined {domain}  ── virsh define {path} --validate"),
-            Err(e) => content = ui::views::detail::edit_error_comment(&edited, &e.to_string()),
-        }
-    }
-}
-
 /// Run an ex line in the detail view (`:w` apply, `:q!` discard, `:q` close).
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn run_detail_ex(
+pub(super) fn run_detail_ex(
     line: &str,
     detail: &mut Option<ui::views::detail::DetailState>,
     view: &mut View,
     uri: &mut String,
     dash: &mut ui::views::dashboard::DashboardState,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
     dry_run: bool,
     demo: bool,
     config: &mut Config,
@@ -641,7 +577,7 @@ pub(super) async fn run_detail_ex(
     match crate::input::ex::parse(line) {
         Ok(E::Write) => {
             if let Some(d) = detail {
-                apply_hardware(uri, d, dry_run, demo, history, messages).await;
+                preview_hardware(d, dry_run, demo, history, messages);
             }
             false
         }
@@ -665,208 +601,50 @@ pub(super) async fn run_detail_ex(
                 false
             }
         }
-        _ => {
-            run_ex_line(
-                line, uri, dash, history, messages, dry_run, demo, &mut None, config, theme, confirm,
-            )
-            .await
-        }
+        _ => run_ex_line(
+            line, uri, dash, history, messages, dry_run, demo, &mut None, config, theme, confirm,
+        ),
     }
 }
 
-/// Apply pending hardware changes: run native plans, then the define path.
-pub(super) async fn apply_hardware(
-    uri: &str,
-    d: &mut ui::views::detail::DetailState,
+/// Preview pending hardware changes; live changes are submitted as jobs.
+fn preview_hardware(
+    detail: &mut ui::views::detail::DetailState,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
 ) {
-    let domain = d.domain.clone();
-    let unsupported = d.hw.unsupported_changes();
+    if !demo && !dry_run {
+        detail.message = "✗ Hardware request was not submitted".into();
+        return;
+    }
+    let unsupported = detail.hw.unsupported_changes();
     if !unsupported.is_empty() {
-        d.message = format!(
+        detail.message = format!(
             "✗ cannot apply {} yet (read-only): undo with u or :q!",
             unsupported.join(", ")
         );
-        messages.push(d.message.clone());
+        messages.push_action(detail.message.clone(), &detail.domain, false);
         return;
     }
-    let mut plans = d.hw.will_run(&domain);
+    let plans = detail.hw.will_run(&detail.domain);
     if plans.is_empty() {
-        d.message = String::from("nothing to apply");
+        detail.message = "nothing to apply".into();
         return;
-    }
-    // The define step reads the fully edited XML from a private temp file that
-    // must outlive the command; the displayed `/tmp/vt-<d>.xml` is replaced by it.
-    let mut _tmp_guard = None;
-    if !demo
-        && plans.iter().any(|p| {
-            p.steps
-                .iter()
-                .any(|s| s.argv.first().is_some_and(|a| a == "define"))
-        })
-    {
-        match crate::command::tempxml::write(&domain, &d.hw.edited_xml()) {
-            Ok(tmp) => {
-                let path = crate::command::tempxml::path_arg(&tmp);
-                for step in plans.iter_mut().flat_map(|p| p.steps.iter_mut()) {
-                    if step.argv.first().is_some_and(|a| a == "define") {
-                        step.argv = vec![String::from("define"), path.clone(), String::from("--validate")];
-                    }
-                }
-                _tmp_guard = Some(tmp);
-            }
-            Err(_) => {
-                d.message = String::from("✗ cannot write temp XML");
-                return;
-            }
-        }
     }
     for plan in &plans {
-        if let Some(first) = plan.steps.first() {
-            history.push(&crate::command::display::display(first));
-        }
-        let result = if demo {
-            Ok(format!("✓ {}", plan.summary))
+        let first = plan
+            .steps
+            .first()
+            .map(crate::command::display::display)
+            .unwrap_or_default();
+        history.push(&first);
+        detail.message = if demo {
+            format!("✓ {}", plan.summary)
         } else {
-            crate::command::exec::execute(uri, plan, dry_run).await
+            format!("[dry-run] {}  ── {first}", plan.summary)
         };
-        match result {
-            Ok(msg) => {
-                d.message = msg.clone();
-                messages.push(msg);
-            }
-            Err(e) => {
-                d.message = e.to_string();
-                messages.push(e.to_string());
-                // Re-read the real config so the editor reflects what was applied.
-                if !demo && !dry_run {
-                    refresh_detail_xml(uri, d).await;
-                }
-                return;
-            }
-        }
-    }
-    if dry_run || demo {
-        return;
-    }
-    refresh_detail_xml(uri, d).await;
-}
-
-/// Set `<description>` via the XML edit path (dumpxml → xmltree → define).
-pub(super) async fn set_description(
-    uri: &str,
-    domain: &str,
-    text: &str,
-    dry_run: bool,
-    demo: bool,
-) -> String {
-    if demo || dry_run {
-        return format!("[dry-run] Described {domain}  ── virsh define /tmp/vt-{domain}.xml");
-    }
-    let xml = match crate::backend::virsh::exec::run(uri, &["dumpxml", domain, "--inactive"]).await {
-        Ok(x) => x,
-        Err(e) => return format!("✗ dumpxml failed: {}", e.to_string().lines().next().unwrap_or("")),
-    };
-    let new_xml = set_description_text(&xml, text);
-    let Ok(tmp) = crate::command::tempxml::write(domain, &new_xml) else {
-        return String::from("✗ cannot write temp XML");
-    };
-    let path = crate::command::tempxml::path_arg(&tmp);
-    match crate::backend::virsh::exec::run(uri, &["define", &path, "--validate"]).await {
-        Ok(_) => format!("✓ Described {domain}  ── virsh define {path} --validate"),
-        Err(e) => format!("✗ define failed: {}", e.to_string().lines().next().unwrap_or("")),
-    }
-}
-
-/// Replace (or insert) `<description>` text with xmltree.
-pub(super) fn set_description_text(xml: &str, text: &str) -> String {
-    use xmltree::{Element, XMLNode};
-    let mut elem: Element = match Element::parse(xml.as_bytes()) {
-        Ok(e) => e,
-        Err(_) => return xml.to_string(),
-    };
-    elem.children
-        .retain(|c| !matches!(c, XMLNode::Element(e) if e.name == "description"));
-    let mut desc = Element::new("description");
-    desc.children.push(XMLNode::Text(text.to_string()));
-    let pos = elem
-        .children
-        .iter()
-        .position(|c| matches!(c, XMLNode::Element(e) if e.name == "title"))
-        .map(|p| p + 1)
-        .unwrap_or(0);
-    elem.children.insert(pos, XMLNode::Element(desc));
-    let mut out = Vec::new();
-    if elem.write(&mut out).is_err() {
-        return xml.to_string();
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// Attach a host device: dumpxml the nodedev, wrap in <hostdev>, attach-device.
-pub(super) async fn attach_hostdev(uri: &str, domain: &str, node: &str, dry_run: bool, demo: bool) -> String {
-    if demo || dry_run {
-        return format!(
-            "[dry-run] Attached {node} on {domain}  ── virsh attach-device {domain} /tmp/vt-hostdev.xml"
-        );
-    }
-    let dev_xml = match crate::backend::virsh::exec::run(uri, &["nodedev-dumpxml", node]).await {
-        Ok(x) => x,
-        Err(e) => return format!("✗ nodedev failed: {}", e.to_string().lines().next().unwrap_or("")),
-    };
-    let hostdev = match hostdev_xml(&dev_xml) {
-        Some(x) => x,
-        None => return format!("✗ {node} is not a PCI or USB device"),
-    };
-    let Ok(tmp) = crate::command::tempxml::write("hostdev", &hostdev) else {
-        return String::from("✗ cannot write temp XML");
-    };
-    let path = crate::command::tempxml::path_arg(&tmp);
-    match crate::backend::virsh::exec::run(uri, &["attach-device", domain, &path, "--config"]).await {
-        Ok(_) => format!("✓ Attached {node} on {domain}  ── virsh attach-device {domain} {path}"),
-        Err(e) => format!("✗ attach failed: {}", e.to_string().lines().next().unwrap_or("")),
-    }
-}
-
-/// Build a `<hostdev>` element for a node device from its `nodedev-dumpxml`.
-///
-/// Uses the device's own `<capability type='pci'>` address (or USB
-/// vendor/product), never addresses of other devices in its IOMMU group.
-pub(super) fn hostdev_xml(dev_xml: &str) -> Option<String> {
-    let doc = roxmltree::Document::parse(dev_xml).ok()?;
-    let cap = doc
-        .root_element()
-        .children()
-        .find(|n| n.tag_name().name() == "capability")?;
-    let text = |name: &str| {
-        cap.children()
-            .find(|n| n.tag_name().name() == name)
-            .and_then(|n| n.text())
-            .map(str::trim)
-            .and_then(|t| t.parse::<u32>().ok())
-    };
-    let id_attr = |name: &str| {
-        cap.children()
-            .find(|n| n.tag_name().name() == name)
-            .and_then(|n| n.attribute("id"))
-            .map(str::to_string)
-    };
-    match cap.attribute("type")? {
-        "pci" => Some(format!(
-            "<hostdev mode='subsystem' type='pci' managed='yes'>\n  <source>\n    <address domain='{:#06x}' bus='{:#04x}' slot='{:#04x}' function='{:#x}'/>\n  </source>\n</hostdev>\n",
-            text("domain")?,
-            text("bus")?,
-            text("slot")?,
-            text("function")?
-        )),
-        "usb_device" => Some(format!(
-            "<hostdev mode='subsystem' type='usb' managed='yes'>\n  <source>\n    <vendor id='{}'/>\n    <product id='{}'/>\n  </source>\n</hostdev>\n",
-            id_attr("vendor")?,
-            id_attr("product")?
-        )),
-        _ => None,
+        messages.push_action(detail.message.clone(), &detail.domain, true);
     }
 }

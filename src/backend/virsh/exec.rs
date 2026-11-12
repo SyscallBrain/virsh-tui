@@ -1,7 +1,6 @@
 //! Process spawning: LC_ALL=C, explicit URI, timeouts, stderr capture.
 
 use color_eyre::{Result, eyre::eyre};
-use tokio::process::Command;
 
 /// How long a virsh subcommand may run. Long jobs (migration, cloning, wiping,
 /// snapshots with memory, uploads) get hours; everything else 30 s.
@@ -39,27 +38,45 @@ pub async fn run(uri: &str, args: &[&str]) -> Result<String> {
     if crate::command::exec::is_demo() {
         return Err(eyre!("demo mode: virsh is not executed"));
     }
-    let mut cmd = Command::new("virsh");
-    cmd.arg("-c").arg(uri).args(args);
-    cmd.env("LC_ALL", "C");
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-    // A timed-out command must not keep running unattended.
-    cmd.kill_on_drop(true);
-    let limit = timeout_for("virsh", args.first().copied().unwrap_or(""));
-    let output = tokio::time::timeout(limit, cmd.output())
+    structured_result(run_output(uri, args).await?)
+}
+
+/// Run an arbitrary user command, preserving a notice if stdout is truncated.
+pub async fn run_raw(uri: &str, args: &[&str]) -> Result<String> {
+    raw_result(run_output(uri, args).await?)
+}
+
+fn raw_result(output: crate::command::process::StepOutput) -> Result<String> {
+    if !output.status.success() {
+        return Err(eyre!("virsh failed: {}", friendly_first_line(&output.stderr)));
+    }
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    if output.stdout_truncated {
+        text.push_str("\n[output truncated]");
+    }
+    Ok(text)
+}
+
+async fn run_output(uri: &str, args: &[&str]) -> Result<crate::command::process::StepOutput> {
+    if crate::command::exec::is_demo() {
+        return Err(eyre!("demo mode: virsh is not executed"));
+    }
+    let step = crate::command::plan::CommandStep::new("virsh", args.to_vec());
+    let (_cancel, mut control) = tokio::sync::watch::channel(false);
+    crate::command::process::run_step(uri, &step, &mut control)
         .await
-        .map_err(|_| eyre!("virsh timed out"))?
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
+        .map_err(|error| match error {
+            crate::command::process::RunError::Timeout => eyre!("virsh timed out"),
+            crate::command::process::RunError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 eyre!("virsh not found in PATH")
-            } else {
-                eyre!("failed to spawn virsh: {e}")
             }
-        })?;
+            other => eyre!("failed to run virsh: {other}"),
+        })
+}
+
+fn structured_result(output: crate::command::process::StepOutput) -> Result<String> {
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        Ok(String::from_utf8_lossy(output.structured_stdout()?).into_owned())
     } else {
         Err(eyre!("virsh failed: {}", friendly_first_line(&output.stderr)))
     }
@@ -98,5 +115,30 @@ pub fn run_blocking(uri: &str, args: &[&str]) -> Result<String> {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         Err(eyre!("virsh failed"))
+    }
+}
+
+#[cfg(test)]
+mod supervised_tests {
+    #[tokio::test]
+    async fn raw_result_marks_truncated_output() {
+        let step = crate::command::plan::CommandStep::new("python3", vec!["-c", "print('x' * 1100000)"]);
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        let output = crate::command::process::run_step("test:///default", &step, &mut rx)
+            .await
+            .unwrap();
+        let result = super::raw_result(output).unwrap();
+        assert!(result.ends_with("\n[output truncated]"));
+    }
+
+    #[tokio::test]
+    async fn structured_result_rejects_truncated_output() {
+        let step = crate::command::plan::CommandStep::new("python3", vec!["-c", "print('x' * 1100000)"]);
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        let output = crate::command::process::run_step("test:///default", &step, &mut rx)
+            .await
+            .unwrap();
+        let result = super::structured_result(output);
+        assert!(result.unwrap_err().to_string().contains("exceeds the limit"));
     }
 }

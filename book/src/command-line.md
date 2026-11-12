@@ -63,6 +63,12 @@ set with `:connect`, not with `-c`. Destructive subcommands such as
 line of the output appears in the message line and the rest in
 `:messages`.
 
+Raw commands use the same single active job as other actions, including commands
+that only read data. While a job is running, another command or connection change
+is refused. `Ctrl-c` requests cancellation of the local client; check the object
+state before retrying because libvirt may continue the operation. See
+[Cancelling a background job](safety.md#cancelling-a-background-job).
+
 When you type a command with its own arguments, such as
 `:attach-disk vm /path/disk.qcow2 vdb --driver qemu --config`, virsh-tui
 passes it to `virsh` unchanged instead of using its shorter built-in form.

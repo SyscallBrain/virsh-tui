@@ -214,6 +214,7 @@ pub struct ResolvedAction {
 }
 
 /// Key engine.
+#[derive(Clone)]
 pub struct KeyEngine {
     map: HashMap<Vec<String>, KeyAction>,
     pending: Vec<String>,

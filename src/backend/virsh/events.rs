@@ -136,9 +136,20 @@ async fn stream_once(
     filter: &[&str],
     tx: &mpsc::Sender<crate::model::LibvirtEvent>,
 ) -> color_eyre::Result<()> {
+    stream_once_with_program(uri, sub, filter, tx, "virsh").await
+}
+
+async fn stream_once_with_program(
+    uri: &str,
+    sub: &str,
+    filter: &[&str],
+    tx: &mpsc::Sender<crate::model::LibvirtEvent>,
+    program: &str,
+) -> color_eyre::Result<()> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
-    let mut child = Command::new("virsh")
+    let mut command = Command::new(program);
+    command
         .arg("-c")
         .arg(uri)
         .arg(sub)
@@ -149,26 +160,116 @@ async fn stream_once(
         .stdout(std::process::Stdio::piped())
         // Never inherit stderr: it would draw over the TUI.
         .stderr(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .spawn()?;
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn()?;
+    #[cfg(unix)]
+    let mut group = crate::command::process::ProcessGroup::new(child.id());
     let stdout = child
         .stdout
         .take()
         .ok_or_else(|| color_eyre::eyre::eyre!("no stdout"))?;
     let mut lines = BufReader::new(stdout).lines();
-    while let Some(line) = lines.next_line().await? {
+    loop {
+        let line = tokio::select! {
+            _ = tx.closed() => break,
+            line = lines.next_line() => match line? {
+                Some(line) => line,
+                None => break,
+            },
+        };
         if let Some(ev) = parse_event_line(&line)
             && tx.send(ev).await.is_err()
         {
             break;
         }
     }
+    // A disconnected receiver must stop a quiet stream as well as an active one.
+    #[cfg(unix)]
+    group.signal(libc::SIGKILL);
+    let _ = child.kill().await;
+    #[cfg(unix)]
+    group.mark_reaped();
+    let _ = child.wait().await;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::parse_event_line;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn dropping_receiver_stops_event_process_descendants() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("virsh");
+        let marker = dir.path().join("started");
+        let survived = dir.path().join("survived");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\n(sleep 1; touch \"$(dirname \"$0\")/survived\") &\ntouch \"$(dirname \"$0\")/started\"\nwait\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let program = script.to_string_lossy().into_owned();
+        let task = tokio::spawn(async move {
+            super::stream_once_with_program("test:///default", "event", &[], &tx, &program).await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !marker.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(rx);
+        tokio::time::timeout(std::time::Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        assert!(
+            !survived.exists(),
+            "event process descendant survived receiver shutdown"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn dropping_receiver_stops_a_quiet_event_process() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("started");
+        let script = dir.path().join("virsh");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\ntouch \"$(dirname \"$0\")/started\"\nexec sleep 30\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let program = script.to_string_lossy().into_owned();
+        let task = tokio::spawn(async move {
+            super::stream_once_with_program("test:///default", "event", &[], &tx, &program).await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !marker.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(rx);
+        tokio::time::timeout(std::time::Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
 
     #[test]
     fn parses_real_timestamped_lifecycle_line() {

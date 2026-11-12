@@ -222,6 +222,54 @@ pub fn define(domain: &str) -> CommandPlan {
     )
 }
 
+/// Build a `<hostdev>` element for a node device from its `nodedev-dumpxml`.
+///
+/// Uses the device's own `<capability type='pci'>` address (or USB
+/// vendor/product), never addresses of other devices in its IOMMU group.
+pub fn hostdev_xml(dev_xml: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse(dev_xml).ok()?;
+    let cap = doc
+        .root_element()
+        .children()
+        .find(|n| n.tag_name().name() == "capability")?;
+    let text = |name: &str| {
+        cap.children()
+            .find(|n| n.tag_name().name() == name)
+            .and_then(|n| n.text())
+            .map(str::trim)
+            .and_then(|t| t.parse::<u32>().ok())
+    };
+    let id_attr = |name: &str| {
+        cap.children()
+            .find(|n| n.tag_name().name() == name)
+            .and_then(|n| n.attribute("id"))
+            .and_then(|id| {
+                let id = id.trim();
+                if let Some(hex) = id.strip_prefix("0x").or_else(|| id.strip_prefix("0X")) {
+                    u16::from_str_radix(hex, 16).ok()
+                } else {
+                    id.parse::<u16>().ok()
+                }
+            })
+            .map(|id| format!("0x{id:04x}"))
+    };
+    match cap.attribute("type")? {
+        "pci" => Some(format!(
+            "<hostdev mode='subsystem' type='pci' managed='yes'>\n  <source>\n    <address domain='{:#06x}' bus='{:#04x}' slot='{:#04x}' function='{:#x}'/>\n  </source>\n</hostdev>\n",
+            text("domain")?,
+            text("bus")?,
+            text("slot")?,
+            text("function")?
+        )),
+        "usb_device" => Some(format!(
+            "<hostdev mode='subsystem' type='usb' managed='yes'>\n  <source>\n    <vendor id='{}'/>\n    <product id='{}'/>\n  </source>\n</hostdev>\n",
+            id_attr("vendor")?,
+            id_attr("product")?
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{attach_disk, change_media, define, set_memory, set_vcpus};
