@@ -71,14 +71,14 @@ pub(super) fn open_wizard(
 
 /// Wizard keys. Text fields take every printable key (so names can contain
 /// h, l, y, …); shortcuts use Ctrl. Returns true when the key was consumed.
-pub(super) async fn handle_wizard_key(
+pub(super) fn handle_wizard_key(
     key: KeyEvent,
     wizard: &mut Option<ui::overlays::wizard::WizardState>,
     uri: &str,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
     dash: &mut ui::views::dashboard::DashboardState,
 ) -> bool {
     use ui::overlays::wizard::{WKind, WizardState};
@@ -104,7 +104,13 @@ pub(super) async fn handle_wizard_key(
                 wz.error = String::from("command copied");
             }
             KeyCode::Char('e') => {
-                wz.error = edit_wizard_xml(uri, wz, dry_run, demo, history, messages).await;
+                wz.error = if demo || dry_run {
+                    let message = String::from("[dry-run] edit as XML  ── virt-install --print-xml");
+                    messages.push_action(message.clone(), &wz.name, true);
+                    message
+                } else {
+                    "XML editor request was not submitted".into()
+                };
             }
             _ => return true,
         }
@@ -130,7 +136,7 @@ pub(super) async fn handle_wizard_key(
                 wz.goto_step(step);
                 wz.error = problem;
             } else {
-                match run_wizard(uri, wz, dry_run, demo, history, messages).await {
+                match preview_wizard(uri, wz, dry_run, demo, history, messages) {
                     Ok(msg) => {
                         dash.message = msg;
                         WizardState::discard_draft();
@@ -161,143 +167,24 @@ pub(super) async fn handle_wizard_key(
     true
 }
 
-/// Create the domain (Review › Enter). Returns the success message.
-pub(super) async fn run_wizard(
+/// Preview creation in demo and dry-run modes. Live submissions are jobs.
+fn preview_wizard(
     uri: &str,
     wz: &ui::overlays::wizard::WizardState,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
 ) -> Result<String, String> {
+    if !demo && !dry_run {
+        return Err("Wizard request was not submitted".into());
+    }
     let mut plan = crate::command::builders::install::virt_install(wz);
-    // virt-install targets the URI explicitly (shown as `--connect URI`).
     plan.steps[0].argv.insert(0, uri.to_string());
     plan.steps[0].argv.insert(0, String::from("--connect"));
     let shown = crate::command::display::display(&plan.steps[0]);
     history.push(&shown);
-    if demo || dry_run {
-        let msg = format!("[dry-run] Created {}  ── {shown}", wz.name);
-        messages.push(msg.clone());
-        return Ok(msg);
-    }
-    if !wz.start_after {
-        // Define without booting: render the XML with virt-install, then define it.
-        return define_from_print_xml(uri, wz, history, messages).await;
-    }
-    match crate::command::exec::execute(uri, &plan, false).await {
-        Ok(_) => {
-            let msg = format!("✓ Created {}  ── {shown}", wz.name);
-            messages.push(msg.clone());
-            if wz.open_console {
-                open_viewer(uri, &wz.name).await;
-            }
-            Ok(msg)
-        }
-        Err(e) => {
-            messages.push(e.to_string());
-            Err(e.to_string())
-        }
-    }
-}
-
-/// `virt-install … --print-xml` (stdout) or the failure reason (stderr).
-async fn print_xml(uri: &str, wz: &ui::overlays::wizard::WizardState) -> Result<String, String> {
-    let plan = crate::command::builders::install::virt_install(wz);
-    let mut argv: Vec<String> = plan.steps[0].argv.clone();
-    argv.push(String::from("--print-xml"));
-    let out = tokio::process::Command::new("virt-install")
-        .arg("--connect")
-        .arg(uri)
-        .args(&argv)
-        .env("LC_ALL", "C")
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
-        .map_err(|e| format!("cannot run virt-install: {e}"))?;
-    let xml = String::from_utf8_lossy(&out.stdout).into_owned();
-    if out.status.success() && !xml.trim().is_empty() {
-        return Ok(xml);
-    }
-    let err = String::from_utf8_lossy(&out.stderr);
-    let reason = err
-        .lines()
-        .map(|l| l.trim_start_matches("ERROR").trim())
-        .find(|l| !l.is_empty())
-        .unwrap_or("no output");
-    Err(format!(
-        "virt-install --print-xml failed: {}",
-        crate::model::sanitize(reason)
-    ))
-}
-
-/// Create without starting: `--print-xml` → `virsh define`.
-async fn define_from_print_xml(
-    uri: &str,
-    wz: &ui::overlays::wizard::WizardState,
-    history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
-) -> Result<String, String> {
-    let xml = print_xml(uri, wz).await?;
-    let tmp =
-        crate::command::tempxml::write(&wz.name, &xml).map_err(|_| String::from("cannot write temp XML"))?;
-    let path = crate::command::tempxml::path_arg(&tmp);
-    let define = crate::command::plan::CommandPlan::single(
-        "virsh",
-        vec!["define", &path, "--validate"],
-        &format!("Defined {} (not started)", wz.name),
-    );
-    history.push(&crate::command::display::display(&define.steps[0]));
-    let msg = crate::command::exec::execute(uri, &define, false)
-        .await
-        .map_err(|e| e.to_string())?;
-    messages.push(msg.clone());
+    let msg = format!("[dry-run] Created {}  ── {shown}", wz.name);
+    messages.push_action(msg.clone(), &wz.name, true);
     Ok(msg)
-}
-
-/// C-e: `--print-xml` → $EDITOR → `virsh define`. Returns the status text.
-pub(super) async fn edit_wizard_xml(
-    uri: &str,
-    wz: &ui::overlays::wizard::WizardState,
-    dry_run: bool,
-    demo: bool,
-    history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
-) -> String {
-    if demo || dry_run {
-        let msg = String::from("[dry-run] edit as XML  ── virt-install --print-xml");
-        messages.push(msg.clone());
-        return msg;
-    }
-    let xml = match print_xml(uri, wz).await {
-        Ok(x) => x,
-        Err(e) => {
-            messages.push(format!("✗ {e}  ── virt-install --print-xml"));
-            return e;
-        }
-    };
-    let Ok(tmp) = crate::command::tempxml::write(&wz.name, &xml) else {
-        return String::from("cannot write temp XML");
-    };
-    if !external::edit_file(tmp.path()) {
-        return String::from("editor failed");
-    }
-    let path = crate::command::tempxml::path_arg(&tmp);
-    let define = crate::command::plan::CommandPlan::single(
-        "virsh",
-        vec!["define", &path, "--validate"],
-        &format!("Defined {}", wz.name),
-    );
-    history.push(&crate::command::display::display(&define.steps[0]));
-    match crate::command::exec::execute(uri, &define, false).await {
-        Ok(msg) => {
-            messages.push(msg.clone());
-            msg
-        }
-        Err(e) => {
-            messages.push(e.to_string());
-            e.to_string()
-        }
-    }
 }

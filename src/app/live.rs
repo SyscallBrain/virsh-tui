@@ -120,7 +120,7 @@ pub(super) fn apply_live_msg(uri: &str, dash: &mut ui::views::dashboard::Dashboa
             dash.apply_metrics();
             dash.check_shutdowns();
             dash.uri = uri.to_string();
-            if !dash.connected {
+            if !dash.connected || dash.message == "loading…" {
                 dash.message.clear();
             }
             dash.connected = true;
@@ -219,26 +219,67 @@ pub(super) fn update_host_gauges(dash: &mut ui::views::dashboard::DashboardState
 
 /// A heavy view state loaded in the background, tagged with its URI.
 pub(super) enum Loaded {
-    Host(String, Box<ui::views::host::HostState>),
-    Nets(String, Box<ui::views::networks::NetworksState>),
-    Store(String, Box<ui::views::storage::StorageState>),
+    Host(String, u64, u64, Box<ui::views::host::HostState>),
+    Nets(String, u64, u64, Box<ui::views::networks::NetworksState>),
+    Store(String, u64, u64, Box<ui::views::storage::StorageState>),
+    Failed(View, String, u64, u64),
 }
 
 /// Load Host/Networks/Storage without blocking the UI (dozens of virsh calls).
-pub(super) fn spawn_load(uri: &str, view: View, tx: &tokio::sync::mpsc::UnboundedSender<Loaded>) {
+pub(super) fn spawn_load(
+    uri: &str,
+    view: View,
+    epoch: u64,
+    serial: u64,
+    tx: &tokio::sync::mpsc::UnboundedSender<Loaded>,
+) -> Option<tokio::task::JoinHandle<()>> {
     if !matches!(view, View::Host | View::Networks | View::Storage) {
-        return;
+        return None;
     }
     let uri = uri.to_string();
-    let tx = tx.clone();
+    let child_uri = uri.clone();
+    let load = async move {
+        match view {
+            View::Host => Loaded::Host(
+                child_uri.clone(),
+                epoch,
+                serial,
+                Box::new(fill_live_host(&child_uri).await),
+            ),
+            View::Networks => Loaded::Nets(
+                child_uri.clone(),
+                epoch,
+                serial,
+                Box::new(fill_live_nets(&child_uri).await),
+            ),
+            _ => Loaded::Store(
+                child_uri.clone(),
+                epoch,
+                serial,
+                Box::new(fill_live_store(&child_uri).await),
+            ),
+        }
+    };
+    Some(supervise_view_load(view, uri, epoch, serial, tx.clone(), load))
+}
+
+pub(super) fn supervise_view_load(
+    view: View,
+    uri: String,
+    epoch: u64,
+    serial: u64,
+    tx: tokio::sync::mpsc::UnboundedSender<Loaded>,
+    load: impl std::future::Future<Output = Loaded> + Send + 'static,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let msg = match view {
-            View::Host => Loaded::Host(uri.clone(), Box::new(fill_live_host(&uri).await)),
-            View::Networks => Loaded::Nets(uri.clone(), Box::new(fill_live_nets(&uri).await)),
-            _ => Loaded::Store(uri.clone(), Box::new(fill_live_store(&uri).await)),
+        let mut tasks = tokio::task::JoinSet::new();
+        tasks.spawn(load);
+        let msg = match tasks.join_next().await {
+            Some(Ok(loaded)) => loaded,
+            _ => Loaded::Failed(view, uri, epoch, serial),
         };
         let _ = tx.send(msg);
-    });
+    })
 }
 
 /// Build live networks state: definitions, host interfaces, and the
@@ -289,20 +330,6 @@ pub(super) async fn fill_live_nets(uri: &str) -> ui::views::networks::NetworksSt
     st.selected = 0;
     load_net_selection(uri, &mut st).await;
     st
-}
-
-/// Reload the networks list keeping the selection (after a mutation).
-pub(super) async fn reload_nets(uri: &str, st: &mut ui::views::networks::NetworksState) {
-    let keep = st.selected_name().to_string();
-    let message = std::mem::take(&mut st.message);
-    let mut fresh = fill_live_nets(uri).await;
-    if let Some(i) = fresh.networks.iter().position(|n| n.name == keep) {
-        fresh.selected = i;
-        load_net_selection(uri, &mut fresh).await;
-    }
-    fresh.message = message;
-    fresh.focus = st.focus;
-    *st = fresh;
 }
 
 /// Leases (with static hosts and owning domains) and attached interfaces of
@@ -413,14 +440,18 @@ pub(super) fn network_of(cidr: &str) -> String {
 /// IPv4 addresses per interface from `ip -j -4 addr`.
 async fn iface_ipv4s() -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
-    let Ok(o) = tokio::process::Command::new("ip")
-        .args(["-j", "-4", "addr"])
-        .output()
-        .await
-    else {
+    let step = crate::command::plan::CommandStep::new("ip", vec!["-j", "-4", "addr"]);
+    let (_sender, mut control) = tokio::sync::watch::channel(false);
+    let Ok(o) = crate::command::process::run_step("", &step, &mut control).await else {
         return out;
     };
-    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&o.stdout) else {
+    if !o.status.success() {
+        return out;
+    }
+    let Ok(bytes) = o.structured_stdout() else {
+        return out;
+    };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(bytes) else {
         return out;
     };
     for iface in v.as_array().into_iter().flatten() {
@@ -570,25 +601,6 @@ pub(super) async fn fill_live_store(uri: &str) -> ui::views::storage::StorageSta
     st.pool_selected = 0;
     load_pool_volumes(uri, &mut st).await;
     st
-}
-
-/// Reload storage after a mutation, keeping the selected pool and message.
-pub(super) async fn reload_store(uri: &str, st: &mut ui::views::storage::StorageState) {
-    let keep_pool = st.pools.get(st.pool_selected).map(|p| p.name.clone());
-    let keep_vol = st.vol_selected;
-    let message = std::mem::take(&mut st.message);
-    let focus = st.focus_pools;
-    let mut fresh = fill_live_store(uri).await;
-    if let Some(i) = keep_pool.and_then(|k| fresh.pools.iter().position(|p| p.name == k))
-        && i != fresh.pool_selected
-    {
-        fresh.pool_selected = i;
-        load_pool_volumes(uri, &mut fresh).await;
-    }
-    fresh.vol_selected = keep_vol.min(fresh.volumes.len().saturating_sub(1));
-    fresh.message = message;
-    fresh.focus_pools = focus;
-    *st = fresh;
 }
 
 /// Volumes of the selected pool with format/sizes, backing chains and owners.

@@ -18,46 +18,6 @@ pub(super) fn targets(dash: &crate::ui::views::dashboard::DashboardState) -> Vec
     }
 }
 
-/// Run a plan for each target sequentially; update message, history, demo state.
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run_plan_on_targets(
-    uri: &str,
-    targets: &[String],
-    build: impl Fn(&str) -> crate::command::plan::CommandPlan,
-    dry_run: bool,
-    demo: bool,
-    dash: &mut crate::ui::views::dashboard::DashboardState,
-    history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
-) {
-    for target in targets {
-        let plan = build(target);
-        let first = plan
-            .steps
-            .first()
-            .map(crate::command::display::display)
-            .unwrap_or_default();
-        history.push(&first);
-        match crate::command::exec::execute(uri, &plan, dry_run).await {
-            Ok(msg) => {
-                dash.message = msg.clone();
-                messages.push(msg);
-                if demo {
-                    apply_demo_transition(dash, target, &plan.summary);
-                }
-            }
-            Err(e) => {
-                dash.message = e.to_string();
-                messages.push(e.to_string());
-                break;
-            }
-        }
-    }
-    if !demo {
-        refresh_live(uri, dash).await;
-    }
-}
-
 /// Demo state transitions (mockup simulation).
 pub(super) fn apply_demo_transition(
     dash: &mut crate::ui::views::dashboard::DashboardState,
@@ -92,16 +52,6 @@ pub(super) fn apply_demo_transition(
 }
 
 /// Re-fetch live domains after a mutation.
-pub(super) async fn refresh_live(uri: &str, dash: &mut crate::ui::views::dashboard::DashboardState) {
-    if let Ok((summaries, _)) = crate::backend::virsh::VirshBackend::new(uri)
-        .domains_with_stats()
-        .await
-    {
-        dash.apply_summaries(&summaries);
-        dash.apply_metrics();
-    }
-}
-
 pub(super) fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").to_string()
 }
@@ -153,13 +103,46 @@ pub(super) fn base64_clone(_text: &str) -> String {
     out
 }
 
+/// Preview target plans in demo or dry-run mode; live plans are submitted as jobs.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn preview_targets(
+    _uri: &str,
+    targets: &[String],
+    build: impl Fn(&str) -> crate::command::plan::CommandPlan,
+    dry_run: bool,
+    demo: bool,
+    dash: &mut crate::ui::views::dashboard::DashboardState,
+    history: &mut crate::command::history::History,
+    messages: &mut MessageLog,
+) {
+    if !demo && !dry_run {
+        dash.message = "✗ Domain request was not submitted".into();
+        return;
+    }
+    for target in targets {
+        let plan = build(target);
+        let first = plan
+            .steps
+            .first()
+            .map(crate::command::display::display)
+            .unwrap_or_default();
+        history.push(&first);
+        let prefix = if demo { "✓" } else { "[dry-run]" };
+        dash.message = format!("{prefix} {}  ── {first}", plan.summary);
+        messages.push_action(dash.message.clone(), target, true);
+        if demo {
+            apply_demo_transition(dash, target, &plan.summary);
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
-pub(super) async fn dispatch_action(
+pub(super) fn dispatch_action(
     action: crate::input::engine::KeyAction,
     dash: &mut crate::ui::views::dashboard::DashboardState,
     uri: &mut String,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
     confirm: &mut Option<crate::command::plan::PendingConfirm>,
     ex_line: &mut Option<crate::input::textinput::TextInput>,
     dry_run: bool,
@@ -207,7 +190,7 @@ pub(super) async fn dispatch_action(
         }
         A::Start => {
             let t = targets(dash);
-            run_plan_on_targets(uri, &t, lifecycle::start, dry_run, demo, dash, history, messages).await;
+            preview_targets(uri, &t, lifecycle::start, dry_run, demo, dash, history, messages);
         }
         A::Shutdown => {
             // Only running guests can honour an ACPI request.
@@ -218,9 +201,9 @@ pub(super) async fn dispatch_action(
             });
             if t.is_empty() {
                 dash.message = format!("✗ {} is not running", skipped.join(", "));
-                messages.push(dash.message.clone());
+                messages.push_action(dash.message.clone(), &skipped.join(", "), false);
             } else {
-                run_plan_on_targets(
+                preview_targets(
                     uri,
                     &t,
                     lifecycle::shutdown,
@@ -229,8 +212,7 @@ pub(super) async fn dispatch_action(
                     dash,
                     history,
                     messages,
-                )
-                .await;
+                );
                 if !demo && !dry_run && dash.message.starts_with('✓') {
                     for n in &t {
                         dash.track_shutdown(n);
@@ -248,7 +230,7 @@ pub(super) async fn dispatch_action(
         }),
         A::Reboot => {
             let t = targets(dash);
-            run_plan_on_targets(uri, &t, lifecycle::reboot, dry_run, demo, dash, history, messages).await;
+            preview_targets(uri, &t, lifecycle::reboot, dry_run, demo, dash, history, messages);
         }
         A::Reset => ask_confirm(
             confirm,
@@ -260,14 +242,14 @@ pub(super) async fn dispatch_action(
         A::Pause => {
             let t = targets(dash);
             if dash.selected().state == crate::model::DomainState::Paused {
-                run_plan_on_targets(uri, &t, lifecycle::resume, dry_run, demo, dash, history, messages).await;
+                preview_targets(uri, &t, lifecycle::resume, dry_run, demo, dash, history, messages);
             } else {
-                run_plan_on_targets(uri, &t, lifecycle::pause, dry_run, demo, dash, history, messages).await;
+                preview_targets(uri, &t, lifecycle::pause, dry_run, demo, dash, history, messages);
             }
         }
         A::ManagedSave => {
             let t = targets(dash);
-            run_plan_on_targets(
+            preview_targets(
                 uri,
                 &t,
                 lifecycle::managed_save,
@@ -276,13 +258,12 @@ pub(super) async fn dispatch_action(
                 dash,
                 history,
                 messages,
-            )
-            .await;
+            );
         }
         A::Autostart => {
             let t = targets(dash);
             let enable = !dash.selected().autostart;
-            run_plan_on_targets(
+            preview_targets(
                 uri,
                 &t,
                 move |d| lifecycle::autostart(d, enable),
@@ -291,12 +272,11 @@ pub(super) async fn dispatch_action(
                 dash,
                 history,
                 messages,
-            )
-            .await;
+            );
         }
         A::SendKey => {
             let t = targets(dash);
-            run_plan_on_targets(
+            preview_targets(
                 uri,
                 &t,
                 lifecycle::send_key,
@@ -305,8 +285,7 @@ pub(super) async fn dispatch_action(
                 dash,
                 history,
                 messages,
-            )
-            .await;
+            );
         }
         A::Undefine => {
             let t = targets(dash);
@@ -364,8 +343,8 @@ pub(super) async fn dispatch_action(
         }
         A::ExportXml => {
             let name = dash.selected().name.clone();
-            dash.message = export_xml(uri, &name, dry_run || demo).await;
-            messages.push(dash.message.clone());
+            dash.message = format!("[dry-run] export {name}  ── virsh dumpxml {name} > ./{name}.xml");
+            messages.push_action(dash.message.clone(), &name, true);
         }
         A::Rename => {
             let sel = dash.selected().name.clone();
@@ -397,9 +376,11 @@ pub(super) async fn dispatch_action(
                 vec![sel],
             ));
         }
+        A::Console if demo || dry_run => dash.message = "[dry-run] Open console".into(),
         A::Console => external::console(uri, &dash.selected().name),
-        A::Viewer => open_viewer(uri, &dash.selected().name.clone()).await,
-        A::Refresh if !demo => refresh_live(uri, dash).await,
+        A::Viewer if demo || dry_run => dash.message = "[dry-run] Open viewer".into(),
+        A::Viewer => dash.message = "✗ Viewer request was not submitted".into(),
+        A::Refresh if !demo => {}
         A::Refresh => {}
         _ => {}
     }
@@ -503,31 +484,4 @@ pub(super) fn prefill_command(
         A::Migrate => format!("migrate {domain} qemu+ssh://HOST/system --live --persistent --verbose"),
         _ => return None,
     })
-}
-
-/// `␣x`: `virsh dumpxml <name>` into `./<name>.xml` (never overwrites).
-pub(super) async fn export_xml(uri: &str, name: &str, dry_run: bool) -> String {
-    let shown = format!("virsh dumpxml {name} > ./{name}.xml");
-    if dry_run {
-        return format!("[dry-run] export {name}  ── {shown}");
-    }
-    let path = std::path::PathBuf::from(format!("{name}.xml"));
-    let xml = match crate::backend::virsh::exec::run(uri, &["dumpxml", name]).await {
-        Ok(x) => x,
-        Err(e) => return format!("✗ {e}  ── virsh dumpxml {name}"),
-    };
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path);
-    match file.and_then(|mut f| std::io::Write::write_all(&mut f, xml.as_bytes())) {
-        Ok(()) => {
-            let shown_path = std::fs::canonicalize(&path).unwrap_or(path);
-            format!("✓ Exported {name} to {}  ── {shown}", shown_path.display())
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            format!("✗ {} already exists, not overwritten", path.display())
-        }
-        Err(e) => format!("✗ cannot write {}: {e}", path.display()),
-    }
 }
