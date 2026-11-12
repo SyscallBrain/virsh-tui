@@ -63,3 +63,41 @@ fn pending_tracks_and_undoes() {
     st.undo_field("cpus", "max");
     assert_eq!(st.pending_count(), 0);
 }
+
+#[test]
+fn draft_identity_tracks_edits_but_not_navigation() {
+    use virsh_tui::ui::views::detail::hardware::HardwareState;
+    let mut state = HardwareState::demo();
+    let before = state.draft_fingerprint();
+    state.selected = 1;
+    assert_eq!(before, state.draft_fingerprint());
+    assert_eq!(before, state.clone().draft_fingerprint());
+    state.set_field("cpus", "max", "16");
+    assert_ne!(before, state.draft_fingerprint());
+}
+
+#[test]
+fn rebase_preserves_pending_values_and_updates_successful_fields() {
+    use virsh_tui::{
+        backend::virsh::parse_xml::parse_domain_xml, ui::views::detail::hardware::HardwareState,
+    };
+    let xml = std::fs::read_to_string("tests/fixtures/virsh/dumpxml_arch.txt").unwrap();
+    let config = parse_domain_xml(&xml).unwrap();
+    let mut state = HardwareState::from_config(&config, &xml, true);
+    state.set_field("cpus", "max", "16");
+    state.set_field("memory", "max", "20G");
+    let updated = virsh_tui::xml::edit::set_vcpus(&xml, config.current_vcpus, 16).unwrap();
+    let config = parse_domain_xml(&updated).unwrap();
+    let rebased = state.rebase(&config, &updated, true).unwrap();
+    let cpus = &rebased.forms["cpus"].fields;
+    let max = cpus.iter().find(|field| field.id == "max").unwrap();
+    assert_eq!(max.current, "16");
+    assert_eq!(max.original, "16");
+    let memory = rebased.forms["memory"]
+        .fields
+        .iter()
+        .find(|field| field.id == "max")
+        .unwrap();
+    assert!(memory.dirty());
+    assert_eq!(memory.current, "20G");
+}

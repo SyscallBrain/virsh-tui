@@ -137,9 +137,43 @@
 - **Hardware shortcuts** (`␣da ␣dr ␣ia ␣il ␣M`) pre-fill the `:` line with the full virsh command instead of
   opening bespoke forms: the user sees and edits exactly what runs. Full virsh syntax on `:` always passes through.
 - **Timeouts.** Long virsh jobs get a 24 h limit (others 30 s) and processes are killed on timeout.
-- **Known limitation.** Actions are awaited inside key handling, so a long job (migration, wipe) keeps the UI
-  busy until it finishes. Moving executions to background tasks with progress in the message line is the next
-  structural step.
-
+- **Original limitation.** Actions and reads were awaited inside key handling
+  and could keep the UI busy until they finished. Responsive jobs now schedule
+  those operations separately; route evidence and platform limits are below.
 - Remote host CPU and memory sampling is unavailable; the new-domain wizard is disabled for remote connections until reliable remote capacity facts are available.
 - Snapshot creation uses Tab to select name, description, atomic, or quiesce, and Space toggles the selected option.
+
+
+## Responsive execution
+
+Live dashboard lifecycle shortcuts, snapshot confirmations, media changes, selected network and storage actions,
+confirmed plans, raw virsh commands and several command-line actions now use
+background jobs. Wizard creation and define-only submissions also use jobs;
+a requested graphical viewer is opened after creation. Wizard XML preparation
+and validation run in the background around the foreground editor.
+Normal key dispatch is now synchronous and schedules backend work separately.
+Route evidence is recorded in `superpowers/plans/2026-11-11-responsive-jobs-evidence.md`.
+While a job runs, input is conservatively limited to navigation, filtering,
+help, cached palette browsing, settings display, opening and editing a wizard draft,
+`:messages`, `:help` and redraw, and `Ctrl-c` requests cancellation. A local cancellation
+does not imply that libvirt rolled back or stopped server-side work.
+
+A lone digit is resolved after 180 ms of idle time so view switches meet the
+responsiveness target. Digits typed before that deadline still form a count.
+
+The first frame, ordinary domain detail opening, network/pool selection,
+completion, palette help, detail shortcuts, the media picker, manual refresh
+and graphical viewer lookup now use background reads. Domain and network XML
+validation and definition run as jobs, and network editor preparation runs
+in the background. Edited XML that cannot safely be recovered in memory is
+kept in its private file with its path reported, to avoid discarding user changes.
+On Linux, macOS, FreeBSD and NetBSD, a foreground editor or console owns its process
+group and the terminal during handoff; signal shutdown stops that group before
+the terminal is restored. Linux has been exercised with PTY tests; macOS,
+FreeBSD and NetBSD have been cross-checked for compilation but not tested at runtime.
+Other Unix platforms still have limited cleanup after a foreground leader exits.
+
+The responsive message-line states have text snapshots, and existing idle
+snapshots remain unchanged. Screenshot regeneration was not run: neither
+Google Chrome nor Chromium is available on the validation host. The optional
+`aha` converter is also unavailable; mdBook and ImageMagick are available.

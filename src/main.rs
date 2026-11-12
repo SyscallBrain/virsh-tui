@@ -59,39 +59,43 @@ fn run_tui(cli: &Cli, config: &Config) -> Result<()> {
         let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
         return runtime.block_on(app::run(cli, config));
     }
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    let shutdown = runtime.block_on(async { install_signal_hook() })?;
+    let observed = shutdown.clone();
     let mut stdout = std::io::stdout();
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen)?;
-    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-    let result = runtime.block_on(async {
-        install_signal_hook();
-        app::run(cli, config).await
-    });
+    let result = runtime.block_on(app::run_with_shutdown(cli, config, shutdown));
+    let signal = *observed.borrow();
+    drop(runtime);
     let _ = crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen);
     let _ = crossterm::terminal::disable_raw_mode();
+    if let Some(signal) = signal {
+        std::process::exit(128 + signal);
+    }
     result
 }
 
-/// Restore the terminal on SIGINT/SIGTERM, then exit with a signal code.
-/// Must be called from inside a Tokio runtime (registers OS signal handlers).
-fn install_signal_hook() {
+/// Register OS signals before the terminal is switched into raw mode.
+fn install_signal_hook() -> Result<tokio::sync::watch::Receiver<Option<i32>>> {
+    let (sender, receiver) = tokio::sync::watch::channel(None);
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let sigint = signal(SignalKind::interrupt());
-        let sigterm = signal(SignalKind::terminate());
-        if let (Ok(mut sigint), Ok(mut sigterm)) = (sigint, sigterm) {
-            tokio::spawn(async move {
-                tokio::select! {
-                    _ = sigint.recv() => {},
-                    _ = sigterm.recv() => {},
-                }
-                let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
-                let _ = crossterm::terminal::disable_raw_mode();
-                std::process::exit(130);
-            });
-        }
+        let mut sigint = signal(SignalKind::interrupt())?;
+        let mut sigterm = signal(SignalKind::terminate())?;
+        tokio::spawn(async move {
+            let signal = tokio::select! {
+                _ = sigint.recv() => libc::SIGINT,
+                _ = sigterm.recv() => libc::SIGTERM,
+            };
+            virsh_tui::app::external::notify_shutdown();
+            let _ = sender.send(Some(signal));
+        });
     }
+    #[cfg(not(unix))]
+    drop(sender);
+    Ok(receiver)
 }
 
 fn install_panic_hook() {

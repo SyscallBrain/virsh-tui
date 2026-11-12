@@ -69,6 +69,25 @@ or set `graphs = "block"` (or `"tty"`) and `icons = "ascii"` in
 Set `COLORTERM=truecolor` if your terminal supports 24-bit colour but does not
 advertise it. Inside tmux, also enable `set -ga terminal-overrides ",*:Tc"`.
 
+## A command reports that output was truncated
+
+virsh-tui keeps up to 1 MiB from each output stream. Raw `virsh` commands
+show an `[output truncated]` notice when their standard output exceeds that
+limit. Structured responses, such as XML used for an edit, are rejected when
+incomplete so they cannot be applied as valid input.
+
+## A dry-run media preview needs CD-ROM details
+
+Open the domain details first to load its configuration, then retry the
+preview. When no target is specified, dry-run uses the cached CD-ROM target
+and does not run a preparation command.
+
+## A network creation job failed while I was editing another form
+
+The submitted network form is retained. Close the current network form, then
+press `n` in Networks to reopen the retained draft. Check the network's
+current state before retrying: earlier steps may already have succeeded.
+
 ## Reporting a bug
 
 Include the version (`virsh-tui -V`), `virsh --version`, the URI type

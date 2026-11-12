@@ -135,3 +135,14 @@ Several items ticked above were **not** true before this review and were fixed h
 - [ ] Deviations (with reason): Monitor tab adds a per-vCPU/disk/NIC row under the 2×2 charts (PLAN §9.5, not in a mockup);
       Settings categories other than Appearance use one option panel (not mocked); host network sparklines need a
       few samples before they show traffic.
+
+
+## Responsive jobs
+
+- Active jobs use the message row with a spinner, job number, target, step
+  (or `preparing`), elapsed time and `C-c cancel`. Idle rendering is unchanged.
+- Input admission is conservative while a job runs; route and modal coverage is
+  recorded in `superpowers/plans/2026-11-11-responsive-jobs-evidence.md`.
+- Network XML preparation shows `Loading network XML…`; wizard XML
+  preparation shows `Preparing XML…`. A prepared draft that cannot open its
+  editor immediately is retained for an explicit `e` or `C-e` retry.
