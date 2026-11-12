@@ -1223,6 +1223,12 @@ impl App {
                 continue;
             }
             match (self.view, resolved.action) {
+                // `:` opens the ex command line from any view, including the
+                // domain detail, where `:w`/`:q!` apply or discard edits.
+                (_, A::Ex) => {
+                    self.ex_line = Some(crate::input::textinput::TextInput::new());
+                    continue;
+                }
                 (_, A::InsertMedia) => {
                     open_picker(&mut self.store, &self.detail, &self.dash, &self.uri, self.demo).await;
                     if self.store.picker.is_some() {
@@ -1319,10 +1325,6 @@ impl App {
                         &mut self.messages,
                     )
                     .await;
-                    continue;
-                }
-                (View::Storage, A::Ex) => {
-                    self.ex_line = Some(crate::input::textinput::TextInput::new());
                     continue;
                 }
                 (View::Storage, _) => {
@@ -1669,6 +1671,27 @@ mod review_fixes {
         a.store.vol_selected = 0;
         a.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
         assert!(a.store.picker.is_some());
+    }
+    #[tokio::test]
+    async fn detail_colon_opens_ex_line() {
+        let mut a = app(View::Detail);
+        let mut d = ui::views::detail::DetailState::demo("vt-test-review");
+        d.hw.set_field("boot", "firmware", "bogus");
+        a.detail = Some(d);
+        a.on_key(key(':')).await;
+        assert!(
+            a.ex_line.is_some(),
+            "':' must open the ex line in the detail view"
+        );
+        // `:w` belongs to the detail handler; the dashboard handler would say
+        // "not available here" instead of reporting the invalid field.
+        a.ex_line = Some(crate::input::textinput::TextInput::with("w"));
+        a.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+        assert!(
+            a.detail.as_ref().unwrap().message.contains("cannot apply"),
+            "expected :w to reach the detail handler, got {:?}",
+            a.detail.as_ref().unwrap().message
+        );
     }
     #[tokio::test]
     async fn snapshot_create_name_is_editable() {
