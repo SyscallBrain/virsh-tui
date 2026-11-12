@@ -20,17 +20,24 @@ subcommands typed on the `:` line.
 
 ## Your files and guests stay as they are
 
-- XML edits go through `virsh define --validate`, so libvirt checks them
-  before anything changes. A rejected file reopens in your editor.
+- Domain XML edits go through `virsh define --validate`; network edits use
+  `virsh net-define --validate`. A rejected edit reopens in your editor when
+  you are still viewing the same object; otherwise press `e` there to retry.
 - Exporting XML never overwrites an existing file.
+- Switching connections waits until pending hardware edits have been applied
+  with `:w` or discarded with `:q!`.
 - Settings that change running guests, such as the balloon stats period, are
   off until you turn them on.
 
 ## Temporary files
 
 XML handed to `virsh define` or `attach-device` is written to
-`$XDG_RUNTIME_DIR` with a random name, created exclusively (`O_EXCL`) with
-mode 0600, and removed afterwards.
+`$XDG_RUNTIME_DIR` (or the system temporary directory if unavailable) with a
+random name, created exclusively (`O_EXCL`) with mode 0600, and removed
+afterwards. If the editor stops after changing its file, or the edited file
+cannot be read as UTF-8 within the size limit, that file is retained for
+recovery; its path is shown in the message line or recorded in the log.
+Remove the recovery file after retrieving its contents.
 
 ## Untrusted text
 
@@ -48,3 +55,15 @@ runs over its limit is killed instead of left running in the background.
 
 It never uses `sudo` and never asks for passwords. It runs with your user's
 libvirt permissions, nothing more.
+
+## Cancelling a background job
+
+`Ctrl-c` stops the local client for an active background job. Libvirt may
+continue an operation after the client stops, so verify the object state
+before retrying. Previously completed steps are not rolled back.
+
+If a hardware job may have changed the domain but did not finish, its pending
+edits remain visible and another apply is blocked. Record any values you need,
+discard the draft and reopen domain details to reload the configuration before
+retrying. A successful hardware job also waits for its read-back before another
+apply can start.

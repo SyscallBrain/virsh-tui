@@ -256,6 +256,22 @@ async fn fetch_ip(uri: &str, name: &str) -> String {
 }
 
 #[cfg(test)]
+pub(super) fn test_poller() -> (Poller, mpsc::UnboundedReceiver<Request>) {
+    let (_out, rx) = mpsc::channel(1);
+    let (tx, requests) = mpsc::unbounded_channel();
+    let task = tokio::spawn(std::future::pending());
+    (Poller { rx, tx, task }, requests)
+}
+
+#[cfg(test)]
+pub(super) fn test_poller_with_messages() -> (Poller, mpsc::Sender<LiveMsg>) {
+    let (out, rx) = mpsc::channel(128);
+    let (tx, _requests) = mpsc::unbounded_channel();
+    let task = tokio::spawn(std::future::pending());
+    (Poller { rx, tx, task }, out)
+}
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn local_uris() {

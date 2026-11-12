@@ -529,7 +529,7 @@ fn render_message(frame: &mut Frame, theme: &Theme, state: &StorageState, area: 
     crate::ui::chrome::message_line(frame, theme, area, &state.message);
 }
 
-fn render_picker(frame: &mut Frame, theme: &Theme, state: &StorageState, picker: &MediaPicker) {
+pub(crate) fn render_picker(frame: &mut Frame, theme: &Theme, state: &StorageState, picker: &MediaPicker) {
     use ratatui::widgets::Clear;
     let t = &theme.tokens;
     let area = frame.area();

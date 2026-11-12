@@ -1,0 +1,10 @@
+---
+source: src/app/mod.rs
+expression: "format!(\"preparing: {preparing}\\nrunning: {running}\\nnarrow ASCII: {narrow_ascii}\\ncancelling: {cancelling}\\nsuccess: {success}\\nfailure: {failure}\")"
+---
+preparing: <spinner> Job #1 · vt-test-vm · preparing · <elapsed>s · C-c cancel
+running: <spinner> Job #1 · vt-test-vm · step 1/2 · <elapsed>s · C-c cancel
+narrow ASCII: <spinner> Job #1 · vt-test-vm · step 1/2
+cancelling: <spinner> Job #1 · vt-test-vm · cancelling · <elapsed>s · C-c cancel
+success: ✓ Finished vt-test-vm  ── sh -c 'exit 0'
+failure: ✗ step 1/1 failed: test failure

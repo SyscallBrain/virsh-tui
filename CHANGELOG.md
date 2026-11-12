@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Long-running commands use background jobs so the interface can continue to
+  respond. Jobs report progress and support local cancellation; a remote
+  operation may continue after its client stops.
 - The dashboard shows the metrics next to the domain list from 153 columns
   (it needed 162). The list gives up its spare columns first, so common
   159-column terminals get the same layout as the screenshots.

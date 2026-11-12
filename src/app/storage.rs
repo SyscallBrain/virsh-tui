@@ -6,14 +6,13 @@ use super::*;
 
 /// Storage-view raw keys (picker editing, pool/vol actions). True when consumed.
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn handle_storage_key(
+pub(super) fn handle_storage_key(
     key: KeyEvent,
     store: &mut ui::views::storage::StorageState,
-    uri: &str,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
     confirm: &mut Option<crate::command::plan::PendingConfirm>,
     ex_line: &mut Option<crate::input::textinput::TextInput>,
 ) -> bool {
@@ -27,7 +26,7 @@ pub(super) async fn handle_storage_key(
                 return true;
             }
             KeyCode::Enter if key.modifiers.is_empty() => {
-                insert_picked(uri, store, dry_run, demo, history, messages).await;
+                insert_picked(store, dry_run, demo, history, messages);
                 return true;
             }
             KeyCode::Tab => {
@@ -50,7 +49,7 @@ pub(super) async fn handle_storage_key(
                 return true;
             }
             KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                eject_media(uri, store, dry_run, demo, history, messages).await;
+                eject_media(store, dry_run, demo, history, messages);
                 return true;
             }
             KeyCode::Backspace => {
@@ -82,21 +81,11 @@ pub(super) async fn handle_storage_key(
             true
         }
         "b" | "s" | "r" | "a" => {
-            pool_action(tok.token(), store, uri, dry_run, demo, history, messages, confirm).await;
+            pool_action(tok.token(), store, dry_run, demo, history, messages);
             true
         }
         "D" | "X" | "R" | "C" | "u" | "W" => {
-            vol_action(
-                tok.token(),
-                store,
-                uri,
-                dry_run,
-                demo,
-                history,
-                messages,
-                confirm,
-                ex_line,
-            );
+            vol_action(tok.token(), store, confirm, ex_line);
             true
         }
         "Enter" => {
@@ -112,71 +101,25 @@ pub(super) async fn handle_storage_key(
     }
 }
 
-/// Pool actions: b build, s start, r refresh, a autostart.
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn pool_action(
+/// Preview pool actions; live actions are submitted as jobs.
+fn pool_action(
     tok: &str,
     store: &mut ui::views::storage::StorageState,
-    uri: &str,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
-    _confirm: &mut Option<crate::command::plan::PendingConfirm>,
+    messages: &mut MessageLog,
 ) {
     use crate::command::builders::storage as sb;
     let pool = store.selected_pool().to_string();
-    match tok {
-        "b" => {
-            run_store_plan(
-                uri,
-                &sb::pool_build(&pool),
-                store,
-                dry_run,
-                demo,
-                history,
-                messages,
-            )
-            .await
-        }
-        "s" => {
-            run_store_plan(
-                uri,
-                &sb::pool_start(&pool),
-                store,
-                dry_run,
-                demo,
-                history,
-                messages,
-            )
-            .await
-        }
-        "r" => {
-            run_store_plan(
-                uri,
-                &sb::pool_refresh(&pool),
-                store,
-                dry_run,
-                demo,
-                history,
-                messages,
-            )
-            .await
-        }
-        "a" => {
-            run_store_plan(
-                uri,
-                &sb::pool_autostart(&pool, true),
-                store,
-                dry_run,
-                demo,
-                history,
-                messages,
-            )
-            .await
-        }
-        _ => {}
-    }
+    let plan = match tok {
+        "b" => sb::pool_build(&pool),
+        "s" => sb::pool_start(&pool),
+        "r" => sb::pool_refresh(&pool),
+        "a" => sb::pool_autostart(&pool, true),
+        _ => return,
+    };
+    preview_store_plan(&plan, &pool, store, dry_run, demo, history, messages);
 }
 
 /// Volume actions: D/C/u/W/X direct, R/C via builders, n via ex.
@@ -184,11 +127,6 @@ pub(super) async fn pool_action(
 pub(super) fn vol_action(
     tok: &str,
     store: &mut ui::views::storage::StorageState,
-    _uri: &str,
-    _dry_run: bool,
-    _demo: bool,
-    _history: &mut crate::command::history::History,
-    _messages: &mut Vec<String>,
     confirm: &mut Option<crate::command::plan::PendingConfirm>,
     ex_line: &mut Option<crate::input::textinput::TextInput>,
 ) {
@@ -279,104 +217,29 @@ pub(super) fn vol_action(
 }
 
 /// Storage engine-action dispatch (j/k counts + Enter on ISO).
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn dispatch_storage(
+pub(super) fn dispatch_storage(
     action: crate::input::engine::KeyAction,
     store: &mut ui::views::storage::StorageState,
-    detail: &mut Option<ui::views::detail::DetailState>,
-    view: &mut View,
-    dash: &ui::views::dashboard::DashboardState,
-    uri: &str,
-    dry_run: bool,
-    demo: bool,
-    history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
-    confirm: &mut Option<crate::command::plan::PendingConfirm>,
-    ex_line: &mut Option<crate::input::textinput::TextInput>,
 ) -> bool {
     use crate::input::engine::KeyAction as A;
     match action {
         A::MoveDown | A::MoveUp => {
             let down = action == A::MoveDown;
             if store.focus_pools {
-                let before = store.pool_selected;
                 store.pool_selected = if down {
                     (store.pool_selected + 1).min(store.pools.len().saturating_sub(1))
                 } else {
                     store.pool_selected.saturating_sub(1)
                 };
-                if !demo && store.pool_selected != before {
-                    load_pool_volumes(uri, store).await;
-                }
             } else if down {
                 store.vol_selected = (store.vol_selected + 1).min(store.volumes.len().saturating_sub(1));
             } else {
                 store.vol_selected = store.vol_selected.saturating_sub(1);
             }
         }
-        A::Open => {
-            if let Some(v) = store.selected_vol()
-                && v.name.ends_with(".iso")
-            {
-                let domain = dash.selected().name.clone();
-                open_picker_for(uri, store, &domain, demo).await;
-                let _ = (detail, view, dry_run, history, messages, confirm, ex_line);
-            }
-        }
         _ => {}
     }
     false
-}
-
-/// Open the media picker for a domain (cdrom target auto-detected).
-pub(super) async fn open_picker(
-    store: &mut ui::views::storage::StorageState,
-    detail: &Option<ui::views::detail::DetailState>,
-    dash: &ui::views::dashboard::DashboardState,
-    uri: &str,
-    demo: bool,
-) {
-    let domain = detail
-        .as_ref()
-        .map(|d| d.domain.clone())
-        .unwrap_or_else(|| dash.selected().name.clone());
-    open_picker_for(uri, store, &domain, demo).await;
-}
-
-pub(super) async fn open_picker_for(
-    uri: &str,
-    store: &mut ui::views::storage::StorageState,
-    domain: &str,
-    demo: bool,
-) {
-    use crate::ui::views::storage::MediaPicker;
-    let (target, bus, current) = if demo {
-        (
-            String::from("sda"),
-            String::from("sata"),
-            String::from("archlinux-2026.09.01-x86_64.iso"),
-        )
-    } else {
-        cdrom_of(uri, domain)
-            .await
-            .unwrap_or((String::from("sda"), String::from("sata"), String::new()))
-    };
-    let mut pools: Vec<String> = store.pools.iter().map(|p| p.name.clone()).collect();
-    if pools.is_empty() {
-        pools = vec![String::from("isos"), String::from("default")];
-    }
-    store.picker = Some(MediaPicker {
-        domain: domain.to_string(),
-        target,
-        bus,
-        current,
-        query: String::new(),
-        pool_idx: 0,
-        pools,
-        selected: 0,
-        live: true,
-        config: true,
-    });
 }
 
 /// First cdrom (target, bus) plus current media of a domain.
@@ -390,13 +253,12 @@ pub(super) async fn cdrom_of(uri: &str, domain: &str) -> Option<(String, String,
 }
 
 /// Insert the picked ISO (Enter in the picker).
-pub(super) async fn insert_picked(
-    uri: &str,
+fn insert_picked(
     store: &mut ui::views::storage::StorageState,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
 ) {
     let Some(p) = store.picker.take() else {
         return;
@@ -421,22 +283,7 @@ pub(super) async fn insert_picked(
         Some(&format!("{pool_path}/{iso}")),
         p.live,
     );
-    for step in &plan.steps {
-        history.push(&crate::command::display::display(step));
-    }
-    match crate::command::exec::execute(uri, &plan, dry_run).await {
-        Ok(msg) => {
-            store.message = msg.clone();
-            messages.push(msg);
-        }
-        Err(e) => {
-            store.message = e.to_string();
-            messages.push(e.to_string());
-        }
-    }
-    if !demo && !dry_run {
-        reload_store(uri, store).await;
-    }
+    preview_store_plan(&plan, &p.domain, store, dry_run, demo, history, messages);
 }
 
 pub(super) fn state_isos(
@@ -456,13 +303,12 @@ pub(super) fn state_isos(
 }
 
 /// Eject only (C-e in picker, ␣me anywhere).
-pub(super) async fn eject_media(
-    uri: &str,
+pub(super) fn eject_media(
     store: &mut ui::views::storage::StorageState,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
 ) {
     let (domain, target, live) = store
         .picker
@@ -471,44 +317,32 @@ pub(super) async fn eject_media(
         .unwrap_or((String::from("arch-dev"), String::from("sda"), true));
     store.picker = None;
     let plan = crate::command::builders::hardware::change_media(&domain, &target, None, live);
-    for step in &plan.steps {
-        history.push(&crate::command::display::display(step));
-    }
-    match crate::command::exec::execute(uri, &plan, dry_run).await {
-        Ok(msg) => {
-            store.message = msg.clone();
-            messages.push(msg);
-        }
-        Err(e) => {
-            store.message = e.to_string();
-            messages.push(e.to_string());
-        }
-    }
-    let _ = demo;
+    preview_store_plan(&plan, &domain, store, dry_run, demo, history, messages);
 }
 
-/// Run a storage plan and update message/history.
-pub(super) async fn run_store_plan(
-    uri: &str,
+/// Preview a storage plan without executing a process.
+fn preview_store_plan(
     plan: &crate::command::plan::CommandPlan,
+    target: &str,
     store: &mut ui::views::storage::StorageState,
     dry_run: bool,
     demo: bool,
     history: &mut crate::command::history::History,
-    messages: &mut Vec<String>,
+    messages: &mut MessageLog,
 ) {
+    if !demo && !dry_run {
+        store.message = "✗ Storage request was not submitted".into();
+        return;
+    }
     for step in &plan.steps {
         history.push(&crate::command::display::display(step));
     }
-    match crate::command::exec::execute(uri, plan, dry_run).await {
-        Ok(msg) => {
-            store.message = msg.clone();
-            messages.push(msg);
-        }
-        Err(e) => {
-            store.message = e.to_string();
-            messages.push(e.to_string());
-        }
-    }
-    let _ = demo;
+    let first = plan
+        .steps
+        .first()
+        .map(crate::command::display::display)
+        .unwrap_or_default();
+    let prefix = if demo { "✓" } else { "[dry-run]" };
+    store.message = format!("{prefix} {}  ── {first}", plan.summary);
+    messages.push_action(store.message.clone(), target, true);
 }

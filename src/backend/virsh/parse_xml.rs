@@ -22,6 +22,9 @@ fn find_child<'a, 'input>(
 pub fn parse_domain_xml(text: &str) -> Result<DomainConfig> {
     let doc = roxmltree::Document::parse(text).map_err(|e| eyre!("bad xml: {e}"))?;
     let root = doc.root_element();
+    if root.tag_name().name() != "domain" {
+        return Err(eyre!("expected domain XML"));
+    }
     let name = root
         .children()
         .find(|n| n.tag_name().name() == "name")

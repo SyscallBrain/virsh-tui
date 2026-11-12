@@ -87,7 +87,7 @@ key map, so it reflects your `keymap.toml`. Type to filter it.
 | `Ctrl-r` | refresh now | `refresh` |
 | `Ctrl-l` | redraw the screen | `redraw` |
 | `.` | repeat the last change | |
-| `q`, `ZZ`, `Ctrl-c` | quit | `quit` |
+| `q`, `ZZ`, `Ctrl-c` | quit (see active jobs below) | `quit` |
 
 Some screens add their own keys, listed in the status bar: the
 [hardware editor](views/detail.md#hardware), the [wizard](wizard.md),
@@ -131,3 +131,22 @@ All action names: `move_up`, `move_down`, `go_top`, `go_bottom`, `half_down`,
 `disk_attach`, `disk_resize`, `nic_attach`, `nic_link`, `boot_order`,
 `prev_tab`, `next_tab`, `undo_field`, `goto_xml`, `view_domains`,
 `view_host`, `view_networks`, `view_storage`, `view_events`.
+
+## Active jobs
+
+In live mode, dashboard lifecycle shortcuts, hardware applies, snapshot confirmations, media changes, XML export, selected network and storage
+actions, and confirmed command plans run in the background. Raw virsh commands and several command-line
+actions also use background jobs. Domain creation from the wizard also runs as a
+background job; a requested graphical viewer opens after successful creation.
+Their progress appears on the
+message line. During a job, the palette shows available cached entries and settings
+can be viewed without applying changes; `:messages` and `:help` remain available.
+You can close the wizard and open a new draft with `Space n` while a job runs;
+submitting the new draft is refused until the active job has finished.
+`Ctrl-c` requests cancellation instead of quitting; quit requests wait until
+the job finishes. An editor or console deliberately takes over the terminal
+until it exits.
+
+Opening a domain's detail view normally shows it immediately while its
+configuration and snapshots load. Actions that depend on those details wait
+until loading finishes; navigation remains available.

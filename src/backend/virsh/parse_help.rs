@@ -61,6 +61,16 @@ pub fn load_doc(uri: &str, cmd: &str) -> Option<HelpDoc> {
     (!doc.name.is_empty()).then_some(doc)
 }
 
+/// Fetch a command's help without blocking the UI thread.
+pub async fn fetch_doc(uri: &str, cmd: &str) -> Option<HelpDoc> {
+    if !cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return None;
+    }
+    let text = crate::backend::virsh::exec::run(uri, &["help", cmd]).await.ok()?;
+    let doc = parse_help_cmd(&text);
+    (!doc.name.is_empty()).then_some(doc)
+}
+
 /// Fetch and cache the full index.
 pub async fn fetch_index(uri: &str) -> Vec<HelpEntry> {
     let entries = match crate::backend::virsh::exec::run(uri, &["help"]).await {

@@ -201,3 +201,11 @@ Counts (`3j`) and `.` (repeat last action on the current/marked selection) work 
 - Assumes a monospace font with box-drawing and Braille (U+2800–28FF) coverage (JetBrains Mono / DejaVu Sans Mono / any Nerd Font).
 - Bold only for: titles, selected names, mode pills, keys in hints, active tab.
 - Glyph vocabulary: `◆ ● ○ ‖ ✗ ◌ ▌ ◎ ◫ ▣ ▤ ⏻ ⇄ ▭ ▢ ⌨ ⛨ ⇢ ⌁ ⟳ ❯ ✓ ⚠ ↓ ↑ ━ ─ ░ █ ▁…█ ⠀…⣿`.
+
+### Background job message (work in progress)
+
+Live command jobs show activity on the message line:
+`⠋ Job #<id> · <target> · step <i>/<n> · <elapsed>s · C-c cancel`.
+Before the first step the status is `preparing`; after a cancellation request
+it is `cancelling`. ASCII icons use `| / - \\` instead of braille. The
+complete route and platform acceptance inventory remains in progress.
