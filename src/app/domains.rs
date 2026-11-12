@@ -205,7 +205,6 @@ pub(super) async fn dispatch_action(
         A::Filter => {
             *ex_line = Some(crate::input::textinput::TextInput::filter(&dash.filter));
         }
-        A::Ex => *ex_line = Some(crate::input::textinput::TextInput::new()),
         A::Start => {
             let t = targets(dash);
             run_plan_on_targets(uri, &t, lifecycle::start, dry_run, demo, dash, history, messages).await;
