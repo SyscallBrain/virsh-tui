@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13
+
 ### Added
 
 - Linux packages: each release has static (musl) binaries for x86_64 and
@@ -19,8 +21,15 @@ All notable changes to this project are documented here. The format follows
   browser. On `qemu:///system` it warns when the emulator probably cannot
   read the chosen ISO.
 
+- Compact layouts for the hardware editor, wizard, Settings and command
+  palette below their full widths: `F6` reviews the hardware diff, `Ctrl-v`
+  the full wizard command, `Ctrl-l` switches the palette's results and
+  reference. Confirmation previews keep every command and scroll.
+
 ### Changed
 
+- The Host, Networks and Storage views read their networks and pools in
+  parallel, so they load faster on hosts with many of them.
 - Long-running commands use background jobs so the interface can continue to
   respond. Jobs report progress and support local cancellation; a remote
   operation may continue after its client stops.
@@ -33,6 +42,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Wizard domains that are only defined (or edited with `C-e`) are a single
+  persistent phase that boots the disk first, instead of booting the install
+  media forever (#5). URL installs must start after creation.
+- `Space m i` from the hardware editor reaches the ISO picker instead of
+  entering INSERT mode (#6).
+- Every cell is painted with the theme background, so terminals with a
+  different default background no longer show it in margins and gutters.
+- Palette search matches accented and upper-case queries.
 - The which-key popup appears after a lone `Space` (or `g`), not only after a
   second key such as `Space s`, and it no longer lets the view behind it
   show through.
@@ -100,5 +117,6 @@ page, or build from source with
 The [user guide](https://syscallbrain.github.io/virsh-tui/) covers
 requirements and setup.
 
-[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SyscallBrain/virsh-tui/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SyscallBrain/virsh-tui/releases/tag/v0.1.0

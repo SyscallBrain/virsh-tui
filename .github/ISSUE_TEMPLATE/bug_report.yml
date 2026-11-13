@@ -16,7 +16,7 @@ body:
     attributes:
       label: virsh-tui version
       description: The output of `virsh-tui -V`.
-      placeholder: virsh-tui 0.1.0
+      placeholder: virsh-tui 0.2.0
     validations:
       required: true
   - type: dropdown
