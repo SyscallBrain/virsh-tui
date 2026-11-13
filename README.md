@@ -175,4 +175,4 @@ Issues and pull requests are welcome. Read
 
 ## License
 
-[MIT](LICENSE) © 2026 Tiago Correia (SyscallBrain) and virsh-tui contributors.
+[MIT](LICENSE) © 2026 Tiago Correia
