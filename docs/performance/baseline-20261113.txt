@@ -1,0 +1,210 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.26
+   Compiling quote v1.0.47
+   Compiling libc v0.2.190
+   Compiling cfg-if v1.0.5
+   Compiling bitflags v2.13.2
+   Compiling memchr v2.8.3
+   Compiling log v0.4.34
+   Compiling once_cell v1.21.4
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling smallvec v1.16.2
+   Compiling autocfg v1.5.1
+   Compiling rustix v1.1.5
+   Compiling equivalent v1.0.2
+   Compiling heck v0.5.0
+   Compiling allocator-api2 v0.2.21
+   Compiling thiserror v2.0.21
+   Compiling simd-adler32 v0.3.10
+   Compiling rustversion v1.0.23
+   Compiling foldhash v0.2.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling aho-corasick v1.1.5
+   Compiling ident_case v1.0.1
+   Compiling thiserror-impl v2.0.21
+   Compiling adler2 v2.0.1
+   Compiling strsim v0.11.1
+   Compiling regex-syntax v0.8.11
+   Compiling darling_core v0.24.1
+   Compiling regex-automata v0.4.18
+   Compiling errno v0.3.14
+   Compiling tracing-core v0.1.36
+   Compiling either v1.18.0
+   Compiling serde_core v1.0.229
+   Compiling parking_lot_core v0.9.12
+   Compiling itoa v1.0.18
+   Compiling unicode-segmentation v1.13.3
+   Compiling pin-project-lite v0.2.17
+   Compiling itertools v0.14.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling castaway v0.2.4
+   Compiling darling_macro v0.24.1
+   Compiling strum_macros v0.28.0
+   Compiling tracing-attributes v0.1.31
+   Compiling hashbrown v0.16.1
+   Compiling hashbrown v0.17.1
+   Compiling crc32fast v1.5.2
+   Compiling signal-hook v0.3.18
+   Compiling static_assertions v1.1.0
+   Compiling scopeguard v1.2.0
+   Compiling ryu v1.0.23
+   Compiling unicode-width v0.2.2
+   Compiling lazy_static v1.5.1
+   Compiling convert_case v0.10.0
+   Compiling sharded-slab v0.1.7
+   Compiling unicode-truncate v2.0.1
+   Compiling compact_str v0.9.1
+   Compiling lock_api v0.4.14
+   Compiling lru v0.18.5
+   Compiling kasuari v0.4.12
+   Compiling tracing v0.1.44
+   Compiling strum v0.28.0
+   Compiling matchers v0.2.0
+   Compiling darling v0.24.1
+   Compiling tracing-log v0.2.0
+   Compiling miniz_oxide v0.8.9
+   Compiling num-traits v0.2.19
+   Compiling mio v1.2.4
+   Compiling thread_local v1.1.10
+   Compiling deranged v0.5.8
+   Compiling critical-section v1.2.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling indoc v2.0.7
+   Compiling time-core v0.1.9
+   Compiling powerfmt v0.2.1
+   Compiling num_threads v0.1.7
+   Compiling num-conv v0.2.2
+   Compiling instability v0.3.14
+   Compiling tracing-subscriber v0.3.23
+   Compiling time v0.3.55
+   Compiling ratatui-core v0.1.2
+   Compiling parking_lot v0.12.5
+   Compiling derive_more-impl v2.1.1
+   Compiling miniz_oxide v0.9.1
+   Compiling object v0.37.3
+   Compiling utf8parse v0.2.2
+   Compiling getrandom v0.4.3
+   Compiling litrs v1.0.0
+   Compiling crossbeam-utils v0.8.23
+   Compiling document-features v0.2.12
+   Compiling anstyle-parse v1.0.0
+   Compiling flate2 v1.1.10
+   Compiling derive_more v2.1.1
+   Compiling signal-hook-mio v0.2.5
+   Compiling fdeflate v0.3.7
+   Compiling eyre v0.6.14
+   Compiling line-clipping v0.3.8
+   Compiling futures-core v0.3.34
+   Compiling anstyle v1.0.14
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling zmij v1.0.23
+   Compiling pxfm v0.1.30
+   Compiling gimli v0.32.3
+   Compiling color-spantrace v0.3.0
+   Compiling colorchoice v1.0.5
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v1.0.0
+   Compiling crossterm v0.29.0
+   Compiling ratatui-widgets v0.3.2
+   Compiling moxcms v0.8.1
+   Compiling addr2line v0.25.1
+   Compiling png v0.18.1
+   Compiling tracing-error v0.2.1
+   Compiling gethostname v1.1.0
+   Compiling clap_lex v1.1.1
+   Compiling serde v1.0.229
+   Compiling rustc-demangle v0.1.28
+   Compiling serde_json v1.0.151
+   Compiling bytemuck v1.25.2
+   Compiling owo-colors v4.4.0
+   Compiling option-ext v0.2.0
+   Compiling winnow v1.0.4
+   Compiling byteorder-lite v0.1.0
+   Compiling fastrand v2.5.0
+   Compiling x11rb-protocol v0.13.2
+   Compiling indenter v0.3.4
+   Compiling tempfile v3.27.0
+   Compiling image v0.25.10
+   Compiling x11rb v0.13.2
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling dirs-sys v0.5.0
+   Compiling backtrace v0.3.76
+   Compiling clap_builder v4.6.7
+   Compiling crossbeam-channel v0.5.17
+   Compiling ratatui-macros v0.7.2
+   Compiling ratatui-crossterm v0.1.2
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling clap_derive v4.6.7
+   Compiling tokio-macros v2.7.2
+   Compiling serde_derive v1.0.229
+   Compiling bytes v1.12.1
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling xml v1.4.0
+   Compiling percent-encoding v2.3.2
+   Compiling symlink v0.1.0
+   Compiling jiff-core v0.1.1
+   Compiling jiff v0.2.37
+   Compiling tracing-appender v0.2.5
+   Compiling arboard v3.6.1
+   Compiling xmltree v0.12.0
+   Compiling toml v1.1.6+spec-1.1.0
+   Compiling tokio v1.53.2
+   Compiling clap v4.6.7
+   Compiling ratatui v0.30.2
+   Compiling color-eyre v0.6.5
+   Compiling directories v6.0.0
+   Compiling regex v1.13.1
+   Compiling nucleo-matcher v0.3.1
+   Compiling async-trait v0.1.92
+   Compiling hostname v0.4.2
+   Compiling roxmltree v0.21.1
+   Compiling shlex v2.0.1
+   Compiling similar v3.2.0
+   Compiling virsh-tui v0.1.0 (/home/tiago/.hermes/worktrees/virsh_tui/perf-skynet-20261113)
+   Compiling console v0.16.6
+   Compiling yansi v1.0.1
+   Compiling similar v2.7.0
+   Compiling diff v0.1.13
+   Compiling insta v1.49.0
+   Compiling pretty_assertions v1.4.1
+    Finished `bench` profile [optimized] target(s) in 1m 21s
+     Running benches/performance.rs (target/release/deps/performance-0c8b20d3b7ee9853)
+braille Fill 60x8                          2803.8 ns/op (median; min 2633.4, max 3043.0)
+braille Down 60x8                          2620.2 ns/op (median; min 2578.0, max 2775.1)
+braille Line 60x8                          2935.0 ns/op (median; min 2744.8, max 3086.5)
+spark rows 60x8                            1073.9 ns/op (median; min 1049.3, max 1138.6)
+fuzzy snap 1000                          122798.4 ns/op (median; min 118022.4, max 136789.9)
+fuzzy dömäin 1000                          5269.3 ns/op (median; min 5092.1, max 6140.8)
+palette visible 1000                     122237.6 ns/op (median; min 115676.6, max 130451.2)
+ingest metrics 0 domains                     10.4 ns/op (median; min 10.0, max 11.1)
+ingest metrics 1 domains                   1612.5 ns/op (median; min 1551.1, max 1732.0)
+ingest metrics 10 domains                 16905.9 ns/op (median; min 16063.5, max 17838.7)
+ingest metrics 100 domains               166873.7 ns/op (median; min 161707.1, max 172603.3)
+ingest metrics 1000 domains             2015167.2 ns/op (median; min 1879867.0, max 2319987.5)
+dashboard 120x36                         158573.2 ns/op (median; min 155148.8, max 160900.9)
+host 120x36                              192386.8 ns/op (median; min 182804.9, max 206302.5)
+monitor 120x36                           215050.6 ns/op (median; min 208941.0, max 278997.9)
+dashboard 174x43                         334573.9 ns/op (median; min 322599.4, max 397031.4)
+host 174x43                              298083.9 ns/op (median; min 283139.8, max 316339.5)
+monitor 174x43                           375766.8 ns/op (median; min 368103.1, max 396626.1)
+dashboard navigation 174x43              300561.5 ns/op (median; min 289670.4, max 310687.8)
+palette navigation 1000 174x43           333614.7 ns/op (median; min 317294.4, max 367321.4)
+XML 10000 lines middle page              339895.7 ns/op (median; min 322514.4, max 364842.8)
+networks 174x43                          201813.9 ns/op (median; min 194521.1, max 215393.2)
+storage 174x43                           165865.7 ns/op (median; min 158172.6, max 175276.3)
+events 174x43                            123618.0 ns/op (median; min 117515.9, max 142509.8)
+settings 174x43                          228026.7 ns/op (median; min 217884.1, max 238500.7)
+gallery 174x43                           120280.3 ns/op (median; min 114568.0, max 140748.9)
+help 174x43                              169787.7 ns/op (median; min 164398.2, max 187016.1)
+wizard 174x43                            150826.4 ns/op (median; min 145144.3, max 174244.4)
+confirm 174x43                            60609.2 ns/op (median; min 57167.7, max 66792.8)
+messages 200 lines 174x43                133769.2 ns/op (median; min 131744.4, max 140551.2)
+detail Overview 174x43                   124246.1 ns/op (median; min 119231.7, max 138996.2)
+detail Hardware 174x43                   367816.5 ns/op (median; min 361394.3, max 400921.8)
+detail Snapshots 174x43                  157029.0 ns/op (median; min 150330.6, max 171662.0)
+detail Console 174x43                    131816.3 ns/op (median; min 114478.9, max 148308.7)
+detail Xml 174x43                        163201.8 ns/op (median; min 156314.9, max 167610.7)
+completion command 1000+285               14318.7 ns/op (median; min 14036.7, max 16166.8)
+completion domain 1000                    51631.1 ns/op (median; min 49056.7, max 68197.6)

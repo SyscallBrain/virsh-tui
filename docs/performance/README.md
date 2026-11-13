@@ -45,6 +45,12 @@ binaries pinned to CPU 3. Raw output: `before-r{1,2,3}.txt` and
 round's median. Speedup is baseline / optimized, with each round's speedup also
 shown so you can see how much it varies.
 
+`baseline-20261113.txt` is the shared baseline for the follow-up pass (extended
+to every view, overlay and the `:` Tab-completion path);
+`after-parallel-views-cpu3.txt` is its counterpart, both processes pinned to
+CPU 3. `after-parallel-views.txt` is the unpinned run, kept to show how much the
+shared host inflates medians.
+
 | Workload | Before µs | After µs | Speedup | Per-round speedups |
 |---|---:|---:|---:|---|
 | braille Fill 60x8 | 5.132 | 2.781 | 1.85× | 2.38 / 1.89 / 1.85 |
@@ -134,9 +140,34 @@ table above was measured before this fix.
   counters already read instead of reformatting/reparsing the same virsh keys.
   Sparse multi-device counters, rates, removal and restart behavior are tested.
 
-Validation: `cargo fmt --check`, strict Clippy for all targets, the full test
-suite (including the performance regression tests in
-`tests/performance_regressions.rs`) and `mdbook build book` pass.
+## Parallel view loads
+
+Every `virsh` invocation is a fresh process that pays startup and connection
+cost (~20 ms on this host). The Host, Networks and Storage loads ran those
+processes serially, so opening a view with N networks or N active pools cost
+roughly N × 20 ms before the data appeared.
+
+- `net-dumpxml` per network (Networks view and Host view) and `vol-list` per
+  active pool (Storage view) now go through the existing bounded-concurrency
+  helper (`READ_CONCURRENCY = 6`), preserving input order and error reporting.
+- The four independent Host reads (system facts, pools, networks, domains) and
+  the two independent Storage reads (domains, pools) run concurrently with
+  `tokio::join!`.
+- The volume-detail reads (`vol-dumpxml`) were already concurrent and are
+  unchanged.
+
+The effect is a latency win that scales with the number of objects (up to ~6×
+for many networks or pools), not a CPU win: each workload is unchanged in
+kernel time. With a single network or pool the wall-clock difference is inside
+the noise.
+
+`tests/support/parallel_views.py` (driven by `view_loads_overlap_per_object_reads`)
+runs the real binary against a fake `virsh` that reports 12 networks and counts
+how many `net-dumpxml` processes are in flight. It asserts the peak is above 1 and
+within `READ_CONCURRENCY`; the serial implementation peaked at 1.
+
+Validation: `cargo fmt --check`, strict Clippy for all targets, all 479 tests
+(including nine performance regression tests), and `mdbook build book` pass.
 The full-screen snapshots required no updates. Independent read-only review
 covered the algorithms, command-preview reuse, metrics semantics and benchmark
 limitations. No libvirt object was mutated during this work.
@@ -146,9 +177,12 @@ limitations. No libvirt object was mutated during this work.
 Steady-state frame cases include ratatui's unchanged-buffer diff path. Navigation
 cases change selected rows and include changed-cell writes to the in-memory test
 backend. Neither measures a real terminal's output transport, SSH, rendering,
-virsh startup/connection latency, or a full live libvirt workload. Do not interpret
-kernel speedups as a universal application speedup. No overall full-frame speedup
-is claimed where scheduling variance overlaps the observed difference.
+virsh startup/connection latency, or a full live libvirt workload. The parallel
+view loads are justified analytically (N serial process spawns become at most
+`READ_CONCURRENCY` in flight) and were not re-timed against a live libvirt with
+many networks or pools. Do not interpret kernel speedups as a universal
+application speedup. No overall full-frame speedup is claimed where scheduling
+variance overlaps the observed difference.
 
 Measurements target the expensive CPU paths identified here; they do not establish
 a mathematical maximum for application performance. The raw ranges are retained

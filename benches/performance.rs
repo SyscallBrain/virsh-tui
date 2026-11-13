@@ -5,13 +5,23 @@ use std::{
     time::{Duration, Instant},
 };
 use virsh_tui::{
+    config::Config,
+    input::{complete, keymap},
     theme,
     ui::{
-        overlays::palette,
+        overlays::{
+            confirm::{self, Confirm, ConfirmKind},
+            help, messages, palette, wizard,
+        },
         views::{
             dashboard::{self, DashboardState},
             detail::{self, DetailState, DetailTab},
+            events::{self, EventsState},
+            gallery,
             host::{self, HostState},
+            networks::{self, NetworksState},
+            settings::{self, SettingsState},
+            storage::{self, StorageState},
         },
         widgets::charts::{self, BrailleMode},
     },
@@ -149,6 +159,108 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         terminal
             .draw(|f| detail::render(f, &th, black_box(&detail)))
             .unwrap();
+    });
+
+    // ---- remaining views and overlays ----
+    let config = Config::default();
+    let nets = NetworksState::demo();
+    let store = StorageState::demo();
+    let events = EventsState::demo();
+    let settings = SettingsState::open(&config);
+    let wizard = wizard::WizardState::demo_step3();
+    let confirm_modal = Confirm {
+        kind: ConfirmKind::DomainDestroy,
+        title: "⚠ Destroy domain".into(),
+        question: "Destroy arch-dev?".into(),
+        commands: vec!["virsh destroy arch-dev".into()],
+        confirm_label: "y destroy".into(),
+        type_name: None,
+        typed: String::new(),
+    };
+    let messages_lines: Vec<String> = (0..200)
+        .map(|i| format!("line {i}: something happened"))
+        .collect();
+    let map = keymap::default_map();
+    let mut terminal = Terminal::new(TestBackend::new(174, 43))?;
+    measure("networks 174x43", || {
+        terminal
+            .draw(|f| networks::render(f, &th, black_box(&nets)))
+            .unwrap();
+    });
+    measure("storage 174x43", || {
+        terminal
+            .draw(|f| storage::render(f, &th, black_box(&store), false))
+            .unwrap();
+    });
+    measure("events 174x43", || {
+        terminal
+            .draw(|f| events::render(f, &th, black_box(&events)))
+            .unwrap();
+    });
+    measure("settings 174x43", || {
+        terminal
+            .draw(|f| settings::render(f, &th, &config, black_box(&settings)))
+            .unwrap();
+    });
+    measure("gallery 174x43", || {
+        terminal.draw(|f| gallery::render(f, &th)).unwrap();
+    });
+    measure("help 174x43", || {
+        terminal
+            .draw(|f| help::render(f, &th, "", black_box(&map)))
+            .unwrap();
+    });
+    measure("wizard 174x43", || {
+        terminal
+            .draw(|f| wizard::render(f, &th, black_box(&wizard)))
+            .unwrap();
+    });
+    measure("confirm 174x43", || {
+        terminal
+            .draw(|f| confirm::render(f, &th, f.area(), black_box(&confirm_modal)))
+            .unwrap();
+    });
+    measure("messages 200 lines 174x43", || {
+        terminal
+            .draw(|f| messages::render(f, &th, black_box(&messages_lines), 0))
+            .unwrap();
+    });
+    let mut detail = DetailState::demo("arch-dev");
+    for tab in [
+        DetailTab::Overview,
+        DetailTab::Hardware,
+        DetailTab::Snapshots,
+        DetailTab::Console,
+        DetailTab::Xml,
+    ] {
+        detail.tab = tab;
+        measure(&format!("detail {tab:?} 174x43"), || {
+            terminal
+                .draw(|f| detail::render(f, &th, black_box(&detail)))
+                .unwrap();
+        });
+    }
+
+    // ---- input path: Tab completion ----
+    let ctx = complete::Context {
+        domains: (0..1000)
+            .map(|i| (format!("vt-test-{i:04}"), String::from("running")))
+            .collect(),
+        virsh: (0..285)
+            .map(|i| (format!("virsh-cmd-{i:03}"), String::from("does something")))
+            .collect(),
+        ..Default::default()
+    };
+    let no_flags = |_c: &str| Vec::new();
+    measure("completion command 1000+285", || {
+        black_box(complete::complete(black_box("sta"), black_box(&ctx), &no_flags));
+    });
+    measure("completion domain 1000", || {
+        black_box(complete::complete(
+            black_box("start vt"),
+            black_box(&ctx),
+            &no_flags,
+        ));
     });
     Ok(())
 }

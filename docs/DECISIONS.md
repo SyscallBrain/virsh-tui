@@ -286,6 +286,10 @@ Google Chrome nor Chromium is available on the validation host. The optional
   avoid quadratic domain scans and copying per-device counters every tick. Derive
   aggregate totals from those same device counters rather than parsing them twice.
 - Methodology, raw measurements and remaining limits: `performance/README.md`.
+- View loads run their per-object `virsh` reads (`net-dumpxml`, `vol-list`) with
+  bounded concurrency and overlap the independent top-level reads with
+  `tokio::join!`; each `virsh` invocation is a fresh process whose startup cost
+  dominated opening a view with many objects.
 
 ## Palette query matching (2026-11-13)
 

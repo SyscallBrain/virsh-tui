@@ -9,4 +9,15 @@ Approach: measure before changing code, remove repeated work and quadratic searc
 3. Replace the braille point grid with vertical intervals and lookup masks; interpolate spark samples once per column, emit single-row sparks directly, and reuse Host thread meters; retain palette indices through ranking and reuse one result list per rendered palette; highlight only the XML viewport; use set membership for metrics cleanup, borrow previous counters, and derive totals from the device counters already read.
 4. Compare before/after release measurements, inspect regressions and allocation behavior, run formatting, strict Clippy and the full test suite, and record measurements and limitations.
 
+## Follow-up: parallel view loads
+
+The CPU pass left the per-view data loads serial. Each `virsh` call is a fresh
+process (~20 ms of startup and connection on this host), so a view with many
+networks or active pools paid that cost N times before its data appeared.
+
+5. Run the per-object reads (`net-dumpxml`, `vol-list`) through the existing
+   bounded-concurrency helper and overlap the independent top-level reads with
+   `tokio::join!`. Keep input order and per-command error reporting. Re-run the
+   gates; the kernel-time benchmarks must stay flat.
+
 All benchmark workloads are in memory. Do not mutate libvirt objects or use sudo. Existing snapshots remain the UI acceptance reference. User-visible fixes (duplicate palette results and large-document scrolling) must be documented in the book.

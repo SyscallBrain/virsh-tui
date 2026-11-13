@@ -165,3 +165,5 @@ Several items ticked above were **not** true before this review and were fixed h
 - Existing chart fixtures and full-screen text/style snapshots pass without updates.
 - XML last-page numbering/fold markers, Unicode fuzzy ranking and duplicate-title
   palette identity have regression coverage. Rendering styles and strings are unchanged.
+- The parallel view loads preserve the rendered state, the per-command error
+  handling and the `incomplete` flag; only the order of independent reads changes.
