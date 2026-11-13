@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit AI review settings: https://docs.coderabbit.ai/reference/configuration
+language: en-US
+tone_instructions: >-
+  Be concise and concrete. Prefer a few high-signal findings about correctness,
+  safety and user-facing behaviour over style nitpicks that rustfmt or clippy
+  already enforce.
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!Cargo.lock"
+    - "!tests/snapshots/**"
+    - "!src/**/snapshots/**"
+    - "!book/src/images/**"
+    - "!book/build/**"
+    - "!docs/mockups/**"
+    - "!docs/performance/*.txt"
+    - "!docs/REVIEW-*.txt"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        virsh-tui is a terminal UI (Rust, ratatui) for libvirt that drives the
+        `virsh` and `virt-install` command-line tools. Project rules
+        (AGENTS.md):
+        - Code, comments, messages, tests and docs are in English.
+        - Every action is a `virsh` (or `virt-install`) command, shown to the
+          user before and after it runs; nothing changes libvirt behind the
+          user's back.
+        - Arguments go to `virsh` as separate process arguments, never
+          through a shell; flag anything that builds a shell string.
+        - Tests and scripts never mutate libvirt objects they did not create
+          (only the `vt-test-*` prefix) and never use sudo.
+    - path: "src/**/*.rs"
+      instructions: |
+        - Drawing code reads state and never changes it or blocks; slow
+          `virsh` calls run as background jobs so the interface keeps
+          responding.
+        - Destructive actions (destroy, undefine, delete snapshot or volume)
+          go through a confirmation.
+        - Terminal changes must restore raw mode, the cursor and the
+          alternate screen on every exit path, including panics and
+          suspension for an external program.
+        - UI strings, demo data and colours follow docs/DESIGN.md and
+          docs/mockups; deviations belong in docs/DECISIONS.md.
+    - path: "tests/**"
+      instructions: |
+        Tests use demo data, fake `virsh` output or temporary directories.
+        Integration tests behind the `it` feature may touch a real libvirt,
+        but only objects named `vt-test-*`. UI changes come with updated
+        insta snapshots.
+    - path: "book/src/**/*.md"
+      instructions: |
+        This is the mdBook user guide. Check that keys, commands and options
+        match the code, that relative links resolve, and that descriptions
+        match tested behaviour rather than intentions. Prose is plain and
+        direct, without filler.
+    - path: ".github/workflows/**"
+      instructions: |
+        Third-party actions are pinned by full commit SHA with a version
+        comment; keep it that way. Use least-privilege, job-scoped permissions
+        and never print or persist credentials.
+    - path: "{scripts/dist.sh,scripts/arch-package.sh,scripts/aur.sh,packaging/**}"
+      instructions: |
+        Release binaries are static (musl) for x86_64 and aarch64. Packages
+        install only the binary, the licence and docs, and depend on the
+        distribution's libvirt client (virsh).
+chat:
+  auto_reply: true
