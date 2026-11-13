@@ -101,3 +101,6 @@ The live XML with syntax highlighting. `j`/`k`, `Ctrl-d`/`Ctrl-u` and
 virsh-tui runs `virsh define --validate` and reopens the editor with the
 error if libvirt rejects the file, as `virsh edit` does. Closing the editor
 without changes defines nothing.
+
+Only the visible XML page is highlighted, so scrolling large definitions avoids
+rebuilding the full highlighted document. Line positions above 65,535 are supported.

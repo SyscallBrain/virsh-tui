@@ -178,53 +178,50 @@ pub struct MetricsStore {
     ifaces: HashMap<String, IfaceSeries>,
 }
 
-fn sum_indexed(s: &RawDomainStats, group: &str, field: &str) -> u64 {
-    let count = s.u64(&format!("{group}.count")).unwrap_or(0);
-    (0..count)
-        .filter_map(|i| s.u64(&format!("{group}.{i}.{field}")))
-        .sum()
-}
-
 fn counters(s: &RawDomainStats) -> Counters {
+    let disks: Vec<_> = (0..s.u64("block.count").unwrap_or(0))
+        .map(|i| {
+            let k = |f: &str| s.u64(&format!("block.{i}.{f}")).unwrap_or(0);
+            (
+                s.values
+                    .get(&format!("block.{i}.name"))
+                    .cloned()
+                    .unwrap_or_default(),
+                k("rd.bytes"),
+                k("wr.bytes"),
+                k("rd.reqs") + k("wr.reqs"),
+            )
+        })
+        .collect();
+    let nics: Vec<_> = (0..s.u64("net.count").unwrap_or(0))
+        .map(|i| {
+            let k = |f: &str| s.u64(&format!("net.{i}.{f}")).unwrap_or(0);
+            (
+                s.values
+                    .get(&format!("net.{i}.name"))
+                    .cloned()
+                    .unwrap_or_default(),
+                k("rx.bytes"),
+                k("tx.bytes"),
+                k("rx.drop") + k("tx.drop"),
+                k("rx.errs") + k("tx.errs"),
+            )
+        })
+        .collect();
     Counters {
         cpu_ns: s.u64("cpu.time").unwrap_or(0),
-        rd_bytes: sum_indexed(s, "block", "rd.bytes"),
-        wr_bytes: sum_indexed(s, "block", "wr.bytes"),
-        reqs: sum_indexed(s, "block", "rd.reqs") + sum_indexed(s, "block", "wr.reqs"),
-        rx_bytes: sum_indexed(s, "net", "rx.bytes"),
-        tx_bytes: sum_indexed(s, "net", "tx.bytes"),
+        // Aggregate the device counters already read above. Re-reading their
+        // formatted virsh keys doubles hashing, parsing and string allocations.
+        rd_bytes: disks.iter().map(|d| d.1).sum(),
+        wr_bytes: disks.iter().map(|d| d.2).sum(),
+        reqs: disks.iter().map(|d| d.3).sum(),
+        rx_bytes: nics.iter().map(|n| n.1).sum(),
+        tx_bytes: nics.iter().map(|n| n.2).sum(),
         vcpu_ns: (0..s.u64("vcpu.maximum").unwrap_or(0))
             .map(|i| s.u64(&format!("vcpu.{i}.time")).unwrap_or(0))
             .collect(),
-        disks: (0..s.u64("block.count").unwrap_or(0))
-            .map(|i| {
-                let k = |f: &str| s.u64(&format!("block.{i}.{f}")).unwrap_or(0);
-                (
-                    s.values
-                        .get(&format!("block.{i}.name"))
-                        .cloned()
-                        .unwrap_or_default(),
-                    k("rd.bytes"),
-                    k("wr.bytes"),
-                    k("rd.reqs") + k("wr.reqs"),
-                )
-            })
-            .collect(),
-        nics: (0..s.u64("net.count").unwrap_or(0))
-            .map(|i| {
-                let k = |f: &str| s.u64(&format!("net.{i}.{f}")).unwrap_or(0);
-                (
-                    s.values
-                        .get(&format!("net.{i}.name"))
-                        .cloned()
-                        .unwrap_or_default(),
-                    k("rx.bytes"),
-                    k("tx.bytes"),
-                    k("rx.drop") + k("tx.drop"),
-                    k("rx.errs") + k("tx.errs"),
-                )
-            })
-            .collect(),
+        disks,
+        nics,
     }
 }
 
@@ -272,8 +269,8 @@ impl MetricsStore {
             }
             n.rx_total = cur.rx_bytes;
             n.tx_total = cur.tx_bytes;
-            n.drops = sum_indexed(s, "net", "rx.drop") + sum_indexed(s, "net", "tx.drop");
-            n.errs = sum_indexed(s, "net", "rx.errs") + sum_indexed(s, "net", "tx.errs");
+            n.drops = cur.nics.iter().map(|nic| nic.3).sum();
+            n.errs = cur.nics.iter().map(|nic| nic.4).sum();
             n.first_disk = s.values.get("block.0.name").cloned().unwrap_or_default();
             n.first_iface = s.values.get("net.0.name").cloned().unwrap_or_default();
             if let Some((t0, before)) = self.prev.remove(&s.domain).as_ref() {

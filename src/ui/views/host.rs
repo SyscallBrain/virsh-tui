@@ -626,16 +626,18 @@ fn render_meters(theme: &Theme, state: &HostState, inner_w: usize, lines: &mut V
     order.sort_by(|&a, &b| state.threads[b].total_cmp(&state.threads[a]));
     let fit = (inner_w / per_thread).min(state.threads.len()).max(1);
     let shown: Vec<usize> = order.iter().take(fit).copied().collect();
+    let meters: Vec<_> = shown
+        .iter()
+        .map(|&idx| charts::spark_rows(&[state.threads[idx], state.threads[idx]], 2, 3))
+        .collect();
     let row_colors = [t.red, t.blue, t.cyan];
     for (depth, &color) in row_colors.iter().enumerate() {
         let mut line = String::new();
-        for (k, &idx) in shown.iter().enumerate() {
+        for (k, meter) in meters.iter().enumerate() {
             if k > 0 {
                 line.push(' ');
             }
-            line.push_str(
-                charts::spark_rows(&[state.threads[idx], state.threads[idx]], 2, 3)[depth].as_str(),
-            );
+            line.push_str(&meter[depth]);
         }
         if depth == 2 && fit < state.threads.len() {
             line.push_str(&format!(" +{}", state.threads.len() - fit));

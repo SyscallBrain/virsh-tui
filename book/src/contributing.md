@@ -68,3 +68,12 @@ mdbook serve book --open
   errors become messages, not panics.
 - Every mutation goes through a `CommandPlan`, so it can be shown, confirmed,
   dry-run and copied.
+
+## Performance benchmarks
+
+Run `cargo bench --bench performance` for release-mode CPU measurements of charts,
+fuzzy search, palette navigation, metrics ingestion, full frames and large XML
+pages. The workloads use in-memory data and ratatui's test backend, without a
+libvirt connection. Compare runs on the same machine with other builds stopped;
+the output includes median, minimum and maximum batch times. Terminal transport
+and libvirt subprocess latency are outside these measurements.
