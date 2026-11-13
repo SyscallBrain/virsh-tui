@@ -2,3 +2,5 @@
 /book/build
 .claude/
 /dist
+__pycache__/
+*.pyc

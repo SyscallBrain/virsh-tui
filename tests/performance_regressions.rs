@@ -261,3 +261,17 @@ fn metrics_totals_match_device_deltas_with_missing_fields() {
     assert_eq!(now.nics.iter().map(|n| n.rx_bps).sum::<f64>(), now.rx_bps);
     assert_eq!(now.nics.iter().map(|n| n.tx_bps).sum::<f64>(), now.tx_bps);
 }
+
+#[cfg(unix)]
+#[test]
+fn view_loads_overlap_per_object_reads() {
+    let status = std::process::Command::new("python3")
+        .arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/support/parallel_views.py"
+        ))
+        .arg(env!("CARGO_BIN_EXE_virsh-tui"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
