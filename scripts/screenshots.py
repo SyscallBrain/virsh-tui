@@ -39,6 +39,7 @@ SHOTS = {
     "storage": ("storage", "tokyo-night"),
     "events": ("events", "tokyo-night"),
     "wizard": ("wizard", "tokyo-night"),
+    "iso-picker": ("iso-picker", "tokyo-night"),
     "palette": ("palette", "tokyo-night"),
     "help": ("help", "tokyo-night"),
     "settings": ("settings", "tokyo-night"),

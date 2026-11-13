@@ -13,6 +13,7 @@ use ratatui::{
 };
 
 use crate::theme::Theme;
+use crate::ui::overlays::iso_picker::{IsoCandidate, IsoPicker, Pick};
 
 /// Wizard step index.
 pub const STEP_NAMES: [&str; 6] = [
@@ -131,11 +132,16 @@ pub struct WizardState {
     pub start_after: bool,
     pub open_console: bool,
     pub autostart: bool,
+    /// Folder the ISO browser (C-o) opened last; it reopens there.
+    pub last_browse_dir: String,
     /// Validation problem shown under the form.
     #[serde(skip)]
     pub error: String,
     #[serde(skip)]
     pub host: HostFacts,
+    /// ISO picker (⏎ on the ISO path field) while open.
+    #[serde(skip)]
+    pub picker: Option<IsoPicker>,
 }
 
 /// What the wizard knows about the host (filled when it opens).
@@ -146,7 +152,14 @@ pub struct HostFacts {
     pub domains: Vec<String>,
     pub pools: Vec<String>,
     pub networks: Vec<String>,
-    pub isos: Vec<String>,
+    /// ISOs from the pools and the local ISO folders (newest first).
+    pub isos: Vec<IsoCandidate>,
+    /// The connection is to this machine: local folders and the filesystem
+    /// browser apply (on a remote host only pool ISOs are reachable).
+    pub local: bool,
+    /// `qemu:///system`: the emulator runs as its own user, so ISOs behind
+    /// private folders (a 0700 home) get a warning.
+    pub system_uri: bool,
     /// The hypervisor has no KVM (`/dev/kvm` missing): guests run under TCG,
     /// where libvirt rejects `host-passthrough`.
     pub no_kvm: bool,
@@ -191,8 +204,10 @@ impl Default for WizardState {
             start_after: true,
             open_console: false,
             autostart: false,
+            last_browse_dir: String::new(),
             error: String::new(),
             host: HostFacts::default(),
+            picker: None,
         }
     }
 }
@@ -259,6 +274,7 @@ impl WizardState {
         let mut copy = self.clone();
         copy.step = 0;
         copy.focus = 0;
+        copy.last_browse_dir.clear();
         toml::to_string(&copy).unwrap_or_default()
     }
 
@@ -289,7 +305,9 @@ impl WizardState {
                     String::from("isos"),
                 ],
                 networks: vec![String::from("default"), String::from("lab-isolated")],
-                isos: vec![String::from("/var/lib/libvirt/isos/Fedora-WS-Live-42.iso")],
+                isos: demo_isos(),
+                local: true,
+                system_uri: true,
                 no_kvm: false,
             },
             ..Default::default()
@@ -494,10 +512,22 @@ impl WizardState {
                 ),
             },
             F::Iso => {
-                if self.host.isos.is_empty() {
-                    String::from("absolute path to the ISO")
+                if self.host.system_uri
+                    && self.iso_path.starts_with('/')
+                    && let Some(dir) = crate::ui::overlays::iso_picker::unsearchable_ancestor(
+                        std::path::Path::new(&self.iso_path),
+                    )
+                {
+                    crate::ui::overlays::iso_picker::permission_warning(&dir)
                 } else {
-                    format!("known: {}", self.host.isos.join("  "))
+                    match self.host.isos.len() {
+                        0 if self.host.local => {
+                            String::from("⏎ browse for an ISO · or type an absolute path")
+                        }
+                        0 => String::from("absolute path on the remote host"),
+                        1 => String::from("⏎ choose from 1 ISO · or type an absolute path"),
+                        n => format!("⏎ choose from {n} ISOs · or type an absolute path"),
+                    }
                 }
             }
             F::Url => String::from("installer tree, e.g. https://…/os/x86_64/"),
@@ -710,6 +740,43 @@ impl WizardState {
         }
     }
 
+    /// Open the ISO picker (⏎ on the ISO path field).
+    pub fn open_iso_picker(&mut self) {
+        self.picker = Some(IsoPicker::default());
+    }
+
+    /// Where the filesystem browser starts: the last browsed folder, the
+    /// folder of the current ISO, the first ISO folder, or the home folder.
+    pub fn browse_start(&self, iso_dirs: &[std::path::PathBuf]) -> std::path::PathBuf {
+        let current = std::path::Path::new(&self.iso_path);
+        [
+            Some(std::path::PathBuf::from(&self.last_browse_dir)),
+            current.parent().map(std::path::Path::to_path_buf),
+            iso_dirs.first().cloned(),
+            directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|d| d.is_absolute() && d.is_dir())
+        .unwrap_or_else(|| std::path::PathBuf::from("/"))
+    }
+
+    /// ⏎ in the picker: a chosen ISO fills the field and closes it.
+    pub fn picker_enter(&mut self) {
+        let Some(picker) = self.picker.as_mut() else {
+            return;
+        };
+        let browsed = picker.browse.as_ref().map(|b| b.dir.display().to_string());
+        if let Pick::Chosen(path) = picker.enter(&self.host.isos) {
+            if let Some(dir) = browsed {
+                self.last_browse_dir = dir;
+            }
+            self.iso_path = path;
+            self.picker = None;
+            self.error.clear();
+        }
+    }
+
     /// Go to step `s` (focus on its first field).
     pub fn goto_step(&mut self, s: usize) {
         self.step = s.min(5);
@@ -897,6 +964,47 @@ impl WizardState {
     }
 }
 
+/// Demo ISOs (screenshots): one pool, one download folder.
+fn demo_isos() -> Vec<IsoCandidate> {
+    let c = |name: &str, dir: &str, source: &str, size: &str, modified: u64| IsoCandidate {
+        path: format!("{dir}/{name}"),
+        name: name.to_string(),
+        source: source.to_string(),
+        size: size.to_string(),
+        modified: Some(modified),
+    };
+    vec![
+        c(
+            "archlinux-2026.11.01-x86_64.iso",
+            "/home/demo/Downloads",
+            "~/Downloads",
+            "1.3G",
+            1_793_491_200,
+        ),
+        c(
+            "Fedora-WS-Live-42.iso",
+            "/var/lib/libvirt/isos",
+            "pool isos",
+            "2.2G",
+            1_790_812_800,
+        ),
+        c(
+            "ubuntu-24.04.1-live-server-amd64.iso",
+            "/home/demo/Downloads",
+            "~/Downloads",
+            "2.6G",
+            1_785_542_400,
+        ),
+        c(
+            "archlinux-2026.10.01-x86_64.iso",
+            "/var/lib/libvirt/isos",
+            "pool isos",
+            "1.2G",
+            1_790_812_000,
+        ),
+    ]
+}
+
 fn file_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
@@ -931,7 +1039,9 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
     render_steps(frame, theme, st, top[0]);
     render_step_form(frame, theme, st, top[1]);
     render_command(frame, theme, st, rows[1]);
-    let next = if st.step == 5 {
+    let next = if st.media == MediaKind::Iso && st.focused() == WField::Iso {
+        String::from(" ⏎ choose ISO… ")
+    } else if st.step == 5 {
         String::from(" ⏎ create ")
     } else {
         format!(
@@ -966,6 +1076,16 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
         Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
     )];
     crate::ui::chrome::render_split(frame, rows[2], left, right, Style::default().bg(t.bg));
+    if let Some(picker) = &st.picker {
+        crate::ui::overlays::iso_picker::render(
+            frame,
+            theme,
+            picker,
+            &st.host.isos,
+            st.host.system_uri,
+            modal,
+        );
+    }
 }
 
 fn render_steps(frame: &mut Frame, theme: &Theme, st: &WizardState, area: Rect) {

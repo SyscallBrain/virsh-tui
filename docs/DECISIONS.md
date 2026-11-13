@@ -234,3 +234,24 @@ Google Chrome nor Chromium is available on the validation host. The optional
   `keymap.toml` are now reported. PF-3: the autostart list is re-read every
   10 ticks (and after jobs) instead of every tick; a persistent virsh session
   was not attempted.
+
+## Wizard ISO picker (2026-11-13)
+
+- The ISO path field only listed known ISOs as a hint (`known: …`). `⏎` on
+  it now opens a picker instead of going to the next step (`C-n` still
+  does); the user asked for `⏎` only, not opening on focus.
+- Sources: pool `.iso` volumes and a one-level scan of `[wizard] iso_dirs`.
+  The default is the XDG download dir (`directories::UserDirs`, which reads
+  `user-dirs.dirs`), not a hard-coded `~/Downloads`, because the project is
+  public and folder names are localized. No recursion, so a large folder
+  cannot stall the UI on open.
+- "Used before" ISOs are not a separate source: virt-install creates a pool
+  for the folder of a `--cdrom` path, so they already appear as pool ISOs.
+- Remote URIs: local folders and the browser are off (the ISO must be on the
+  remote host). Demo mode: the browser is off so screenshots never show real
+  files.
+- `qemu:///system` permission check: warn when an ancestor folder lacks
+  `o+x`. Nothing is changed automatically (no chmod/ACL, no copy), per the
+  safety rules; the warning suggests copying into a pool.
+- `last_browse_dir` is saved with the draft but left out of
+  `content_snapshot`, so browsing never makes a running create look stale.

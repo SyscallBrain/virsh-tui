@@ -51,6 +51,10 @@ type_name_for_undefine = true    # type the domain name to undefine
 [console]
 viewer = "virt-viewer"           # or "remote-viewer"
 escape = "C-]"                   # key that leaves the serial console
+
+[wizard]
+iso_dirs = []                    # folders the ISO picker scans; empty: the
+                                 # XDG download folder, e.g. ["~/Downloads", "/srv/isos"]
 ```
 
 ## Notes on some settings
@@ -64,6 +68,12 @@ view of free memory.
 `console.viewer = "remote-viewer"` makes `v` ask libvirt for the display URI
 (`virsh domdisplay`) and open it with `remote-viewer`. Any other value uses
 `virt-viewer -c <uri> <domain>`.
+
+`wizard.iso_dirs` lists the folders the new-domain wizard's ISO picker
+reads (one level deep, `*.iso`). `~/` is expanded. When it is empty, the
+picker uses your download folder as `xdg-user-dirs` reports it, so a
+localized name works without configuration. Folders are only read for local
+connections.
 
 `console.escape` accepts `C-x` or `^x` notation and is passed to
 `virsh console` as `-e ^x`.
