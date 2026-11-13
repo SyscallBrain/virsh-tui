@@ -696,32 +696,34 @@ fn render_console(frame: &mut Frame, theme: &Theme, state: &DetailState, area: R
 pub use crate::xml::highlight::highlight_line;
 
 fn render_xml(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Rect) {
-    let mut lines: Vec<Line> = Vec::new();
-    for (i, line) in state.xml.lines().enumerate() {
-        let mut spans = vec![Span::styled(format!("{:4} ", i + 1), theme.dim())];
-        spans.extend(highlight_line(theme, line).spans);
-        if state.fold.is_folded(i) {
-            spans.push(Span::styled("  …", theme.dim()));
-        }
-        lines.push(Line::from(spans));
-    }
-    // Keep the last page full: never scroll past the end.
+    let count = state.xml.lines().count();
+    // Highlight only the viewport. Paragraph's u16 scroll offset also cannot
+    // represent positions in documents longer than 65,535 lines.
     let visible = area.height.saturating_sub(2) as usize;
-    let top = state.xml_cursor.min(lines.len().saturating_sub(visible));
+    let top = state.xml_cursor.min(count.saturating_sub(visible));
+    let lines: Vec<Line> = state
+        .xml
+        .lines()
+        .enumerate()
+        .skip(top)
+        .take(visible)
+        .map(|(i, line)| {
+            let mut spans = vec![Span::styled(format!("{:4} ", i + 1), theme.dim())];
+            spans.extend(highlight_line(theme, line).spans);
+            if state.fold.is_folded(i) {
+                spans.push(Span::styled("  …", theme.dim()));
+            }
+            Line::from(spans)
+        })
+        .collect();
     let right = format!(
         "{}–{} of {} · j/k scroll · e edit",
         top + 1,
-        (top + visible).min(lines.len()),
-        lines.len()
+        (top + visible).min(count),
+        count
     );
     let block = panel_block(theme, &format!("XML · {}", state.domain), Some(&right));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .style(theme.base())
-            .scroll((top as u16, 0)),
-        area,
-    );
+    frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
 }
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Rect) {

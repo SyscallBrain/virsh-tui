@@ -61,55 +61,53 @@ pub fn sample(d: &[f64], x: usize, w: usize) -> f64 {
 }
 
 /// Braille area chart: returns h rows of w characters each.
-#[allow(clippy::needless_range_loop)]
 pub fn braille(d: &[f64], w: usize, h: usize, mode: BrailleMode) -> Vec<String> {
+    if h == 0 {
+        return Vec::new();
+    }
     let gw = w * 2;
     let gh = h * 4;
-    let mut g = vec![vec![false; gw]; gh];
-    let mut py: Option<usize> = None;
-    for x in 0..gw {
-        let v = sample(d, x, gw);
-        match mode {
-            BrailleMode::Down => {
-                let y = (v * (gh - 1) as f64).round() as usize;
-                for yy in 0..=y.min(gh - 1) {
-                    g[yy][x] = true;
-                }
+    // Each dot column is one contiguous vertical interval. Keep its bounds
+    // instead of allocating and then scanning a two-dimensional dot grid.
+    let mut previous = None;
+    let columns: Vec<(usize, usize)> = (0..gw)
+        .map(|x| {
+            let v = sample(d, x, gw);
+            match mode {
+                BrailleMode::Down => (v * (gh - 1) as f64).round() as usize,
+                _ => ((1.0 - v) * (gh - 1) as f64).round() as usize,
             }
-            BrailleMode::Fill => {
-                let y = ((1.0 - v) * (gh - 1) as f64).round() as usize;
-                for yy in y.min(gh)..gh {
-                    g[yy][x] = true;
-                }
-            }
+        })
+        .map(|y| match mode {
+            BrailleMode::Down => (0, y.min(gh - 1) + 1),
+            BrailleMode::Fill => (y.min(gh), gh),
             BrailleMode::Line => {
-                let y = ((1.0 - v) * (gh - 1) as f64).round() as usize;
-                let prev = py.unwrap_or(y);
-                py = Some(y);
-                for yy in prev.min(y)..=prev.max(y).min(gh - 1) {
-                    g[yy][x] = true;
-                }
+                let prev = previous.unwrap_or(y);
+                previous = Some(y);
+                (prev.min(y), prev.max(y).min(gh - 1) + 1)
             }
-        }
-    }
-    const BITS: [[u32; 2]; 4] = [[0x1, 0x8], [0x2, 0x10], [0x4, 0x20], [0x40, 0x80]];
-    let mut rows = Vec::with_capacity(h);
-    for r in 0..h {
-        let mut s = String::with_capacity(w);
-        for c in 0..w {
-            let mut code = 0u32;
-            for dy in 0..4 {
-                for dx in 0..2 {
-                    if g[r * 4 + dy][c * 2 + dx] {
-                        code |= BITS[dy][dx];
+        })
+        .collect();
+    // Prefix masks for the top 0..4 dots in the left/right half of a cell.
+    const LEFT: [u32; 5] = [0, 1, 3, 7, 0x47];
+    const RIGHT: [u32; 5] = [0, 8, 0x18, 0x38, 0xb8];
+    (0..h)
+        .map(|row| {
+            let base = row * 4;
+            let mut text = String::with_capacity(w * 3);
+            for pair in columns.as_chunks::<2>().0 {
+                let mask = |(start, end): (usize, usize), bits: &[u32; 5]| {
+                    if start >= end {
+                        return 0;
                     }
-                }
+                    bits[end.saturating_sub(base).min(4)] ^ bits[start.saturating_sub(base).min(4)]
+                };
+                let code = mask(pair[0], &LEFT) | mask(pair[1], &RIGHT);
+                text.push(char::from_u32(0x2800 + code).unwrap_or(' '));
             }
-            s.push(char::from_u32(0x2800 + code).unwrap_or(' '));
-        }
-        rows.push(s);
-    }
-    rows
+            text
+        })
+        .collect()
 }
 
 /// Area chart in the configured style (braille, block characters, or plain
@@ -162,11 +160,20 @@ const BL: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 /// Multi-row sparkline.
 pub fn spark_rows(d: &[f64], w: usize, h: usize) -> Vec<String> {
+    if h == 0 {
+        return Vec::new();
+    }
+    if h == 1 {
+        return vec![spark(d, w)];
+    }
+    let levels: Vec<i32> = (0..w)
+        .map(|x| (sample(d, x, w) * h as f64 * 8.0).round() as i32)
+        .collect();
     let mut rows = Vec::with_capacity(h);
     for r in 0..h {
-        let mut s = String::with_capacity(w);
-        for x in 0..w {
-            let lv = (sample(d, x, w) * h as f64 * 8.0).round() as i32 - (h - 1 - r) as i32 * 8;
+        let mut s = String::with_capacity(w * 3);
+        for &level in &levels {
+            let lv = level - (h - 1 - r) as i32 * 8;
             if lv <= 0 {
                 s.push(' ');
             } else {
@@ -181,7 +188,16 @@ pub fn spark_rows(d: &[f64], w: usize, h: usize) -> Vec<String> {
 
 /// Single-row sparkline.
 pub fn spark(d: &[f64], w: usize) -> String {
-    spark_rows(d, w, 1).into_iter().next().unwrap_or_default()
+    let mut row = String::with_capacity(w * 3);
+    for x in 0..w {
+        let level = (sample(d, x, w) * 8.0).round() as i32;
+        row.push(if level <= 0 {
+            ' '
+        } else {
+            BL[(level - 1).min(7) as usize]
+        });
+    }
+    row
 }
 
 /// Eighth-block bar: returns (fill, track).

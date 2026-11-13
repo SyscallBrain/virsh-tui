@@ -269,3 +269,20 @@ Google Chrome nor Chromium is available on the validation host. The optional
   text on `bg2` with a `│` (gutter) divider, and the active tab is the solid
   blue pill (`bg2` text, bold). DESIGN.md §3, PLAN.md §9.1 and the mockups
   are updated to match.
+
+## CPU performance pass (2026-11-13)
+
+- Keep the subprocess backend and mutation previews unchanged. CPU benchmarks use
+  fixtures and `TestBackend`, with no libvirt connection.
+- Represent each braille dot column as an interval and encode cell masks directly;
+  preserve the original chart maths and Unicode output. Interpolate multi-row
+  sparks once per column and generate single-row sparks directly.
+- Rank palette item indices, preserving identity for duplicate titles, and reuse
+  one ranked result list when drawing the reference and command preview.
+- Highlight only the visible XML page. Counting/scanning lines remains linear in
+  document size; this deliberately avoids cache invalidation for public mutable
+  XML state. Scroll positions are no longer narrowed to `u16`.
+- Use borrowed name membership for metrics cleanup and borrow previous counters;
+  avoid quadratic domain scans and copying per-device counters every tick. Derive
+  aggregate totals from those same device counters rather than parsing them twice.
+- Methodology, raw measurements and remaining limits: `performance/README.md`.

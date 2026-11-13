@@ -157,3 +157,11 @@ Several items ticked above were **not** true before this review and were fixed h
   in the mockups; the mockup layouts are unchanged from 100×30 up.
 - Live volume labels are `⚠ no domain` / `? unknown`; the demo keeps the
   mockup's `⚠ orphan`.
+
+## CPU performance pass (2026-11-13)
+
+- Chart kernels are checked against the original dot-grid implementation for all
+  three braille modes, deterministic data, boundary values and varied dimensions.
+- Existing chart fixtures and full-screen text/style snapshots pass without updates.
+- XML last-page numbering/fold markers, Unicode fuzzy ranking and duplicate-title
+  palette identity have regression coverage. Rendering styles and strings are unchanged.

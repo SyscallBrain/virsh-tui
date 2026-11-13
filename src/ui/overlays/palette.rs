@@ -13,22 +13,30 @@ use crate::theme::Theme;
 
 /// Fuzzy-rank items by query (best first). Empty query keeps order.
 pub fn fuzzy_rank(query: &str, items: &[&str]) -> Vec<String> {
+    ranked_indices(query, items)
+        .into_iter()
+        .map(|i| items[i].to_string())
+        .collect()
+}
+
+/// Rank indices so callers can retain item identity without searching by title.
+fn ranked_indices(query: &str, items: &[&str]) -> Vec<usize> {
     if query.is_empty() {
-        return items.iter().map(|s| s.to_string()).collect();
+        return (0..items.len()).collect();
     }
     let mut matcher = Matcher::new(Config::DEFAULT);
-    let mut scored: Vec<(u16, &str)> = Vec::new();
-    for item in items {
-        let mut haystack_buf = Vec::new();
-        let mut needle_buf = Vec::new();
+    let mut scored = Vec::with_capacity(items.len());
+    let mut haystack_buf = Vec::new();
+    let mut needle_buf = Vec::new();
+    let needle = Utf32Str::new(query, &mut needle_buf);
+    for (i, item) in items.iter().enumerate() {
         let haystack = Utf32Str::new(item, &mut haystack_buf);
-        let needle = Utf32Str::new(query, &mut needle_buf);
         if let Some(score) = matcher.fuzzy_match(haystack, needle) {
-            scored.push((score, item));
+            scored.push((score, i));
         }
     }
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(b.1)));
-    scored.into_iter().map(|(_, s)| s.to_string()).collect()
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(items[a.1].cmp(items[b.1])));
+    scored.into_iter().map(|(_, i)| i).collect()
 }
 
 /// Palette prefix source.
@@ -133,8 +141,10 @@ impl PaletteState {
     /// Open with live help index entries appended as raw commands.
     pub fn open_live(context: &str, index: &[crate::backend::virsh::parse_help::HelpEntry]) -> Self {
         let mut items = curated();
+        let curated_commands: std::collections::HashSet<_> =
+            items.iter().map(|i| i.virsh_cmd.clone()).collect();
         for e in index {
-            if curated().iter().any(|c| c.virsh_cmd == e.name) {
+            if curated_commands.contains(&e.name) {
                 continue;
             }
             items.push(PaletteItem {
@@ -167,14 +177,15 @@ impl PaletteState {
 
     /// Reference doc for the highlighted result, when loaded.
     pub fn doc_for_selected(&self) -> Option<&crate::backend::virsh::parse_help::HelpDoc> {
-        let cmd = self.selected_item()?.virsh_cmd.clone();
-        self.docs.iter().find(|d| d.name == cmd)
+        let cmd = &self.selected_item()?.virsh_cmd;
+        self.docs.iter().find(|d| &d.name == cmd)
     }
 
     /// virsh command whose help still has to be loaded for the reference pane.
     pub fn needs_doc(&self) -> Option<String> {
         let item = self.selected_item()?;
-        (!item.virsh_cmd.is_empty() && self.doc_for_selected().is_none()).then(|| item.virsh_cmd.clone())
+        (!item.virsh_cmd.is_empty() && !self.docs.iter().any(|d| d.name == item.virsh_cmd))
+            .then(|| item.virsh_cmd.clone())
     }
 
     /// Move the selection; flags staged for the previous command are dropped.
@@ -194,15 +205,18 @@ impl PaletteState {
 
     /// The command line the current selection + flags produce (no program).
     pub fn command_line(&self) -> Option<String> {
-        let item = self.selected_item()?;
+        self.selected_item().map(|item| self.command_line_for(item))
+    }
+
+    fn command_line_for(&self, item: &PaletteItem) -> String {
         if !self.staged.is_empty() {
-            return Some(self.staged.trim_start_matches("virsh ").to_string());
+            return self.staged.trim_start_matches("virsh ").to_string();
         }
-        let mut parts = vec![item.virsh_cmd.clone()];
-        if !self.context.is_empty() {
-            parts.push(self.context.clone());
+        if self.context.is_empty() {
+            item.virsh_cmd.clone()
+        } else {
+            format!("{} {}", item.virsh_cmd, self.context)
         }
-        Some(parts.join(" "))
     }
 
     /// Toggle the option under the cursor into the staged command.
@@ -238,10 +252,9 @@ impl PaletteState {
     /// Visible items for the query.
     pub fn visible(&self) -> Vec<&PaletteItem> {
         let titles: Vec<&str> = self.items.iter().map(|i| i.title.as_str()).collect();
-        let ranked = fuzzy_rank(&self.query, &titles);
-        ranked
+        ranked_indices(&self.query, &titles)
             .into_iter()
-            .filter_map(|t| self.items.iter().find(|i| i.title == t))
+            .map(|i| &self.items[i])
             .collect()
     }
 }
@@ -451,7 +464,9 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         cols[2].height.saturating_sub(1),
     );
     let heading = Style::default().fg(t.blue).add_modifier(Modifier::BOLD);
-    let ref_lines = match st.doc_for_selected() {
+    let selected = visible.get(sel).copied();
+    let doc = selected.and_then(|item| st.docs.iter().find(|d| d.name == item.virsh_cmd));
+    let ref_lines = match doc {
         Some(doc) => {
             let mut v = vec![
                 Line::from(vec![
@@ -504,7 +519,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
                 );
             }
             v.push(Line::from(""));
-            if let Some(cmd) = st.command_line() {
+            if let Some(cmd) = selected.map(|item| st.command_line_for(item)) {
                 let step = crate::command::plan::CommandStep {
                     program: String::from("virsh"),
                     argv: shlex::split(&cmd).unwrap_or_default(),
@@ -522,7 +537,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
             }
             v
         }
-        None if st.selected_item().is_some() => {
+        None if selected.is_some() => {
             vec![Line::from(Span::styled("loading virsh help…", theme.dim()))]
         }
         None => Vec::new(),

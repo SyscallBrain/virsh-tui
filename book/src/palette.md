@@ -6,6 +6,9 @@
 binding and the domain it applies to. Type a few letters (`snap`, `iso`,
 `setmem`) and press `Enter` to run the highlighted entry.
 
+Entries with the same displayed title remain separate actions; moving the selection
+chooses the corresponding entry.
+
 For entries backed by a `virsh` subcommand, the right-hand pane shows its
 synopsis and its options as check boxes, so you can add flags such as
 `--live` or `--atomic` without remembering their names.

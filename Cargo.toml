@@ -49,3 +49,7 @@ tempfile = "3.27.0"
 
 [features]
 it = []
+
+[[bench]]
+name = "performance"
+harness = false
