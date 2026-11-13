@@ -2,9 +2,11 @@
 """Prove that the per-network `net-dumpxml` reads overlap.
 
 A fake `virsh` answers `net-list` with 12 networks and counts how many
-`net-dumpxml` processes are in flight at once. The Networks/Host view load must
-run them concurrently (peak > 1) while staying inside READ_CONCURRENCY
-(peak <= 6); the serial implementation peaked at 1.
+`net-dumpxml` processes are in flight at once. Startup loads the Host and
+Networks views together and both read every network's XML, so the serial
+implementation peaks at 2 (one read per loader). Each load has its own
+READ_CONCURRENCY semaphore, so the parallel implementation must exceed 2 and
+stay within 2 * READ_CONCURRENCY.
 """
 import fcntl
 import os
@@ -21,30 +23,38 @@ from pathlib import Path
 
 NETWORKS = 12
 SLEEP = 0.05
-LIMIT = 6
+LIMIT = 6  # READ_CONCURRENCY, per view load
+LOADERS = 2  # Host and Networks both read every network's XML at startup
+SERIAL_PEAK = LOADERS  # one read in flight per serial loader
 
 FAKE = """#!/usr/bin/env python3
-import fcntl, sys, time
+import fcntl, os, sys, time
 from pathlib import Path
 
 args = sys.argv[1:]
 sub = args[2] if len(args) > 2 else ""
 if sub == "net-dumpxml":
-    counter = Path('{counter}')
+    # Count live processes, not increments: an aborted load kills its children
+    # with SIGKILL, so a decrement-on-exit counter would leak and inflate the peak.
+    inflight = Path('{inflight}')
     lock = Path('{lock}')
     peak = Path('{peak}')
+    me = inflight / str(os.getpid())
     with lock.open("a") as lf:
         fcntl.flock(lf, fcntl.LOCK_EX)
-        n = int(counter.read_text() or "0") + 1
-        counter.write_text(str(n))
+        me.touch()
+        n = 0
+        for entry in inflight.iterdir():
+            try:
+                os.kill(int(entry.name), 0)
+                n += 1
+            except ProcessLookupError:
+                entry.unlink()
         if n > int(peak.read_text() or "0"):
             peak.write_text(str(n))
         fcntl.flock(lf, fcntl.LOCK_UN)
     time.sleep({sleep})
-    with lock.open("a") as lf:
-        fcntl.flock(lf, fcntl.LOCK_EX)
-        counter.write_text(str(int(counter.read_text() or "0") - 1))
-        fcntl.flock(lf, fcntl.LOCK_UN)
+    me.unlink()
     name = args[-1]
     print("<network><name>" + name + "</name><forward mode='nat'/><bridge name='virbr0'/></network>")
     sys.exit(0)
@@ -68,15 +78,15 @@ def main() -> int:
         root = Path(directory)
         binary_dir = root / "bin"
         binary_dir.mkdir()
-        counter = root / "counter"
+        inflight = root / "inflight"
         peak = root / "peak"
         lock = root / "lock"
-        counter.write_text("0")
+        inflight.mkdir()
         peak.write_text("0")
         lock.touch()
         fake = binary_dir / "virsh"
         fake.write_text(
-            FAKE.format(counter=counter, lock=lock, peak=peak, sleep=SLEEP, nets=NETWORKS),
+            FAKE.format(inflight=inflight, lock=lock, peak=peak, sleep=SLEEP, nets=NETWORKS),
             encoding="utf-8",
         )
         fake.chmod(0o755)
@@ -120,12 +130,12 @@ def main() -> int:
             os.close(slave)
         # The ratatui backend writes changed cells individually, so the network
         # names are not contiguous in the ANSI stream. The concurrency peak is
-        # the direct measurement: it can only exceed 1 if `net-list` returned
-        # rows and the per-network reads overlapped.
+        # the direct measurement: it can only exceed SERIAL_PEAK if `net-list`
+        # returned rows and the per-network reads within one load overlapped.
         highest = int(peak.read_text() or "0")
-        assert highest > 1, f"net-dumpxml reads stayed serial (peak {highest})"
-        assert highest <= LIMIT, f"net-dumpxml concurrency {highest} exceeded {LIMIT}"
-        print(f"net-dumpxml peak concurrency: {highest} (serial was 1, limit {LIMIT})")
+        assert highest > SERIAL_PEAK, f"net-dumpxml reads stayed serial (peak {highest})"
+        assert highest <= LOADERS * LIMIT, f"net-dumpxml concurrency {highest} exceeded {LOADERS} x {LIMIT}"
+        print(f"net-dumpxml peak concurrency: {highest} (serial was {SERIAL_PEAK}, bound {LOADERS * LIMIT})")
     return 0
 
 
