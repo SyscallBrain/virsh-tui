@@ -54,6 +54,7 @@ In NORMAL mode:
 | `:w` | apply the pending changes |
 | `:q!` | discard them |
 | `gx` | jump to the XML tab |
+| `Space m i` / `Space m e` | insert / eject an ISO on the CD-ROM (opens the media picker in Storage) |
 
 In INSERT mode, typing edits the field (upper-case letters included) and
 `Backspace` deletes; INSERT keeps every key until `Esc`. Number fields take
@@ -67,8 +68,9 @@ current above maximum, a disk size smaller than the disk). A disk "new size"
 runs `blockresize` on a running domain and `vol-resize` on its image when it
 is shut off. Raising vCPUs or memory past what the running guest booted
 with is saved to the configuration and noted in `:messages` as needing a
-restart. `q` and the view keys refuse to leave the domain while edits are
-pending.
+restart. `q`, the view keys and `Space m i` refuse to leave the domain while
+edits are pending. A key that completes a sequence (the `i` of `Space m i`)
+belongs to that sequence, not to the single-key shortcut.
 
 Changes are applied to the persistent configuration (`--config`), to the
 running domain (`--live`), or both, depending on the "Apply to" boxes at the

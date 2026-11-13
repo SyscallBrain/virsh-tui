@@ -41,7 +41,7 @@ wizard uses `host-model` and lists `host-passthrough` as a blocking problem.
 | `Ctrl-n` / `Ctrl-p` | next / previous step |
 | `Enter` | next step; on the last step, create the domain; on the ISO path, open the ISO picker |
 | `Ctrl-y` | copy the `virt-install` command |
-| `Ctrl-e` | edit the generated XML in your editor, then define it |
+| `Ctrl-e` | edit the generated XML in your editor, then define it (not for URL installs) |
 | `Ctrl-r` | reset the wizard to its defaults |
 | `Esc` | close; the draft is kept |
 
@@ -103,7 +103,14 @@ wizard jumps to the step that needs it and says what is wrong. Otherwise it
 runs `virt-install … --noautoconsole` against the current connection.
 
 - With "start after creation" off, virsh-tui asks `virt-install` for the XML
-  (`--print-xml`) and defines the domain without booting it.
+  (`--print-xml`) and defines the domain without booting it. ISO and PXE
+  installs are defined as one persistent configuration
+  (`--install no_install=yes`): the ISO stays in the CD-ROM and the boot
+  order is disk first, then CD-ROM (or network). The empty disk falls
+  through to the installer on the first start; once installed, the disk
+  boots. Eject the ISO with `Space m e` when you no longer need it.
+- A URL install boots its installer kernel directly, so it always starts
+  after creation; the form says so if "start after creation" is off.
 - With "open viewer" on, the graphical viewer opens once the domain starts.
 
 Errors from `virt-install` are shown in the wizard, so you can fix the field

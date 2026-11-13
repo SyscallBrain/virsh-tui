@@ -187,7 +187,7 @@ pub(super) fn handle_wizard_key(
             }
             KeyCode::Char('e') => {
                 wz.error = if demo || dry_run {
-                    let message = String::from("[dry-run] edit as XML  ── virt-install --print-xml=1");
+                    let message = String::from("[dry-run] edit as XML  ── virt-install --print-xml");
                     messages.push_action(message.clone(), &wz.name, true);
                     message
                 } else {

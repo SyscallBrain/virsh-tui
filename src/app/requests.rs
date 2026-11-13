@@ -190,6 +190,13 @@ impl App {
         let Some(wizard) = self.wizard.clone() else {
             return;
         };
+        if wizard.media == ui::overlays::wizard::MediaKind::Url {
+            if let Some(wizard) = self.wizard.as_mut() {
+                wizard.error =
+                    "a URL install boots its kernel directly: no XML to edit before it runs".into();
+            }
+            return;
+        }
         let snapshot = wizard.content_snapshot();
         let target = wizard.name.clone();
         let revision = self.wizard_revision;
@@ -203,12 +210,12 @@ impl App {
             self.open_editor_draft(draft);
             return;
         }
-        let mut step = crate::command::builders::install::virt_install(&wizard)
+        // The edited XML is only defined: one persistent phase (issue #5).
+        let mut step = crate::command::builders::install::define_xml(&wizard)
             .steps
             .remove(0);
         step.argv.insert(0, self.uri.clone());
         step.argv.insert(0, "--connect".into());
-        step.argv.push("--print-xml=1".into());
         self.editor_generation = self.editor_generation.wrapping_add(1);
         let generation = self.editor_generation;
         let uri = self.uri.clone();

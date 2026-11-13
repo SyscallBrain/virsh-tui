@@ -804,14 +804,34 @@ pub async fn run_xml_define(
 
 /// One-line cause of a failed command. virt-install prints `WARNING` lines
 /// before its `ERROR` line, so prefer the first error marker (`ERROR …` from
-/// virt-install, `error: …` from virsh), then the first non-warning line.
+/// virt-install), then virsh's `error: …` lines, then the first non-warning
+/// line. virsh's first `error:` line is generic ("Failed to define domain
+/// from …") and the cause follows it, so all of them are kept, joined.
 pub fn stderr_summary(stderr: &str) -> String {
     let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-    let line = lines
+    if let Some(line) = lines
         .iter()
         .find_map(|l| l.strip_prefix("ERROR").map(str::trim_start))
-        .or_else(|| lines.iter().copied().find(|l| l.starts_with("error:")))
-        .or_else(|| lines.iter().copied().find(|l| !l.starts_with("WARNING")))
+    {
+        return crate::model::sanitize(line);
+    }
+    let errors: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|l| l.starts_with("error:"))
+        .collect();
+    if let Some((first, rest)) = errors.split_first() {
+        let mut joined = first.to_string();
+        for cause in rest {
+            joined.push_str(": ");
+            joined.push_str(cause.trim_start_matches("error:").trim_start());
+        }
+        return crate::model::sanitize(&joined);
+    }
+    let line = lines
+        .iter()
+        .copied()
+        .find(|l| !l.starts_with("WARNING"))
         .or_else(|| lines.first().copied())
         .unwrap_or("unknown error");
     crate::model::sanitize(line)

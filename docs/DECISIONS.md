@@ -219,7 +219,13 @@ Google Chrome nor Chromium is available on the validation host. The optional
   single list (`ui/views/minimal.rs`); below 40×12 the "too small" panel,
   and no overlay is drawn.
 - `--osinfo` (P1-34) is `detect=on,require=off` unless the user typed an id;
-  the ISO-name guess is only a hint. Wizard XML uses `--print-xml=1` (P1-35).
+  the ISO-name guess is only a hint. Wizard XML (define without starting,
+  `C-e`) is one persistent phase, not `--print-xml=1` (P1-35, issue #5):
+  phase 1 of a `--cdrom`/`--pxe` install ends in `<on_reboot>destroy</on_reboot>`
+  and boots the media first forever. ISO/PXE add `--install no_install=yes`
+  and append `hd,cdrom` / `hd,network` to `--boot`; URL installs must start
+  after creation (no persistent XML to define). virsh failures join every
+  `error:` line, since the first one is generic.
 - `:messages` (P1-27) opens a scrollable overlay; the log keeps 2000 lines.
 - Structured listings (`domstats`, `list`, `vol-list`, `pool-list`,
   `net-list`, `net-dhcp-leases`) may read 64 MiB of output (P1-51); raw

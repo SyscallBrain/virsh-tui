@@ -103,6 +103,38 @@ pub fn virt_install(st: &WizardState) -> CommandPlan {
     }
 }
 
+/// `virt-install --print-xml` for a domain that is defined but not started
+/// ("start after creation" off, or `C-e` edit as XML).
+///
+/// `--cdrom` and `--pxe` are multi-phase installs: plain `--print-xml` prints
+/// two `<domain>` documents, and the install phase alone ends in
+/// `<on_reboot>destroy</on_reboot>` (issue #5). Ask for a single persistent
+/// phase instead (`--install no_install=yes`) that keeps the media attached
+/// and boots the disk first: an empty disk falls through to the installer,
+/// an installed one boots normally.
+pub fn define_xml(st: &WizardState) -> CommandPlan {
+    let mut plan = virt_install(st);
+    let argv = &mut plan.steps[0].argv;
+    let fallback = match st.media {
+        MediaKind::Iso => Some("cdrom"),
+        MediaKind::Pxe => Some("network"),
+        MediaKind::Url | MediaKind::Import | MediaKind::None => None,
+    };
+    if let Some(fallback) = fallback {
+        argv.push(String::from("--install=no_install=yes"));
+        let order = format!("hd,{fallback}");
+        match argv.iter_mut().find(|arg| arg.starts_with("--boot=")) {
+            Some(boot) => {
+                boot.push(',');
+                boot.push_str(&order);
+            }
+            None => argv.push(format!("--boot={order}")),
+        }
+    }
+    argv.push(String::from("--print-xml"));
+    plan
+}
+
 /// `--disk size=` is in GiB (may be fractional): `20G` → `20`, `512M` → `0.5`.
 fn disk_size_gib(s: &str) -> String {
     match crate::ui::views::detail::hardware::size_to_kib(s) {
@@ -147,5 +179,86 @@ mod tests {
         st.net_source = String::from("none");
         let argv = virt_install(&st).steps[0].argv.join(" ");
         assert!(argv.contains("--import") && argv.contains("--network=none") && !argv.contains("--boot"));
+    }
+
+    fn define_argv(st: &WizardState) -> String {
+        super::define_xml(st).steps[0].argv.join(" ")
+    }
+
+    fn iso_state() -> WizardState {
+        WizardState {
+            name: String::from("vm"),
+            iso_path: String::from("/isos/archlinux-2026.10.01-x86_64.iso"),
+            firmware: String::from("bios"),
+            ..Default::default()
+        }
+    }
+
+    // Issue #5: `--print-xml` of a `--cdrom` install is two documents, and the
+    // install phase alone ends in `<on_reboot>destroy</on_reboot>`.
+    #[test]
+    fn define_only_iso_is_one_persistent_phase() {
+        let argv = define_argv(&iso_state());
+        assert!(
+            argv.contains("--cdrom=/isos/archlinux-2026.10.01-x86_64.iso"),
+            "{argv}"
+        );
+        assert!(argv.contains("--install=no_install=yes"), "{argv}");
+        assert!(argv.contains("--boot=hd,cdrom"), "{argv}");
+        assert!(argv.ends_with("--print-xml"), "{argv}");
+    }
+
+    #[test]
+    fn define_only_uefi_keeps_one_boot_option() {
+        let mut st = iso_state();
+        st.firmware = String::from("uefi");
+        st.secure_boot = true;
+        let argv = super::define_xml(&st).steps[0].argv.clone();
+        let boots: Vec<_> = argv.iter().filter(|arg| arg.starts_with("--boot=")).collect();
+        assert_eq!(
+            boots,
+            ["--boot=uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=yes,hd,cdrom"]
+        );
+    }
+
+    #[test]
+    fn define_only_pxe_falls_back_to_the_network() {
+        let mut st = iso_state();
+        st.media = MediaKind::Pxe;
+        let argv = define_argv(&st);
+        assert!(
+            argv.contains("--pxe") && argv.contains("--install=no_install=yes"),
+            "{argv}"
+        );
+        assert!(argv.contains("--boot=hd,network"), "{argv}");
+    }
+
+    #[test]
+    fn define_only_import_is_unchanged_apart_from_print_xml() {
+        let mut st = iso_state();
+        st.media = MediaKind::Import;
+        st.disk_new = false;
+        st.disk_path = String::from("/var/lib/libvirt/images/vm.qcow2");
+        let mut expected = virt_install(&st).steps[0].argv.clone();
+        expected.push(String::from("--print-xml"));
+        assert_eq!(super::define_xml(&st).steps[0].argv, expected);
+    }
+
+    // A `--location` install boots the downloaded kernel directly: there is no
+    // persistent single-phase domain to define without starting it.
+    #[test]
+    fn url_install_must_start_after_creation() {
+        let mut st = iso_state();
+        st.media = MediaKind::Url;
+        st.url = String::from("https://example.org/fedora/os/");
+        assert!(st.problems().is_empty(), "{:?}", st.problems());
+        st.start_after = false;
+        assert!(
+            st.problems()
+                .iter()
+                .any(|(step, text)| *step == 5 && text.contains("start after creation")),
+            "{:?}",
+            st.problems()
+        );
     }
 }

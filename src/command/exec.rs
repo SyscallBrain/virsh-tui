@@ -23,7 +23,7 @@ pub fn is_demo() -> bool {
 /// Execute a plan against `uri`. Returns the message-line text.
 ///
 /// Success: `✓ <summary>  ── <first command>`.
-/// Partial failure: `✗ step i/n failed: <first stderr line>`.
+/// Partial failure: `✗ step i/n failed: <stderr summary>` (see [`super::job::stderr_summary`]).
 /// Dry-run: `[dry-run] <command>` per step, returns success.
 pub async fn execute(uri: &str, plan: &CommandPlan, dry_run: bool) -> Result<String> {
     if is_demo() {
@@ -49,12 +49,8 @@ pub async fn execute(uri: &str, plan: &CommandPlan, dry_run: bool) -> Result<Str
                     other => eyre!(other),
                 })?;
         if !output.status.success() {
-            let first_line = String::from_utf8_lossy(&output.stderr)
-                .lines()
-                .next()
-                .unwrap_or("unknown error")
-                .to_string();
-            return Err(eyre!("✗ step {}/{} failed: {first_line}", i + 1, n));
+            let cause = super::job::stderr_summary(&String::from_utf8_lossy(&output.stderr));
+            return Err(eyre!("✗ step {}/{} failed: {cause}", i + 1, n));
         }
     }
     let first = plan.steps.first().map(display).unwrap_or_default();
