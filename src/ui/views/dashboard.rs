@@ -1635,10 +1635,13 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DashboardState, ar
             format!(" domains › {} ", sel.name),
             Style::default().fg(t.fg2).bg(t.hl),
         ),
-        Span::styled(
-            "  j/k move  ⏎ open  s start  S shutdown  p pause  m mark  ␣ leader  : cmd  ? help",
-            theme.secondary(),
-        ),
+    ];
+    spans.extend(crate::ui::chrome::hint_spans(
+        theme,
+        "  j/k move  ⏎ open  s start  S shutdown  p pause  m mark  ␣ leader  : cmd  ? help",
+    ));
+    let right_from = spans.len();
+    spans.extend([
         Span::styled(" ", Style::default().bg(t.hl)),
         Span::styled(format!("● {}", counts.0), Style::default().fg(t.green).bg(t.hl)),
         Span::styled(
@@ -1650,7 +1653,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DashboardState, ar
             format!("  ○ {} ", counts.3),
             Style::default().fg(t.comment).bg(t.hl),
         ),
-    ];
+    ]);
     if !state.marks.is_empty() {
         spans.push(Span::styled(
             format!(" {} marked ", state.marks.len()),
@@ -1660,7 +1663,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DashboardState, ar
                 .add_modifier(Modifier::BOLD),
         ));
     }
-    crate::ui::chrome::statusbar(frame, theme, area, spans, 3);
+    crate::ui::chrome::statusbar(frame, theme, area, spans, right_from);
 }
 
 fn render_message(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {

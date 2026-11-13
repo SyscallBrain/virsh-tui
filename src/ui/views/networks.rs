@@ -758,7 +758,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &NetworksState, are
         return;
     }
     let t = &theme.tokens;
-    let spans = vec![
+    let mut spans = vec![
         Span::styled(
             " NORMAL ",
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
@@ -767,11 +767,11 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &NetworksState, are
             format!(" networks › {} ", state.selected_name()),
             Style::default().fg(t.fg2).bg(t.hl),
         ),
-        Span::styled(
-            "  j/k move  l leases  s start  D destroy  a autostart  e edit xml  n new  X undefine",
-            theme.secondary(),
-        ),
     ];
+    spans.extend(crate::ui::chrome::hint_spans(
+        theme,
+        "  j/k move  l leases  s start  D destroy  a autostart  e edit xml  n new  X undefine",
+    ));
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
 }
 

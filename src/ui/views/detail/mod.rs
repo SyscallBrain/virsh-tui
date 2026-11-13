@@ -801,15 +801,16 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DetailState, area:
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(crumb, Style::default().fg(t.fg2).bg(t.hl)),
-        Span::styled(hints, theme.secondary()),
     ];
+    spans.extend(crate::ui::chrome::hint_spans(theme, hints));
+    let right_from = spans.len();
     if state.hw.pending_count() > 0 {
         spans.push(Span::styled(
             " [+] modified ",
             Style::default().fg(t.yellow).bg(t.hl),
         ));
     }
-    crate::ui::chrome::statusbar(frame, theme, area, spans, 3);
+    crate::ui::chrome::statusbar(frame, theme, area, spans, right_from);
 }
 
 fn render_message(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Rect) {

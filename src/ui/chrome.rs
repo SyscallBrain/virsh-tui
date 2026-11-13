@@ -229,15 +229,63 @@ pub fn compact_status(frame: &mut Frame, theme: &Theme, area: Rect, mode: &str, 
     } else {
         theme.tokens.blue
     };
-    let spans = vec![
-        Span::styled(
-            format!(" {mode} "),
-            Style::default()
-                .fg(theme.tokens.bg2)
-                .bg(color)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(format!(" {hints}"), theme.secondary()),
-    ];
+    let mut spans = vec![Span::styled(
+        format!(" {mode} "),
+        Style::default()
+            .fg(theme.tokens.bg2)
+            .bg(color)
+            .add_modifier(Modifier::BOLD),
+    )];
+    spans.extend(hint_spans(theme, &format!(" {hints}")));
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
+}
+
+/// Key hints (`"  j/k move  ⏎ open"` or `"j/k move · ⏎ open"`): each item's
+/// first word is the key, in the bold orange key style used by the top-bar
+/// tab numbers; the label and separators stay secondary text.
+pub fn hint_spans(theme: &Theme, hints: &str) -> Vec<Span<'static>> {
+    let body = hints.trim_start();
+    let mut spans = Vec::new();
+    if body.len() < hints.len() {
+        spans.push(Span::styled(
+            hints[..hints.len() - body.len()].to_string(),
+            theme.secondary(),
+        ));
+    }
+    let sep = if body.contains(" · ") { " · " } else { "  " };
+    for (i, item) in body.split(sep).enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(sep, theme.secondary()));
+        }
+        match item.split_once(' ') {
+            Some((key, label)) => {
+                spans.push(Span::styled(key.to_string(), theme.key()));
+                spans.push(Span::styled(format!(" {label}"), theme.secondary()));
+            }
+            None => spans.push(Span::styled(item.to_string(), theme.key())),
+        }
+    }
+    spans
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hint_spans;
+    use crate::theme::builtin::by_name;
+
+    #[test]
+    fn hint_keys_use_the_key_style() {
+        let theme = by_name("tokyonight");
+        for hints in ["  j/k move  ⏎ open  ? help", "j/k move · ⏎ open · ? help"] {
+            let spans = hint_spans(&theme, hints);
+            let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
+            assert_eq!(text, hints);
+            let keys: Vec<&str> = spans
+                .iter()
+                .filter(|s| s.style == theme.key())
+                .map(|s| s.content.as_ref())
+                .collect();
+            assert_eq!(keys, ["j/k", "⏎", "?"]);
+        }
+    }
 }

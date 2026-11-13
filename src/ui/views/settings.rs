@@ -792,13 +792,17 @@ fn apply_preview_flags(theme: Theme, _state: &SettingsState) -> Theme {
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Rect) {
     if area.width < 140 {
         frame.render_widget(
-            Paragraph::new("h/l pane · j/k move · Enter · Esc close").style(theme.secondary()),
+            Paragraph::new(Line::from(crate::ui::chrome::hint_spans(
+                theme,
+                "h/l pane · j/k move · Enter · Esc close",
+            )))
+            .style(theme.topbar()),
             area,
         );
         return;
     }
     let t = &theme.tokens;
-    let spans = vec![
+    let mut spans = vec![
         Span::styled(
             " NORMAL ",
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
@@ -807,11 +811,11 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, are
             " settings › appearance › theme ",
             Style::default().fg(t.fg2).bg(t.hl),
         ),
-        Span::styled(
-            "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
-            theme.secondary(),
-        ),
     ];
+    spans.extend(crate::ui::chrome::hint_spans(
+        theme,
+        "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
+    ));
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
     let _ = state;
 }

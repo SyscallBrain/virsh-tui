@@ -872,20 +872,21 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, area: Rect) {
         return;
     }
     let t = &theme.tokens;
-    let spans = vec![
+    let mut spans = vec![
         Span::styled(
             " NORMAL ",
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
         ),
         Span::styled(" host › running ", Style::default().fg(t.fg2).bg(t.hl)),
-        Span::styled(
-            // Only keys the Host view handles (sort/interval/window were advertised
-            // without bindings).
-            "  j/k move  ⏎ open domain  : cmd  ? help",
-            theme.secondary(),
-        ),
     ];
-    crate::ui::chrome::statusbar(frame, theme, area, spans, 3);
+    // Only keys the Host view handles (sort/interval/window were advertised
+    // without bindings).
+    spans.extend(crate::ui::chrome::hint_spans(
+        theme,
+        "  j/k move  ⏎ open domain  : cmd  ? help",
+    ));
+    let right_from = spans.len();
+    crate::ui::chrome::statusbar(frame, theme, area, spans, right_from);
 }
 
 fn render_message(frame: &mut Frame, theme: &Theme, state: &HostState, area: Rect) {

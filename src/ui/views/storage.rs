@@ -552,7 +552,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &StorageState, area
         crate::ui::chrome::statusbar(frame, theme, area, spans, 2);
         return;
     }
-    let spans = vec![
+    let mut spans = vec![
         Span::styled(
             " NORMAL ",
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
@@ -568,11 +568,11 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &StorageState, area
             ),
             Style::default().fg(t.fg2).bg(t.hl),
         ),
-        Span::styled(
-            "  j/k move  n new  R resize  C clone  u upload  W wipe  X delete  ␣mi media",
-            theme.secondary(),
-        ),
     ];
+    spans.extend(crate::ui::chrome::hint_spans(
+        theme,
+        "  j/k move  n new  R resize  C clone  u upload  W wipe  X delete  ␣mi media",
+    ));
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
 }
 
