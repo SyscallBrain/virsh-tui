@@ -28,6 +28,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The which-key popup appears after a lone `Space` (or `g`), not only after a
+  second key such as `Space s`, and it no longer lets the view behind it
+  show through.
 - The new-domain wizard no longer fails on hosts without KVM: it uses the
   `host-model` CPU when `/dev/kvm` is missing, because libvirt rejects
   `host-passthrough` there.

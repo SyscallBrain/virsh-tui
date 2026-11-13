@@ -5,6 +5,7 @@
 A keyboard-driven terminal UI for libvirt, with vim keys and live graphs.
 
 [![CI](https://github.com/SyscallBrain/virsh-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/SyscallBrain/virsh-tui/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/SyscallBrain/virsh-tui?color=7aa2f7)](https://github.com/SyscallBrain/virsh-tui/releases/latest)
 [![Docs](https://github.com/SyscallBrain/virsh-tui/actions/workflows/pages.yml/badge.svg)](https://syscallbrain.github.io/virsh-tui/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange.svg?logo=rust)](https://www.rust-lang.org)
@@ -13,12 +14,14 @@ A keyboard-driven terminal UI for libvirt, with vim keys and live graphs.
 
 [Documentation](https://syscallbrain.github.io/virsh-tui/) ·
 [Install](#install) ·
+[Screenshots](#screenshots) ·
 [Key bindings](https://syscallbrain.github.io/virsh-tui/keys.html) ·
+[Changelog](CHANGELOG.md) ·
 [Report a bug](https://github.com/SyscallBrain/virsh-tui/issues/new?template=bug_report.yml)
 
-![virsh-tui domains dashboard](book/src/images/dashboard.png)
-
 </div>
+
+![virsh-tui in action: the domain list, bulk actions on marked domains, the live monitor, the hardware editor with its XML diff, the snapshot tree, the host, network and storage views, the which-key menu, the command palette and Tab completion, the new domain wizard and themes](book/src/images/demo.gif)
 
 virsh-tui shows every virtual machine on a libvirt connection with live CPU,
 memory, disk and network graphs, and lets you start, stop, snapshot,
@@ -56,6 +59,8 @@ It works with `qemu:///system`, `qemu:///session` and remote hosts over
 
 | | |
 |:-:|:-:|
+| ![Domains dashboard](book/src/images/dashboard.png) | ![Events](book/src/images/events.png) |
+| Domains dashboard | Live libvirt events |
 | ![Domain monitor](book/src/images/monitor.png) | ![Hardware editor](book/src/images/hardware.png) |
 | Live monitor | Hardware editor with XML diff |
 | ![New domain wizard](book/src/images/wizard.png) | ![Host view](book/src/images/host.png) |
@@ -77,19 +82,26 @@ It works with `qemu:///system`, `qemu:///session` and remote hosts over
 
 </details>
 
-All screenshots come from `--demo` mode.
+The presentation and the screenshots come from `--demo` mode, with
+example data.
 
 ## Install
 
-You need Linux, the libvirt client tools (`virsh`) and Rust 1.88 or newer.
-`virt-install` is used by the new domain wizard and `virt-viewer` by the
-graphical viewer.
+You need Linux and the libvirt client tools (`virsh`). `virt-install` is
+used by the new domain wizard and `virt-viewer` by the graphical viewer.
+
+For x86_64, download the archive from the
+[latest release](https://github.com/SyscallBrain/virsh-tui/releases/latest),
+check it against its `.sha256` file, unpack it and put `virsh-tui` on your
+`PATH`.
+
+To build it yourself you need Rust 1.88 or newer:
 
 ```sh
 cargo install --locked --git https://github.com/SyscallBrain/virsh-tui
 ```
 
-Or build from a clone:
+Or from a clone:
 
 ```sh
 git clone https://github.com/SyscallBrain/virsh-tui
@@ -99,8 +111,10 @@ cargo build --release
 ```
 
 To manage `qemu:///system`, your user must be allowed to use it, which on
-most distributions means being in the `libvirt` group. The
-[installation guide](https://syscallbrain.github.io/virsh-tui/installation.html)
+most distributions means being in the `libvirt` group. Use a terminal with
+truecolor and a font with box-drawing and braille characters; the layout needs
+at least 100×30, and from 153 columns the metrics sit next to the domain list.
+The [installation guide](https://syscallbrain.github.io/virsh-tui/installation.html)
 has the details.
 
 ## Quick start
@@ -145,9 +159,8 @@ Settings live in `~/.config/virsh-tui/config.toml`, key overrides in
 ## Contributing
 
 Issues and pull requests are welcome. Read
-[CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and regenerate the
-screenshots.
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 Tiago Correia (SyscallBrain) and virsh-tui contributors.

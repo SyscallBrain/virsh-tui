@@ -6,7 +6,7 @@ lets you start, stop, snapshot, reconfigure and create them without leaving the
 keyboard. The key bindings follow vim: `j`/`k` to move, `:` for commands, `/`
 to filter, a leader key for less common actions.
 
-![The domains dashboard](images/dashboard.png)
+![virsh-tui in action: the domain list, bulk actions, the live monitor, the hardware editor, snapshots, the host views, the command line, the wizard and themes](images/demo.gif)
 
 Under the hood every action is a `virsh` (or `virt-install`) command. The
 interface shows the exact command before and after it runs, so you can copy it
