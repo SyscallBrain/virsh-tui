@@ -136,3 +136,54 @@ fn settings_open_on_the_first_category() {
     assert!(text.contains("settings › general"), "{text}");
     assert!(text.contains("default URI"), "{text}");
 }
+
+#[test]
+fn appearance_cursor_highlights_the_option_row_in_place() {
+    let cfg = Config::default();
+    let th = theme::builtin::tokyo_night();
+    let mut st = settings::SettingsState::open_theme(&cfg);
+    st.pane = settings::SettingsPane::Options;
+    for (idx, label) in [
+        (0, "rounded"),
+        (1, "nerd font"),
+        (2, "braille"),
+        (3, "vertical gradient"),
+        (4, "transparent (inherit terminal)"),
+        (5, "dim behind modals"),
+    ] {
+        st.opt_idx = idx;
+        let text = draw(174, 43, |f| settings::render(f, &th, &cfg, &st));
+        // Right-hand column only (the Theme list keeps its own cursor).
+        let cursor_rows: Vec<&str> = text
+            .lines()
+            .filter_map(|l| l.rsplit("│ │").next())
+            .filter(|l| l.starts_with(" ❯ "))
+            .collect();
+        assert_eq!(cursor_rows.len(), 1, "one cursor row expected:\n{text}");
+        assert!(cursor_rows[0].contains(label), "cursor not on {label}:\n{text}");
+        assert!(
+            !text.contains("⏎ change · j/k option"),
+            "stale hint line:\n{text}"
+        );
+    }
+}
+
+#[test]
+fn theme_list_cursor_is_dim_when_another_pane_has_focus() {
+    let cfg = Config::default();
+    let th = theme::builtin::tokyo_night();
+    let mut st = settings::SettingsState::open_theme(&cfg);
+    let mut terminal = Terminal::new(TestBackend::new(174, 43)).unwrap();
+    // `❯` of the selected theme sits at column 33 on the first list row (y = 2).
+    for (pane, highlighted) in [
+        (settings::SettingsPane::List, true),
+        (settings::SettingsPane::Options, false),
+        (settings::SettingsPane::Categories, false),
+    ] {
+        st.pane = pane;
+        terminal.draw(|f| settings::render(f, &th, &cfg, &st)).unwrap();
+        let cell = &terminal.backend().buffer()[(33, 2)];
+        assert_eq!(cell.symbol(), "❯");
+        assert_eq!(cell.bg == th.tokens.sel, highlighted, "pane {pane:?}");
+    }
+}

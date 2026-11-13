@@ -429,22 +429,30 @@ fn render_list(frame: &mut Frame, theme: &Theme, config: &Config, state: &Settin
     let preview = resolve(state.selected_theme()).0;
     let sw = swatch_colors(&preview);
     let mut lines: Vec<Line> = Vec::new();
+    // Full highlight only while the list has focus; otherwise a dim marker
+    // keeps the current theme visible without competing with the real cursor.
+    let focused = state.pane == SettingsPane::List;
     for (i, name) in state.themes.iter().enumerate() {
         let selected = i == state.theme_idx;
-        let bg = if selected { t.sel } else { t.bg };
+        let bg = if selected && focused { t.sel } else { t.bg };
         let mut spans = vec![
             Span::styled(
                 if selected { "❯" } else { " " },
-                Style::default().fg(t.blue).bg(bg),
+                Style::default()
+                    .fg(if focused { t.blue } else { t.comment })
+                    .bg(bg),
             ),
             Span::raw(" "),
             Span::styled(
                 name.clone(),
-                Style::default().fg(t.fg).bg(bg).add_modifier(if selected {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                }),
+                Style::default()
+                    .fg(t.fg)
+                    .bg(bg)
+                    .add_modifier(if selected && focused {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
             ),
             Span::raw(" "),
         ];
@@ -640,100 +648,79 @@ fn render_compact_appearance(
 
 fn render_appearance(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
     let t = &theme.tokens;
-    let radio = |on: bool| {
-        if on {
-            Span::styled("(●)", Style::default().fg(t.blue).bg(t.bg))
-        } else {
-            Span::styled("( )", theme.secondary())
-        }
-    };
-    let check = |on: bool| {
-        if on {
-            Span::styled("[x]", Style::default().fg(t.green).bg(t.bg))
-        } else {
-            Span::styled("[ ]", theme.secondary())
-        }
-    };
+    let focused = state.pane == SettingsPane::Options;
     let a = &config.appearance;
-    let lines = vec![
-        Line::from(Span::styled(
-            "Borders",
-            Style::default().fg(t.blue).bg(t.bg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            radio(a.borders == "rounded"),
-            Span::styled(" ╭─╮ rounded ", theme.text()),
-            radio(a.borders == "plain"),
-            Span::styled(" ┌─┐ plain ", theme.secondary()),
-            radio(a.borders == "double"),
-            Span::styled(" ╔═╗ double ", theme.secondary()),
-            radio(a.borders == "thick"),
-            Span::styled(" ┏━┓ thick", theme.secondary()),
-        ]),
-        Line::from(Span::styled(
-            "Icons",
-            Style::default().fg(t.blue).bg(t.bg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            radio(a.icons == "unicode"),
-            Span::styled(" unicode ● ◆ ◎ ", theme.text()),
-            radio(a.icons == "nerd"),
-            Span::styled(" nerd font ", theme.secondary()),
-            radio(a.icons == "ascii"),
-            Span::styled(" ascii * # o", theme.secondary()),
-        ]),
-        Line::from(Span::styled(
-            "Graphs",
-            Style::default().fg(t.blue).bg(t.bg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            radio(a.graphs == "braille"),
-            Span::styled(" braille ⣿ ", theme.text()),
-            radio(a.graphs == "block"),
-            Span::styled(" block █ ", theme.secondary()),
-            radio(a.graphs == "tty"),
-            Span::styled(" tty   ", theme.secondary()),
-            check(a.gradient),
-            Span::styled(" vertical gradient", theme.text()),
-        ]),
-        Line::from(Span::styled(
-            "Background",
-            Style::default().fg(t.blue).bg(t.bg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            check(a.transparent),
-            Span::styled(" transparent (inherit terminal) ", theme.secondary()),
-            check(a.dim_modals),
-            Span::styled(" dim behind modals", theme.text()),
-        ]),
+    // One row per option (same order as `opt_idx`); the cursor row is
+    // highlighted in place, like the other categories.
+    let choice = |mark: &'static str, on: bool, label: &'static str| -> [Span<'static>; 2] {
+        [
+            if on {
+                Span::styled(
+                    mark,
+                    Style::default().fg(if mark == "[x]" { t.green } else { t.blue }),
+                )
+            } else {
+                Span::styled(if mark == "[x]" { "[ ]" } else { "( )" }, theme.secondary())
+            },
+            Span::styled(label, if on { theme.text() } else { theme.secondary() }),
+        ]
+    };
+    let radio = |on: bool, label: &'static str| choice("(●)", on, label);
+    let check = |on: bool, label: &'static str| choice("[x]", on, label);
+    let rows: [(Option<&str>, Vec<Span>); 6] = [
+        (
+            Some("Borders"),
+            [
+                radio(a.borders == "rounded", " ╭─╮ rounded  "),
+                radio(a.borders == "plain", " ┌─┐ plain  "),
+                radio(a.borders == "double", " ╔═╗ double  "),
+                radio(a.borders == "thick", " ┏━┓ thick"),
+            ]
+            .concat(),
+        ),
+        (
+            Some("Icons"),
+            [
+                radio(a.icons == "unicode", " unicode ● ◆ ◎  "),
+                radio(a.icons == "nerd", " nerd font  "),
+                radio(a.icons == "ascii", " ascii * # o"),
+            ]
+            .concat(),
+        ),
+        (
+            Some("Graphs"),
+            [
+                radio(a.graphs == "braille", " braille ⣿  "),
+                radio(a.graphs == "block", " block █  "),
+                radio(a.graphs == "tty", " tty"),
+            ]
+            .concat(),
+        ),
+        (None, check(a.gradient, " vertical gradient").to_vec()),
+        (
+            Some("Background"),
+            check(a.transparent, " transparent (inherit terminal)").to_vec(),
+        ),
+        (None, check(a.dim_modals, " dim behind modals").to_vec()),
     ];
-    let mut lines = lines;
-    if state.pane == SettingsPane::Options {
-        let names = [
-            "borders",
-            "icons",
-            "graphs",
-            "vertical gradient",
-            "transparent",
-            "dim behind modals",
-        ];
-        lines.push(Line::from(vec![
-            Span::styled("❯ ", Style::default().fg(t.blue)),
-            Span::styled(
-                names[state.opt_idx.min(5)],
-                theme.text().add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                if crate::config::key_hints() {
-                    "  ⏎ change · j/k option"
-                } else {
-                    ""
-                },
-                theme.secondary(),
-            ),
-        ]));
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, (section, spans)) in rows.into_iter().enumerate() {
+        if let Some(section) = section {
+            lines.push(Line::from(Span::styled(
+                section,
+                Style::default().fg(t.blue).add_modifier(Modifier::BOLD),
+            )));
+        }
+        let cur = focused && i == state.opt_idx.min(5);
+        let mut line = vec![Span::styled(
+            if cur { "❯ " } else { "  " },
+            Style::default().fg(t.blue),
+        )];
+        line.extend(spans);
+        lines.push(Line::from(line).style(Style::default().bg(if cur { t.sel } else { t.bg })));
     }
-    let block = panel_block(theme, state.pane == SettingsPane::Options, "Appearance", None);
+    let footer = (focused && crate::config::key_hints()).then_some("⏎ change · saved immediately");
+    let block = crate::ui::widgets::panel::block(theme, focused, "Appearance", None, None, footer);
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
 }
 
