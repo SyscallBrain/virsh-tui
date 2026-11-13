@@ -36,5 +36,5 @@ expression: "buffer_text(120, 36, &state)"
  │ RAM   ━━━━━━━━━━━━━━━━━━━━━━ 41.2/64G     NVMe  ━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.8T                                    │ 
  │ Swap  ━━━━━━━━━━━━━━━━━━━━━━ 0.4/8G       Huge  ━━━━━━━━━━━━━━━━━━━━━━ 8/16 1G                                     │ 
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
- NORMAL  domains › arch-dev   j/k move  ⏎ open  s start  S shutdown  p pause  m mark  ␣ leader  : cmd  ? help ● 9  ‖ 1  
+ NORMAL  j/k move · Enter open · s start · S shutdown · m mark · : cmd · ? help                                         
 ✓ Started k8s-worker-02  ── virsh start k8s-worker-02

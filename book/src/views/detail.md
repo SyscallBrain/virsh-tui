@@ -33,6 +33,13 @@ redirection) and the selected device's form in the middle. The right column
 shows the XML diff of your pending changes and, below it, the commands that
 `:w` will run.
 
+![Compact hardware editor](../images/hardware-compact.png)
+
+Below 150 columns the editor takes priority over the side panels. `F6`
+opens the full XML diff and command review in either editing mode; `Esc` or
+`F6` returns. Arrows scroll vertically or pan horizontally, `PageUp`/`PageDown`
+page, and `Home` resets the review. The focused field follows the viewport.
+
 In NORMAL mode:
 
 | Key | Action |
@@ -73,6 +80,8 @@ anything changes.
 ## Snapshots
 
 ![Snapshots tab](../images/snapshots.png)
+
+![Compact snapshot confirmation](../images/snapshots-compact.png)
 
 The snapshot tree, with the current snapshot marked, each snapshot's date
 and kind (`disk`, `mem+disk`), and the details and description of the

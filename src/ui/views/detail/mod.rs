@@ -188,6 +188,21 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &DetailState) {
     }
     if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
         render_minimal(frame, theme, state);
+        if state.tab == DetailTab::Hardware {
+            let body = Rect::new(area.x, area.y + 1, area.width, area.height.saturating_sub(3));
+            hardware::render(frame, theme, &state.hw, &state.domain, state.hw_insert, body);
+        }
+        if state.snap_modal != SnapModal::None {
+            crate::ui::widgets::modal::dim_background(frame, theme);
+            snapshots::render_compact_modal(
+                frame,
+                theme,
+                area,
+                &state.domain,
+                state.snap_modal,
+                &state.snaps,
+            );
+        }
         return;
     }
     let rows = Layout::default()
@@ -275,7 +290,7 @@ fn render_header(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Re
         _ => t.comment,
     };
     let mut spans = vec![
-        Span::styled("domains › ", theme.dim()),
+        Span::styled("domains › ", theme.secondary()),
         Span::styled(
             state.domain.clone(),
             Style::default().fg(t.fg).bg(t.bg).add_modifier(Modifier::BOLD),
@@ -285,7 +300,7 @@ fn render_header(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Re
             format!("{glyph} {}", state_label(state.state)),
             Style::default().fg(state_color).bg(t.bg),
         ),
-        Span::styled(format!("  {}", state.uptime), theme.dim()),
+        Span::styled(format!("  {}", state.uptime), theme.secondary()),
         Span::raw("   "),
     ];
     for tab in DetailTab::ALL {
@@ -295,10 +310,10 @@ fn render_header(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Re
                 Style::default().fg(t.fg).bg(t.sel).add_modifier(Modifier::BOLD),
             ));
         } else {
-            spans.push(Span::styled(format!(" {} ", tab.label()), theme.dim()));
+            spans.push(Span::styled(format!(" {} ", tab.label()), theme.secondary()));
         }
     }
-    spans.push(Span::styled("   H/L switch tab  ⌫ back", theme.dim()));
+    spans.push(Span::styled("   H/L switch tab  ⌫ back", theme.secondary()));
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.base()), area);
 }
 
@@ -740,7 +755,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DetailState, area:
                 Style::default().fg(t.fg2).bg(t.hl),
             ),
             Span::styled(
-                " confirm style: y/n · type-name for undefine ",
+                " n cancel · y confirm · Esc back ",
                 Style::default().fg(t.comment).bg(t.hl),
             ),
         ];
@@ -752,7 +767,19 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DetailState, area:
     let pill_bg = if insert { t.green } else { t.blue };
     let crumb = if insert {
         let dev = state.hw.selected_device();
-        format!("{} › hardware › {} › max ", state.domain, dev.name.to_lowercase())
+        let field = state
+            .hw
+            .forms
+            .get(&dev.id)
+            .and_then(|form| form.focused())
+            .map(|field| field.id.as_str())
+            .unwrap_or("");
+        format!(
+            "{} › hardware › {} › {} ",
+            state.domain,
+            dev.name.to_lowercase(),
+            field
+        )
     } else {
         format!(
             " detail › {} › {} ",
@@ -774,7 +801,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DetailState, area:
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(crumb, Style::default().fg(t.fg2).bg(t.hl)),
-        Span::styled(hints, theme.dim()),
+        Span::styled(hints, theme.secondary()),
     ];
     if state.hw.pending_count() > 0 {
         spans.push(Span::styled(

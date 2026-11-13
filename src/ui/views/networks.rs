@@ -535,7 +535,7 @@ fn render_net_detail(frame: &mut Frame, theme: &Theme, state: &NetworksState, ar
                     " · {}autostart · persistent",
                     if n.autostart { "" } else { "no " }
                 ),
-                theme.dim(),
+                theme.secondary(),
             ),
         ])
     });
@@ -548,17 +548,17 @@ fn render_net_detail(frame: &mut Frame, theme: &Theme, state: &NetworksState, ar
         }
     };
     let kv = |k: &str, v: Vec<Span<'static>>| {
-        let mut spans = vec![Span::styled(format!("{k:<10}"), theme.dim())];
+        let mut spans = vec![Span::styled(format!("{k:<10}"), theme.secondary())];
         spans.extend(v);
         Line::from(spans)
     };
     let mut forward = vec![Span::raw(c.forward_mode.clone())];
     if !c.forward_dev.is_empty() {
-        forward.push(Span::styled(" → ", theme.dim()));
+        forward.push(Span::styled(" → ", theme.secondary()));
         forward.push(Span::raw(c.forward_dev.clone()));
     }
     if let Some((a, b)) = &c.nat_ports {
-        forward.push(Span::styled(format!(" · ports {a}-{b}"), theme.dim()));
+        forward.push(Span::styled(format!(" · ports {a}-{b}"), theme.secondary()));
     }
     let mut bridge = vec![Span::raw(dash(&c.bridge))];
     if !c.bridge.is_empty() {
@@ -573,7 +573,7 @@ fn render_net_detail(frame: &mut Frame, theme: &Theme, state: &NetworksState, ar
                     c.mtu.clone()
                 }
             ),
-            theme.dim(),
+            theme.secondary(),
         ));
     }
     let dhcp = match &c.dhcp_range {
@@ -584,11 +584,11 @@ fn render_net_detail(frame: &mut Frame, theme: &Theme, state: &NetworksState, ar
             };
             vec![
                 Span::raw(format!("{} – {}", short(a), short(b))),
-                Span::styled(" · ", theme.dim()),
+                Span::styled(" · ", theme.secondary()),
                 Span::raw(format!("{} static hosts", c.static_hosts.len())),
             ]
         }
-        None => vec![Span::styled("—", theme.dim())],
+        None => vec![Span::styled("—", theme.secondary())],
     };
     let lines = vec![
         kv("uuid", vec![Span::styled(dash(&c.uuid), theme.secondary())]),
@@ -609,7 +609,7 @@ fn render_net_detail(frame: &mut Frame, theme: &Theme, state: &NetworksState, ar
             } else {
                 vec![
                     Span::raw("on"),
-                    Span::styled(" · domain ", theme.dim()),
+                    Span::styled(" · domain ", theme.secondary()),
                     Span::raw(c.dns_domain.clone()),
                 ]
             },
@@ -618,7 +618,7 @@ fn render_net_detail(frame: &mut Frame, theme: &Theme, state: &NetworksState, ar
             "ipv6",
             vec![Span::styled(
                 c.ipv6.clone().unwrap_or_else(|| String::from("—")),
-                theme.dim(),
+                theme.secondary(),
             )],
         ),
     ];
@@ -747,6 +747,16 @@ fn render_leases(frame: &mut Frame, theme: &Theme, state: &NetworksState, area: 
 }
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &NetworksState, area: Rect) {
+    if area.width < 140 {
+        crate::ui::chrome::compact_status(
+            frame,
+            theme,
+            area,
+            "NORMAL",
+            "j/k move · h/l pane · s start · e XML · : cmd · ? help",
+        );
+        return;
+    }
     let t = &theme.tokens;
     let spans = vec![
         Span::styled(
@@ -759,7 +769,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &NetworksState, are
         ),
         Span::styled(
             "  j/k move  l leases  s start  D destroy  a autostart  e edit xml  n new  X undefine",
-            theme.dim(),
+            theme.secondary(),
         ),
     ];
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);

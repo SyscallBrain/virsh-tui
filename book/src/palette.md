@@ -25,3 +25,9 @@ synopsis and its options as check boxes, so you can add flags such as
 | `Ctrl-y` | copy the resulting `virsh` command |
 | `Enter` | run the entry |
 | `Esc` | close |
+
+
+Below 140 columns the results and reference share a full-width pane.
+`Ctrl-l` switches between them. The reference includes the complete wrapped
+command and help text; `PageUp`/`PageDown` scrolls it, while arrows select
+options. `Enter` still opens the selected entry in the command line.

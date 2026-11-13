@@ -122,6 +122,10 @@ pub struct PaletteState {
     pub opt_cursor: usize,
     /// Reference pane focused (C-l).
     pub pane_focused: bool,
+    /// Wrapped reference line offset, controlled with PgUp/PgDn.
+    pub reference_scroll: i32,
+    /// Cached offset bounds keep paging responsive at either viewport edge.
+    pub reference_scroll_bounds: std::cell::Cell<(i32, i32)>,
     /// Recently run actions: (title, context).
     pub recent: Vec<(String, String)>,
 }
@@ -139,6 +143,8 @@ impl PaletteState {
             enabled: ["--name", "--atomic"].iter().map(|s| s.to_string()).collect(),
             opt_cursor: 0,
             pane_focused: false,
+            reference_scroll: 0,
+            reference_scroll_bounds: std::cell::Cell::new((0, 0)),
             recent: vec![
                 (String::from("Domain: start"), String::from("k8s-worker-02")),
                 (String::from("Media: attach ISO"), String::from("arch-dev · sda")),
@@ -176,6 +182,8 @@ impl PaletteState {
             enabled: std::collections::HashSet::new(),
             opt_cursor: 0,
             pane_focused: false,
+            reference_scroll: 0,
+            reference_scroll_bounds: std::cell::Cell::new((0, 0)),
             recent: Vec::new(),
         }
     }
@@ -211,6 +219,7 @@ impl PaletteState {
             self.enabled.clear();
             self.staged.clear();
             self.opt_cursor = 0;
+            self.reference_scroll = 0;
         }
     }
 
@@ -350,6 +359,10 @@ fn snapshot_create_doc() -> crate::backend::virsh::parse_help::HelpDoc {
 
 /// Render the palette modal (148×34 at top).
 pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
+    if frame.area().width < 140 {
+        render_compact(frame, theme, st);
+        return;
+    }
     let t = &theme.tokens;
     let area = frame.area();
     let w = 148u16.min(area.width.saturating_sub(4));
@@ -357,7 +370,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
     let modal = Rect::new(area.x + (area.width.saturating_sub(w)) / 2, area.y + 3, w, h);
     frame.render_widget(Clear, modal);
     let right = Line::from(vec![
-        Span::styled("context: ", theme.dim()),
+        Span::styled("context: ", theme.secondary()),
         Span::styled(
             st.context.clone(),
             Style::default().fg(t.fg2).add_modifier(Modifier::BOLD),
@@ -453,16 +466,19 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         lines.push(Line::from(spans).style(Style::default().bg(bg)));
     }
     if visible.is_empty() {
-        lines.push(Line::from(Span::styled("  no matching actions", theme.dim())));
+        lines.push(Line::from(Span::styled(
+            "  no matching actions",
+            theme.secondary(),
+        )));
     }
     if !st.recent.is_empty() {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("  recent", theme.dim())));
+        lines.push(Line::from(Span::styled("  recent", theme.secondary())));
         for (action, ctx) in st.recent.iter().take(3) {
             lines.push(Line::from(vec![
-                Span::styled("  ↺ ", theme.dim()),
+                Span::styled("  ↺ ", theme.secondary()),
                 Span::styled(action.clone(), theme.secondary()),
-                Span::styled(format!("  {ctx}"), theme.dim()),
+                Span::styled(format!("  {ctx}"), theme.secondary()),
             ]));
         }
     }
@@ -485,7 +501,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
                         format!("virsh {}", doc.name),
                         Style::default().fg(t.green).add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(format!("  — {}", doc.summary), theme.dim()),
+                    Span::styled(format!("  — {}", doc.summary), theme.secondary()),
                 ]),
                 Line::from(""),
                 Line::from(Span::styled("SYNOPSIS", heading)),
@@ -549,7 +565,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
             v
         }
         None if selected.is_some() => {
-            vec![Line::from(Span::styled("loading virsh help…", theme.dim()))]
+            vec![Line::from(Span::styled("loading virsh help…", theme.secondary()))]
         }
         None => Vec::new(),
     };
@@ -562,17 +578,17 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
     // Footer on bg2.
     let footer_left = vec![
         Span::styled("  ⏎", theme.key()),
-        Span::styled(" open in :  ", theme.dim()),
+        Span::styled(" open in :  ", theme.secondary()),
         Span::styled("C-j/k", theme.key()),
-        Span::styled(" move  ", theme.dim()),
+        Span::styled(" move  ", theme.secondary()),
         Span::styled("C-l", theme.key()),
-        Span::styled(" options  ", theme.dim()),
+        Span::styled(" options  ", theme.secondary()),
         Span::styled("⇥", theme.key()),
-        Span::styled(" toggle flag  ", theme.dim()),
+        Span::styled(" toggle flag  ", theme.secondary()),
         Span::styled("C-y", theme.key()),
-        Span::styled(" copy cmd  ", theme.dim()),
+        Span::styled(" copy cmd  ", theme.secondary()),
         Span::styled("⎋", theme.key()),
-        Span::styled(" close", theme.dim()),
+        Span::styled(" close", theme.secondary()),
     ];
     let footer_right = vec![
         Span::styled("❯", Style::default().fg(t.magenta).bg(t.bg2)),
@@ -586,6 +602,130 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         footer_left,
         footer_right,
         Style::default().bg(t.bg2),
+    );
+}
+
+/// Compact palettes dedicate the body to results or reference, using the same
+/// C-l focus toggle as the wide layout. Reference text is never elided.
+fn render_compact(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
+    let area = frame.area();
+    let modal = Rect::new(
+        area.x + 1,
+        area.y + 1,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    );
+    frame.render_widget(Clear, modal);
+    let block = crate::ui::widgets::panel::block(theme, true, "Command palette", None, None, None);
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(2),
+    ])
+    .split(inner);
+    frame.render_widget(
+        Paragraph::new(format!("❯ {}", st.query)).style(theme.text()),
+        rows[0],
+    );
+    frame.render_widget(
+        Paragraph::new(if st.pane_focused {
+            "Reference · C-l results"
+        } else {
+            "Results · C-l reference"
+        })
+        .style(theme.secondary()),
+        rows[1],
+    );
+    let body = rows[2];
+    if st.pane_focused {
+        let mut lines = Vec::new();
+        if let Some(cmd) = st.command_line() {
+            lines.push(Line::from(Span::styled(
+                format!("virsh {cmd}"),
+                theme.text().bg(theme.tokens.bg2),
+            )));
+            lines.push(Line::from(""));
+        }
+        let mut cursor_line: usize = 0;
+        if let Some(doc) = st.doc_for_selected() {
+            lines.push(Line::from(Span::styled(doc.summary.clone(), theme.secondary())));
+            lines.push(Line::from(Span::styled("SYNOPSIS", theme.key())));
+            lines.push(Line::from(Span::styled(doc.synopsis.clone(), theme.secondary())));
+            lines.push(Line::from(Span::styled("OPTIONS", theme.key())));
+            for (i, opt) in doc.options.iter().enumerate() {
+                if i == st.opt_cursor {
+                    cursor_line = crate::ui::widgets::review::wrap_lines(lines.clone(), body.width).len();
+                }
+                let marker = if st.enabled.contains(&opt.flag) {
+                    "[x]"
+                } else {
+                    "[ ]"
+                };
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "{} {marker} {}  {}",
+                        if i == st.opt_cursor { "❯" } else { " " },
+                        opt.flag,
+                        opt.desc
+                    ),
+                    if i == st.opt_cursor {
+                        theme.text().bg(theme.tokens.sel)
+                    } else {
+                        theme.secondary()
+                    },
+                )));
+            }
+            lines.push(Line::from(Span::styled(
+                doc.description.clone(),
+                theme.secondary(),
+            )));
+        } else {
+            lines.push(Line::from("loading virsh help…"));
+        }
+        let lines = crate::ui::widgets::review::wrap_lines(lines, body.width);
+        let max_scroll = lines
+            .len()
+            .saturating_sub(body.height as usize)
+            .min(u16::MAX as usize);
+        let paragraph = Paragraph::new(lines).style(theme.base());
+        let follow = cursor_line
+            .saturating_sub(body.height.saturating_sub(2) as usize)
+            .min(max_scroll);
+        st.reference_scroll_bounds
+            .set((-(follow as i32), (max_scroll - follow) as i32));
+        let scroll = (follow as i64 + i64::from(st.reference_scroll))
+            .clamp(0, max_scroll.min(u16::MAX as usize) as i64) as u16;
+        frame.render_widget(paragraph.scroll((scroll, 0)), body);
+    } else {
+        let visible = st.visible();
+        let start = st.selected.saturating_sub(body.height.saturating_sub(1) as usize);
+        let lines: Vec<Line> = visible
+            .iter()
+            .enumerate()
+            .skip(start)
+            .map(|(i, item)| {
+                Line::from(format!(
+                    "{} {} {}",
+                    if i == st.selected { "❯" } else { " " },
+                    item.icon,
+                    capitalize_first(&item.title)
+                ))
+                .style(if i == st.selected {
+                    theme.text().bg(theme.tokens.sel)
+                } else {
+                    theme.secondary()
+                })
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines).style(theme.base()), body);
+    }
+    frame.render_widget(
+        Paragraph::new("C-l pane · ↑/↓ move · Esc close\nEnter : · Tab flag · PgUp/PgDn")
+            .style(theme.secondary()),
+        rows[3],
     );
 }
 

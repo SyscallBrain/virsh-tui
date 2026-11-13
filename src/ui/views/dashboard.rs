@@ -685,7 +685,7 @@ fn render_domains(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
     let mut lines: Vec<Line> = Vec::new();
     // Filter row: text filter left, state chips right-aligned (mockup).
     let filter = if state.filter.is_empty() {
-        Span::styled("/ filter…", theme.dim())
+        Span::styled("/ filter…", theme.secondary())
     } else {
         Span::styled(format!("/ {}", state.filter), theme.text())
     };
@@ -777,7 +777,7 @@ fn render_domains(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
         let cpu_fg = if running {
             level_style(theme, r.cpu_frac).fg
         } else {
-            Some(t.comment)
+            Some(t.fg2)
         }
         .unwrap_or(t.fg);
         let name_style = Style::default()
@@ -1225,9 +1225,9 @@ fn render_overview(frame: &mut Frame, theme: &Theme, state: &DashboardState, are
     for (k1, v1, k2, v2) in kv {
         let v1: String = v1.chars().take(28).collect();
         lines.push(Line::from(vec![
-            Span::styled(k1, theme.dim()),
+            Span::styled(k1, theme.secondary()),
             Span::raw(format!("{v1:<29}")),
-            Span::styled(k2, theme.dim()),
+            Span::styled(k2, theme.secondary()),
             Span::styled(
                 v2,
                 if k2.starts_with("IP") {
@@ -1253,15 +1253,15 @@ fn render_not_running(frame: &mut Frame, theme: &Theme, state: &DashboardState, 
     let sel = state.selected();
     let mut lines = vec![
         Line::from(vec![
-            Span::styled("State    ", theme.dim()),
+            Span::styled("State    ", theme.secondary()),
             Span::styled(sel.state_label, state_style(theme, sel.state)),
         ]),
         Line::from(vec![
-            Span::styled("vCPU     ", theme.dim()),
+            Span::styled("vCPU     ", theme.secondary()),
             Span::raw(format!("{}", sel.vcpus)),
         ]),
         Line::from(vec![
-            Span::styled("Memory   ", theme.dim()),
+            Span::styled("Memory   ", theme.secondary()),
             Span::raw(sel.mem_label.clone()),
         ]),
         Line::from(""),
@@ -1586,6 +1586,20 @@ fn render_network(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
 }
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {
+    if area.width < 140 {
+        crate::ui::chrome::compact_status(
+            frame,
+            theme,
+            area,
+            if state.visual_anchor.is_some() {
+                "VISUAL"
+            } else {
+                "NORMAL"
+            },
+            "j/k move · Enter open · s start · S shutdown · m mark · : cmd · ? help",
+        );
+        return;
+    }
     let t = &theme.tokens;
     let sel = state.selected();
     let mut counts = (0, 0, 0, 0);
@@ -1619,7 +1633,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DashboardState, ar
         ),
         Span::styled(
             "  j/k move  ⏎ open  s start  S shutdown  p pause  m mark  ␣ leader  : cmd  ? help",
-            theme.dim(),
+            theme.secondary(),
         ),
         Span::styled(" ", Style::default().bg(t.hl)),
         Span::styled(format!("● {}", counts.0), Style::default().fg(t.green).bg(t.hl)),

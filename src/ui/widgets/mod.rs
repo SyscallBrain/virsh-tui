@@ -19,3 +19,5 @@ pub mod whichkey;
 
 pub mod charts;
 pub mod xmlview;
+
+pub mod review;

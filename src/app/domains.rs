@@ -451,9 +451,7 @@ pub(super) fn ask_confirm(
     if targets.is_empty() {
         return;
     }
-    // Every target's commands (bulk), capped so the modal stays readable.
-    const SHOWN: usize = 6;
-    let mut commands: Vec<String> = targets
+    let commands: Vec<String> = targets
         .iter()
         .flat_map(|t| {
             build(t)
@@ -463,11 +461,6 @@ pub(super) fn ask_confirm(
                 .collect::<Vec<_>>()
         })
         .collect();
-    if commands.len() > SHOWN {
-        let more = commands.len() - SHOWN;
-        commands.truncate(SHOWN);
-        commands.push(format!("… and {more} more"));
-    }
     *confirm = Some((
         crate::ui::overlays::confirm::Confirm {
             kind,

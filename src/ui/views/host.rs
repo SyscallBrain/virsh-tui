@@ -830,6 +830,16 @@ fn render_networks(frame: &mut Frame, theme: &Theme, state: &HostState, area: Re
 }
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, area: Rect) {
+    if area.width < 140 {
+        crate::ui::chrome::compact_status(
+            frame,
+            theme,
+            area,
+            "NORMAL",
+            "j/k move · Enter domain · : cmd · ? help",
+        );
+        return;
+    }
     let t = &theme.tokens;
     let spans = vec![
         Span::styled(
@@ -841,7 +851,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, area: Rect) {
             // Only keys the Host view handles (sort/interval/window were advertised
             // without bindings).
             "  j/k move  ⏎ open domain  : cmd  ? help",
-            theme.dim(),
+            theme.secondary(),
         ),
     ];
     crate::ui::chrome::statusbar(frame, theme, area, spans, 3);

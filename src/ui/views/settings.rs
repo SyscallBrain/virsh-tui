@@ -311,6 +311,34 @@ fn panel_block(theme: &Theme, focused: bool, title: &str, right: Option<String>)
 
 fn render_body(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
     let body = Rect::new(area.x + 1, area.y, area.width.saturating_sub(2), area.height);
+    if area.width < 140 {
+        let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(body);
+        let cat = Category::ALL[state.cat.min(6)].0;
+        let pane = match state.pane {
+            SettingsPane::Categories => "Categories",
+            SettingsPane::List => "Theme",
+            SettingsPane::Options => "Options",
+        };
+        frame.render_widget(
+            Paragraph::new(format!(
+                "{} › {pane} · h/l pane",
+                Category::ALL[state.cat.min(6)].2
+            ))
+            .style(theme.secondary()),
+            rows[0],
+        );
+        match state.pane {
+            SettingsPane::Categories => render_cats(frame, theme, state, rows[1]),
+            SettingsPane::List if cat == Category::Appearance => {
+                render_list(frame, theme, config, state, rows[1])
+            }
+            _ if cat == Category::Appearance => {
+                render_compact_appearance(frame, theme, config, state, rows[1])
+            }
+            _ => render_compact_category(frame, theme, config, state, cat, rows[1]),
+        }
+        return;
+    }
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(29), Constraint::Length(50), Constraint::Min(0)])
@@ -355,8 +383,17 @@ fn render_cats(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Re
             ])
         })
         .collect();
-    let block = panel_block(theme, false, "Settings", None);
-    frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
+    let block = panel_block(theme, state.pane == SettingsPane::Categories, "Settings", None);
+    let start = state
+        .cat
+        .saturating_sub(block.inner(area).height.saturating_sub(1) as usize);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((start as u16, 0))
+            .block(block)
+            .style(theme.base()),
+        area,
+    );
 }
 
 fn swatch_colors(theme: &Theme) -> [ratatui::style::Color; 8] {
@@ -398,11 +435,19 @@ fn render_list(frame: &mut Frame, theme: &Theme, config: &Config, state: &Settin
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "+ custom: ~/.config/virsh-tui/themes/*.toml",
-        theme.dim(),
+        theme.secondary(),
     )));
     let right = format!("{} built-in", builtin::all().len());
     let block = panel_block(theme, state.pane == SettingsPane::List, "Theme", Some(right));
-    frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
+    let height = block.inner(area).height as usize;
+    let start = state.theme_idx.saturating_sub(height.saturating_sub(1));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((start as u16, 0))
+            .block(block)
+            .style(theme.base()),
+        area,
+    );
     let _ = config;
 }
 
@@ -435,7 +480,7 @@ fn render_category(
         let bg = if cur { t.sel } else { t.bg };
         let value_style = match r.value.as_str() {
             "[x]" | "● default" => Style::default().fg(t.green),
-            "[ ]" | "⏎ make default" => theme.dim(),
+            "[ ]" | "⏎ make default" => theme.secondary(),
             _ if r.editable => Style::default().fg(t.fg).bg(if cur { t.sel } else { t.hl }),
             _ => theme.secondary(),
         };
@@ -444,7 +489,11 @@ fn render_category(
                 Span::styled(if cur { "❯ " } else { "  " }, Style::default().fg(t.blue)),
                 Span::styled(
                     format!("{:<30}", r.label),
-                    if r.editable { theme.text() } else { theme.dim() },
+                    if r.editable {
+                        theme.text()
+                    } else {
+                        theme.secondary()
+                    },
                 ),
                 Span::styled(format!(" {} ", r.value), value_style),
             ])
@@ -454,7 +503,7 @@ fn render_category(
     let hint = option_hint(cat, state.opt_idx);
     if focused && !hint.is_empty() {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(hint, theme.dim())));
+        lines.push(Line::from(Span::styled(hint, theme.secondary())));
     }
     let name = Category::ALL[state.cat].2;
     let footer = if rows.iter().any(|r| r.editable) {
@@ -472,20 +521,116 @@ fn render_category(
     );
 }
 
+fn render_compact_category(
+    frame: &mut Frame,
+    theme: &Theme,
+    config: &Config,
+    state: &SettingsState,
+    cat: Category,
+    area: Rect,
+) {
+    let block = panel_block(theme, true, Category::ALL[state.cat.min(6)].2, None);
+    let inner = block.inner(area);
+    let mut lines = Vec::new();
+    let mut selected_line = 0;
+    for (i, row) in category_rows(cat, config).iter().enumerate() {
+        if i == state.opt_idx {
+            selected_line = lines.len();
+        }
+        let style = if i == state.opt_idx {
+            theme.text().bg(theme.tokens.sel)
+        } else {
+            theme.secondary()
+        };
+        let text = format!(
+            "{} {}: {}",
+            if i == state.opt_idx { "❯" } else { " " },
+            row.label,
+            row.value
+        );
+        let hint = if i == state.opt_idx {
+            option_hint(cat, i)
+        } else {
+            ""
+        };
+        let text = if hint.is_empty() {
+            text
+        } else {
+            format!("{text}  {hint}")
+        };
+        lines.extend(crate::ui::widgets::review::wrap_lines(
+            vec![Line::from(Span::styled(text, style))],
+            inner.width,
+        ));
+    }
+    let start = selected_line.saturating_sub(inner.height.saturating_sub(2) as usize);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((start.min(u16::MAX as usize) as u16, 0))
+            .block(block)
+            .style(theme.base()),
+        area,
+    );
+}
+
+fn render_compact_appearance(
+    frame: &mut Frame,
+    theme: &Theme,
+    config: &Config,
+    state: &SettingsState,
+    area: Rect,
+) {
+    let a = &config.appearance;
+    let values = [
+        ("borders", a.borders.clone()),
+        ("icons", a.icons.clone()),
+        ("graphs", a.graphs.clone()),
+        ("vertical gradient", on_off(a.gradient).into()),
+        ("transparent", on_off(a.transparent).into()),
+        ("dim behind modals", on_off(a.dim_modals).into()),
+    ];
+    let lines: Vec<Line> = values
+        .into_iter()
+        .enumerate()
+        .map(|(i, (label, value))| {
+            Line::from(format!(
+                "{} {label}: {value}",
+                if i == state.opt_idx { "❯" } else { " " }
+            ))
+            .style(if i == state.opt_idx {
+                theme.text().bg(theme.tokens.sel)
+            } else {
+                theme.secondary()
+            })
+        })
+        .collect();
+    let block = panel_block(theme, true, "Appearance", None);
+    let start = state
+        .opt_idx
+        .saturating_sub(block.inner(area).height.saturating_sub(1) as usize);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((start as u16, 0))
+            .block(block)
+            .style(theme.base()),
+        area,
+    );
+}
+
 fn render_appearance(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
     let t = &theme.tokens;
     let radio = |on: bool| {
         if on {
             Span::styled("(●)", Style::default().fg(t.blue).bg(t.bg))
         } else {
-            Span::styled("( )", theme.dim())
+            Span::styled("( )", theme.secondary())
         }
     };
     let check = |on: bool| {
         if on {
             Span::styled("[x]", Style::default().fg(t.green).bg(t.bg))
         } else {
-            Span::styled("[ ]", theme.dim())
+            Span::styled("[ ]", theme.secondary())
         }
     };
     let a = &config.appearance;
@@ -557,7 +702,7 @@ fn render_appearance(frame: &mut Frame, theme: &Theme, config: &Config, state: &
                 names[state.opt_idx.min(5)],
                 theme.text().add_modifier(Modifier::BOLD),
             ),
-            Span::styled("  ⏎ change · j/k option", theme.dim()),
+            Span::styled("  ⏎ change · j/k option", theme.secondary()),
         ]));
     }
     let block = panel_block(theme, state.pane == SettingsPane::Options, "Appearance", None);
@@ -603,7 +748,10 @@ fn render_preview(frame: &mut Frame, theme: &Theme, state: &SettingsState, area:
         lines.push(Line::from(spans));
         let mut names_line = Vec::new();
         for i in 0..8 {
-            names_line.push(Span::styled(format!("{:8} ", names[row * 8 + i]), theme.dim()));
+            names_line.push(Span::styled(
+                format!("{:8} ", names[row * 8 + i]),
+                theme.secondary(),
+            ));
         }
         lines.push(Line::from(names_line));
     }
@@ -619,7 +767,7 @@ fn render_preview(frame: &mut Frame, theme: &Theme, state: &SettingsState, area:
     ]));
     let (on, off) = charts::lg(0.68, 22);
     lines.push(Line::from(vec![
-        Span::styled("CPU  ", theme.dim()),
+        Span::styled("CPU  ", theme.secondary()),
         Span::styled(on, Style::default().fg(t.green).bg(t.bg)),
         Span::styled(off, Style::default().fg(t.hl).bg(t.bg)),
         Span::styled(" 68%", theme.secondary()),
@@ -642,6 +790,13 @@ fn apply_preview_flags(theme: Theme, _state: &SettingsState) -> Theme {
 }
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Rect) {
+    if area.width < 140 {
+        frame.render_widget(
+            Paragraph::new("h/l pane · j/k move · Enter · Esc close").style(theme.secondary()),
+            area,
+        );
+        return;
+    }
     let t = &theme.tokens;
     let spans = vec![
         Span::styled(
@@ -654,7 +809,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, are
         ),
         Span::styled(
             "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
-            theme.dim(),
+            theme.secondary(),
         ),
     ];
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
@@ -668,7 +823,7 @@ fn render_message(frame: &mut Frame, theme: &Theme, config: &Config, state: &Set
                 "saved to ~/.config/virsh-tui/config.toml · theme = \"{}\"",
                 state.selected_theme()
             ),
-            theme.dim(),
+            theme.secondary(),
         )))
         .style(theme.base()),
         area,

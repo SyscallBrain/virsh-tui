@@ -134,6 +134,7 @@ pub struct SnapshotState {
     pub frozen: bool,
     /// Live details per snapshot (from `snapshot-dumpxml`); the selected
     /// one fills `details` and `description`.
+    pub review_scroll: std::cell::Cell<usize>,
     pub infos: std::collections::HashMap<String, SnapInfo>,
 }
 
@@ -330,6 +331,7 @@ impl SnapshotState {
             create_atomic: true,
             create_quiesce: false,
             frozen: true,
+            review_scroll: std::cell::Cell::new(0),
             infos: Default::default(),
         }
     }
@@ -475,6 +477,10 @@ pub fn render_revert(
     snap: &str,
     st: &SnapshotState,
 ) {
+    if area.width < 100 || area.height < 22 {
+        render_compact_modal(frame, theme, area, domain, super::SnapModal::Revert, st);
+        return;
+    }
     let t = &theme.tokens;
     // Mockup: 680×400 px ≈ 88×20 cells, centered.
     let w = 88u16.min(area.width.saturating_sub(4));
@@ -617,6 +623,10 @@ pub fn render_delete(
     snap: &str,
     st: &SnapshotState,
 ) {
+    if area.width < 100 || area.height < 18 {
+        render_compact_modal(frame, theme, area, domain, super::SnapModal::Delete, st);
+        return;
+    }
     let t = &theme.tokens;
     let w = 72u16.min(area.width.saturating_sub(4));
     let h = 14u16.min(area.height.saturating_sub(4));
@@ -762,4 +772,119 @@ pub fn render_create(frame: &mut Frame, theme: &Theme, area: Rect, st: &Snapshot
         ]),
     ];
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), modal);
+}
+
+/// Compact dialogs are independent of the detail layout; the preview scrolls
+/// while the affirmative/cancel actions remain visible.
+pub fn render_compact_modal(
+    frame: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    domain: &str,
+    modal: super::SnapModal,
+    st: &SnapshotState,
+) {
+    use super::SnapModal;
+    use crate::ui::overlays::confirm::{Confirm, ConfirmKind, render_scrolled};
+    let snap = st.selected_name();
+    let (title, question, label, mut plan) = match modal {
+        SnapModal::Revert => (
+            "Revert snapshot",
+            format!(
+                "Revert {domain} to {snap}?\nCurrent running state will be discarded.\n1/2/3 state: {:?}\nf force: {} · s safety snapshot: {}",
+                st.after, st.force, st.safety
+            ),
+            "y revert",
+            crate::command::builders::snapshot::revert(domain, snap, st.after.flag(), st.force, st.safety),
+        ),
+        SnapModal::Delete => (
+            "Delete snapshot",
+            format!(
+                "Delete {snap} on {domain}?\nc children: {} · o children-only: {}\nm metadata only: {}",
+                st.del_children, st.del_children_only, st.del_metadata
+            ),
+            "y delete",
+            crate::command::builders::snapshot::delete(
+                domain,
+                snap,
+                st.del_children,
+                st.del_children_only,
+                st.del_metadata,
+            ),
+        ),
+        SnapModal::Create => {
+            render_compact_create(frame, theme, area, domain, st);
+            return;
+        }
+        SnapModal::None => return,
+    };
+    if st.frozen {
+        for step in &mut plan.steps {
+            for a in &mut step.argv {
+                if a.starts_with("auto-before-revert-") {
+                    *a = "auto-before-revert-1438".into();
+                }
+            }
+        }
+    }
+    let confirm = Confirm {
+        kind: ConfirmKind::Always,
+        title: title.into(),
+        question,
+        commands: plan.steps.iter().map(crate::command::display::display).collect(),
+        confirm_label: label.into(),
+        type_name: None,
+        typed: String::new(),
+    };
+    let max = render_scrolled(frame, theme, area, &confirm, st.review_scroll.get());
+    st.review_scroll.set(st.review_scroll.get().min(max));
+}
+
+fn render_compact_create(frame: &mut Frame, theme: &Theme, area: Rect, domain: &str, st: &SnapshotState) {
+    let t = &theme.tokens;
+    let block = Block::bordered()
+        .border_type(theme.border)
+        .border_style(theme.accent())
+        .title(" New snapshot ")
+        .style(theme.base());
+    frame.render_widget(Clear, area);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let fields = [
+        ("name", st.create_name.clone()),
+        ("description", st.create_desc.clone()),
+        ("atomic", st.create_atomic.to_string()),
+        ("quiesce", st.create_quiesce.to_string()),
+    ];
+    let mut lines = vec![Line::from(Span::styled(domain.to_owned(), theme.accent()))];
+    for (index, (label, value)) in fields.into_iter().enumerate() {
+        let selected = index == st.create_focus as usize;
+        let value = if selected {
+            let max = inner.width.saturating_sub(label.len() as u16 + 4) as usize;
+            value
+                .chars()
+                .rev()
+                .take(max)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect()
+        } else {
+            value
+        };
+        lines.push(
+            Line::from(format!("{} {label}: {value}", if selected { "❯" } else { " " })).style(if selected {
+                theme.text().bg(t.sel)
+            } else {
+                theme.secondary()
+            }),
+        );
+    }
+    lines.push(Line::from("Tab field · Space toggle"));
+    let body = Rect::new(inner.x, inner.y, inner.width, inner.height.saturating_sub(1));
+    frame.render_widget(Paragraph::new(lines), body);
+    frame.render_widget(
+        Paragraph::new("⏎ create · Esc cancel").style(theme.secondary()),
+        Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1),
+    );
 }

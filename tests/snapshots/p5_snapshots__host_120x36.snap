@@ -36,5 +36,5 @@ expression: "buffer_text(120, 36, &state)"
  │ numa     1 node · 16c/32t · SEV ✗                                                                                  │ 
  │ uptime   47d 11h 03m                                                                                               │ 
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
- NORMAL  host › running   j/k move  ⏎ open domain  : cmd  ? help                                                        
+ NORMAL  j/k move · Enter domain · : cmd · ? help                                                                       
 -- sampling virConnectGetAllDomainStats every 1000 ms --

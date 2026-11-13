@@ -62,7 +62,7 @@ pub fn render(
         line(0),
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(header.to_string(), theme.dim())),
+        Paragraph::new(Span::styled(header.to_string(), theme.secondary())),
         line(1),
     );
     let list_h = area.height.saturating_sub(4) as usize;
@@ -89,7 +89,7 @@ pub fn render(
         frame.render_widget(Paragraph::new(Span::styled(" (empty)", theme.dim())), line(2));
     }
     frame.render_widget(
-        Paragraph::new(Span::styled(keys.to_string(), theme.dim())).style(theme.topbar()),
+        Paragraph::new(Span::styled(keys.to_string(), theme.secondary())).style(theme.topbar()),
         line(area.height - 2),
     );
     frame.render_widget(

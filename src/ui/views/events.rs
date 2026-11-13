@@ -285,7 +285,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &EventsState) {
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
         ),
         Span::styled(" events ", Style::default().fg(t.fg2).bg(t.hl)),
-        Span::styled("  j/k move  f/F filter  / search  ⏎ jump to object", theme.dim()),
+        Span::styled(
+            "  j/k move  f/F filter  / search  ⏎ jump to object",
+            theme.secondary(),
+        ),
     ]);
     frame.render_widget(Paragraph::new(status).style(theme.topbar()), rows[2]);
     crate::ui::chrome::message_line(frame, theme, rows[3], "");

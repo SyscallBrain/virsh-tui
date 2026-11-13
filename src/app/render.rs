@@ -128,7 +128,8 @@ pub(super) fn render_wizard_status(
     let t = &theme.tokens;
     let area = f.area();
     let step_name = ui::overlays::wizard::STEP_NAMES[wz.step.min(5)].to_lowercase();
-    if area.height < 2 {
+    if area.height < 34 {
+        // A compact wizard occupies the status rows and owns its fixed actions.
         return;
     }
     let status = Rect::new(area.x, area.y + area.height - 2, area.width, 1);

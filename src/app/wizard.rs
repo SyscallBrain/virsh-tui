@@ -145,6 +145,26 @@ pub(super) fn handle_wizard_key(
         return true;
     }
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    if key.code == KeyCode::Char('v') && ctrl {
+        wz.command_review = !wz.command_review;
+        wz.command_scroll = 0;
+        return true;
+    }
+    if wz.command_review {
+        wz.command_scroll = wz.command_scroll.min(wz.command_max_scroll.get());
+        match key.code {
+            KeyCode::Esc => wz.command_review = false,
+            KeyCode::Down | KeyCode::Char('j') => wz.command_scroll = wz.command_scroll.saturating_add(1),
+            KeyCode::Up | KeyCode::Char('k') => wz.command_scroll = wz.command_scroll.saturating_sub(1),
+            KeyCode::PageDown => wz.command_scroll = wz.command_scroll.saturating_add(5),
+            KeyCode::PageUp => wz.command_scroll = wz.command_scroll.saturating_sub(5),
+            KeyCode::Home => wz.command_scroll = 0,
+            KeyCode::End => wz.command_scroll = wz.command_max_scroll.get(),
+            _ => {}
+        }
+        wz.command_scroll = wz.command_scroll.min(wz.command_max_scroll.get());
+        return true;
+    }
     if ctrl {
         match key.code {
             KeyCode::Char('n') => wz.goto_step(wz.step + 1),
@@ -250,4 +270,58 @@ fn preview_wizard(
     let msg = format!("[dry-run] Created {}  ── {shown}", wz.name);
     messages.push_action(msg.clone(), &wz.name, true);
     Ok(msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn command_review_captures_actions_and_scrolls_back_from_end() {
+        let mut wizard = Some(ui::overlays::wizard::WizardState {
+            step: 5,
+            ..ui::overlays::wizard::WizardState::demo_step3()
+        });
+        let mut history = crate::command::history::History::new(10);
+        let mut messages = MessageLog::default();
+        let mut dash = ui::views::dashboard::DashboardState::demo();
+        let mut press = |wizard: &mut Option<ui::overlays::wizard::WizardState>, code, modifiers| {
+            assert!(handle_wizard_key(
+                KeyEvent::new(code, modifiers),
+                wizard,
+                "qemu:///session",
+                &[],
+                true,
+                true,
+                &mut history,
+                &mut messages,
+                &mut dash
+            ));
+        };
+        press(&mut wizard, KeyCode::Char('v'), KeyModifiers::CONTROL);
+        let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+        terminal
+            .draw(|frame| {
+                ui::overlays::wizard::render(
+                    frame,
+                    &crate::theme::builtin::tokyo_night(),
+                    wizard.as_ref().unwrap(),
+                )
+            })
+            .unwrap();
+        press(&mut wizard, KeyCode::End, KeyModifiers::NONE);
+        let at_end = wizard.as_ref().unwrap().command_scroll;
+        assert!(
+            at_end > 0 && at_end < u16::MAX,
+            "End uses the actual command extent"
+        );
+        press(&mut wizard, KeyCode::Up, KeyModifiers::NONE);
+        assert_eq!(wizard.as_ref().unwrap().command_scroll, at_end - 1);
+        press(&mut wizard, KeyCode::Enter, KeyModifiers::NONE);
+        assert!(wizard.as_ref().unwrap().command_review);
+        press(&mut wizard, KeyCode::Esc, KeyModifiers::NONE);
+        assert!(!wizard.as_ref().unwrap().command_review);
+        assert!(history.all().is_empty(), "review never creates a domain");
+    }
 }

@@ -511,6 +511,16 @@ fn render_volumes(frame: &mut Frame, theme: &Theme, state: &StorageState, area: 
 }
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &StorageState, area: Rect, picking: bool) {
+    if area.width < 140 {
+        crate::ui::chrome::compact_status(
+            frame,
+            theme,
+            area,
+            if picking { "PICKER" } else { "NORMAL" },
+            "j/k move · h/l pane · n new · : cmd · ? help",
+        );
+        return;
+    }
     let t = &theme.tokens;
     if picking {
         let spans = vec![
@@ -560,7 +570,7 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &StorageState, area
         ),
         Span::styled(
             "  j/k move  n new  R resize  C clone  u upload  W wipe  X delete  ␣mi media",
-            theme.dim(),
+            theme.secondary(),
         ),
     ];
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);

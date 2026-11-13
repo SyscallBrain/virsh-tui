@@ -36,5 +36,5 @@ expression: "buffer_text(120, 36, &state)"
  │                                                                                                                    │ 
  │                                                                                                                    │ 
  ╰──────────────────────────────────────────────────────────────────────────────────────── net-update · live + config ╯ 
- NORMAL  networks › default   j/k move  l leases  s start  D destroy  a autostart  e edit xml  n new  X undefine        
+ NORMAL  j/k move · h/l pane · s start · e XML · : cmd · ? help                                                         
 ── virsh net-dhcp-leases default

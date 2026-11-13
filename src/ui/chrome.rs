@@ -76,7 +76,7 @@ pub fn tab_spans(theme: &Theme, n: &str, label: &str, on: bool) -> Vec<Span<'sta
                 .bg(t.bg2)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(format!(" {label} "), Style::default().fg(t.comment).bg(t.bg2)),
+        Span::styled(format!(" {label} "), Style::default().fg(t.fg2).bg(t.bg2)),
     ]
 }
 
@@ -194,10 +194,30 @@ pub fn message_line(frame: &mut Frame, theme: &Theme, area: Rect, msg: &str) {
             ));
             spans.push(Span::styled(head[p.len()..].to_string(), theme.text()));
         }
-        None => spans.push(Span::styled(head.to_string(), theme.dim())),
+        None => spans.push(Span::styled(head.to_string(), theme.secondary())),
     }
     if let Some(cmd) = tail {
         spans.push(Span::styled(format!("  ── {cmd}"), theme.dim()));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.base()), area);
+}
+
+/// Short status hints retain the modal state even when breadcrumbs are omitted.
+pub fn compact_status(frame: &mut Frame, theme: &Theme, area: Rect, mode: &str, hints: &str) {
+    let color = if mode == "VISUAL" {
+        theme.tokens.magenta
+    } else {
+        theme.tokens.blue
+    };
+    let spans = vec![
+        Span::styled(
+            format!(" {mode} "),
+            Style::default()
+                .fg(theme.tokens.bg2)
+                .bg(color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!(" {hints}"), theme.secondary()),
+    ];
+    frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
 }

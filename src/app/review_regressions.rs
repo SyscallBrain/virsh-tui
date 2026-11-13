@@ -1005,3 +1005,59 @@ fn pf6_visible_rows_cache_follows_changes() {
     assert!(after.len() < before.len());
     assert!(after.iter().all(|n| n.contains("k8s")));
 }
+
+#[tokio::test]
+async fn invisible_confirmation_cannot_accept_after_terminal_resize() {
+    let mut app = super::tests::fixture_app();
+    app.demo = true;
+    app.view = super::View::Detail;
+    let mut detail = crate::ui::views::detail::DetailState::demo("arch-dev");
+    detail.tab = crate::ui::views::detail::DetailTab::Snapshots;
+    detail.snap_modal = crate::ui::views::detail::SnapModal::Revert;
+    app.detail = Some(detail);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(39, 11)).unwrap();
+    terminal.draw(|f| app.draw(f)).unwrap();
+    app.on_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('y'),
+        crossterm::event::KeyModifiers::NONE,
+    ))
+    .await;
+    assert_eq!(
+        app.detail.as_ref().unwrap().snap_modal,
+        crate::ui::views::detail::SnapModal::Revert
+    );
+}
+
+#[tokio::test]
+async fn wizard_review_cannot_submit_and_compact_actions_are_not_overpainted() {
+    for (width, height) in [(80, 24), (40, 12)] {
+        let mut app = super::tests::fixture_app();
+        let mut wizard = crate::ui::overlays::wizard::WizardState::demo_step3();
+        wizard.step = 5;
+        app.wizard = Some(wizard);
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(
+            text.contains("cancel"),
+            "wizard cancel action was overpainted at {width}x{height}: {text}"
+        );
+        app.wizard.as_mut().unwrap().command_review = true;
+        app.on_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ))
+        .await;
+        assert!(
+            app.active_job.is_none(),
+            "review Enter must never submit a live create"
+        );
+        assert!(app.wizard.as_ref().unwrap().command_review);
+    }
+}

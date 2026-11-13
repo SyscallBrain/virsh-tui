@@ -36,5 +36,5 @@ expression: "buffer_text(120, 36, &state)"
  │                                                                                                                    │ 
  │                                                                                                                    │ 
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
- PICKER  storage › nvme-fast › arch-dev.qcow2                                                         ␣mi from any view 
+ PICKER  j/k move · h/l pane · n new · : cmd · ? help                                                                   
 -- insert media --

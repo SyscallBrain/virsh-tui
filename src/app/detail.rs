@@ -17,6 +17,43 @@ pub(super) fn handle_hardware_key(
     if d.tab != crate::ui::views::detail::DetailTab::Hardware {
         return false;
     }
+    // F6 never overlaps field text or device actions.
+    if key.code == KeyCode::F(6) {
+        d.hw.review = !d.hw.review;
+        d.hw.review_scroll = (0, 0);
+        return true;
+    }
+    if d.hw.review {
+        let (max_row, max_col) = d.hw.review_limits.get();
+        d.hw.review_scroll.0 = d.hw.review_scroll.0.min(max_row);
+        d.hw.review_scroll.1 = d.hw.review_scroll.1.min(max_col);
+        let (row, col) = &mut d.hw.review_scroll;
+        match key.code {
+            KeyCode::Esc => d.hw.review = false,
+            KeyCode::Down | KeyCode::Char('j') => *row = row.saturating_add(1),
+            KeyCode::Up | KeyCode::Char('k') => *row = row.saturating_sub(1),
+            KeyCode::PageDown => *row = row.saturating_add(10),
+            KeyCode::PageUp => *row = row.saturating_sub(10),
+            KeyCode::Right | KeyCode::Char('l') => *col = col.saturating_add(4),
+            KeyCode::Left | KeyCode::Char('h') => *col = col.saturating_sub(4),
+            KeyCode::Home => d.hw.review_scroll = (0, 0),
+            KeyCode::End => d.hw.review_scroll = (max_row, 0),
+            KeyCode::Char('y') => {
+                let text =
+                    d.hw.will_run(&d.domain)
+                        .iter()
+                        .flat_map(|p| p.steps.iter().map(crate::command::display::display))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                copy_text(&text);
+                d.message = String::from("copied will-run commands");
+            }
+            _ => {}
+        }
+        d.hw.review_scroll.0 = d.hw.review_scroll.0.min(max_row);
+        d.hw.review_scroll.1 = d.hw.review_scroll.1.min(max_col);
+        return true;
+    }
     // INSERT mode: raw editing, bypass the engine (except Esc).
     if d.hw_insert {
         if key.code == KeyCode::Esc {
@@ -848,5 +885,109 @@ fn preview_hardware(
             format!("[dry-run] {}  ── {first}", plan.summary)
         };
         messages.push_action(detail.message.clone(), &detail.domain, true);
+    }
+}
+
+#[cfg(test)]
+mod hardware_compact_tests {
+    use super::*;
+
+    #[test]
+    fn review_scroll_returns_immediately_from_repeated_end_of_content() {
+        let mut state = ui::views::detail::DetailState::demo("arch-dev");
+        state.tab = ui::views::detail::DetailTab::Hardware;
+        state.hw.review = true;
+        state.hw.set_field("memory", "current", "8G");
+        let mut detail = Some(state);
+        let mut confirm = None;
+        let mut ex = None;
+        let mut engine = crate::input::engine::KeyEngine::new();
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(40, 8)).unwrap();
+        terminal
+            .draw(|f| {
+                ui::views::detail::hardware::render(
+                    f,
+                    &crate::theme::builtin::tokyo_night(),
+                    &detail.as_ref().unwrap().hw,
+                    "arch-dev",
+                    false,
+                    f.area(),
+                )
+            })
+            .unwrap();
+        for _ in 0..100 {
+            handle_hardware_key(
+                KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE),
+                &mut detail,
+                &mut confirm,
+                &mut ex,
+                &mut engine,
+            );
+        }
+        let bottom = detail.as_ref().unwrap().hw.review_scroll.0;
+        handle_hardware_key(
+            KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+            &mut detail,
+            &mut confirm,
+            &mut ex,
+            &mut engine,
+        );
+        assert!(bottom < 30, "scroll escaped content bounds: {bottom}");
+        assert_eq!(
+            detail.as_ref().unwrap().hw.review_scroll.0,
+            bottom.saturating_sub(1)
+        );
+        handle_hardware_key(
+            KeyEvent::new(KeyCode::End, KeyModifiers::NONE),
+            &mut detail,
+            &mut confirm,
+            &mut ex,
+            &mut engine,
+        );
+        assert_eq!(detail.as_ref().unwrap().hw.review_scroll, (bottom, 0));
+        for _ in 0..100 {
+            handle_hardware_key(
+                KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+                &mut detail,
+                &mut confirm,
+                &mut ex,
+                &mut engine,
+            );
+        }
+        let right = detail.as_ref().unwrap().hw.review_scroll.1;
+        assert_eq!(right, detail.as_ref().unwrap().hw.review_limits.get().1);
+        handle_hardware_key(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            &mut detail,
+            &mut confirm,
+            &mut ex,
+            &mut engine,
+        );
+        assert_eq!(
+            detail.as_ref().unwrap().hw.review_scroll.1,
+            right.saturating_sub(4)
+        );
+        // A larger viewport refreshes bounds; the next key normalizes stale offsets.
+        let mut large = ratatui::Terminal::new(ratatui::backend::TestBackend::new(200, 80)).unwrap();
+        large
+            .draw(|f| {
+                ui::views::detail::hardware::render(
+                    f,
+                    &crate::theme::builtin::tokyo_night(),
+                    &detail.as_ref().unwrap().hw,
+                    "arch-dev",
+                    false,
+                    f.area(),
+                )
+            })
+            .unwrap();
+        handle_hardware_key(
+            KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+            &mut detail,
+            &mut confirm,
+            &mut ex,
+            &mut engine,
+        );
+        assert_eq!(detail.as_ref().unwrap().hw.review_scroll, (0, 0));
     }
 }
