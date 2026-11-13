@@ -1,8 +1,8 @@
- Name                    Path                                            Type   Capacity     Allocation
----------------------------------------------------------------------------------------------------------
- guest-alpha.qcow2      /var/lib/libvirt/images/guest-alpha.qcow2      file   20.00 GiB    5.48 GiB
- guest-beta.qcow2         /var/lib/libvirt/images/guest-beta.qcow2         file   20.00 GiB    1.87 GiB
- initramfs-linux.img     /var/lib/libvirt/images/initramfs-linux.img     file   231.30 MiB   231.30 MiB
- guest-gamma.qcow2   /var/lib/libvirt/images/guest-gamma.qcow2   file   8.00 GiB     1.76 GiB
- vmlinuz-linux           /var/lib/libvirt/images/vmlinuz-linux           file   16.12 MiB    16.12 MiB
+ Name                  Path                                          Type   Capacity     Allocation
+---------------------------------------------------------------------------------------------------
+ guest-alpha.qcow2     /var/lib/libvirt/images/guest-alpha.qcow2     file   20.00 GiB    5.48 GiB
+ guest-beta.qcow2      /var/lib/libvirt/images/guest-beta.qcow2      file   20.00 GiB    1.87 GiB
+ guest-gamma.qcow2     /var/lib/libvirt/images/guest-gamma.qcow2     file   8.00 GiB     1.76 GiB
+ initramfs-linux.img   /var/lib/libvirt/images/initramfs-linux.img   file   231.30 MiB   231.30 MiB
+ vmlinuz-linux         /var/lib/libvirt/images/vmlinuz-linux         file   16.12 MiB    16.12 MiB
 
