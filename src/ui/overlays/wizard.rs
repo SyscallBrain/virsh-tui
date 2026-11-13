@@ -142,6 +142,14 @@ pub struct WizardState {
     /// ISO picker (⏎ on the ISO path field) while open.
     #[serde(skip)]
     pub picker: Option<IsoPicker>,
+    /// Full, wrapped command review; presentation state is not saved in drafts.
+    #[serde(skip)]
+    pub command_review: bool,
+    #[serde(skip)]
+    pub command_scroll: u16,
+    /// Cached viewport extent lets key handling clamp scrolling after a resize.
+    #[serde(skip)]
+    pub command_max_scroll: std::cell::Cell<u16>,
 }
 
 /// What the wizard knows about the host (filled when it opens).
@@ -208,6 +216,9 @@ impl Default for WizardState {
             error: String::new(),
             host: HostFacts::default(),
             picker: None,
+            command_review: false,
+            command_scroll: 0,
+            command_max_scroll: std::cell::Cell::new(0),
         }
     }
 }
@@ -1027,6 +1038,24 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
         .style(Style::default().bg(t.bg));
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
+    if st.command_review {
+        render_command_review(frame, theme, st, inner);
+        return;
+    }
+    if inner.width < 100 || inner.height < 26 {
+        render_compact_form(frame, theme, st, inner);
+        if let Some(picker) = &st.picker {
+            crate::ui::overlays::iso_picker::render(
+                frame,
+                theme,
+                picker,
+                &st.host.isos,
+                st.host.system_uri,
+                modal,
+            );
+        }
+        return;
+    }
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(10), Constraint::Length(1)])
@@ -1055,21 +1084,21 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
     };
     let left = vec![
         Span::styled("⇥/↑↓", theme.key()),
-        Span::styled(" field  ", theme.dim()),
+        Span::styled(" field  ", theme.secondary()),
         Span::styled("h/l ←→ ␣", theme.key()),
-        Span::styled(" change  ", theme.dim()),
+        Span::styled(" change  ", theme.secondary()),
         Span::styled("⌫", theme.key()),
-        Span::styled(" delete  ", theme.dim()),
+        Span::styled(" delete  ", theme.secondary()),
         Span::styled("C-n/C-p", theme.key()),
-        Span::styled(" step  ", theme.dim()),
+        Span::styled(" step  ", theme.secondary()),
         Span::styled("C-y", theme.key()),
-        Span::styled(" copy  ", theme.dim()),
+        Span::styled(" copy  ", theme.secondary()),
         Span::styled("C-e", theme.key()),
-        Span::styled(" XML  ", theme.dim()),
+        Span::styled(" XML  ", theme.secondary()),
         Span::styled("C-r", theme.key()),
-        Span::styled(" reset  ", theme.dim()),
+        Span::styled(" reset  ", theme.secondary()),
         Span::styled("⎋", theme.key()),
-        Span::styled(" close", theme.dim()),
+        Span::styled(" close", theme.secondary()),
     ];
     let right = vec![Span::styled(
         next,
@@ -1086,6 +1115,114 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
             modal,
         );
     }
+}
+
+/// Compact forms reserve the action rows and keep the focused field's label
+/// and value together, independent of the number of fields in the step.
+fn render_compact_form(frame: &mut Frame, theme: &Theme, st: &WizardState, area: Rect) {
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .split(area);
+    frame.render_widget(
+        Paragraph::new(if st.error.is_empty() {
+            STEP_NAMES[st.step]
+        } else {
+            &st.error
+        })
+        .style(theme.secondary()),
+        rows[0],
+    );
+    let fields = st.fields();
+    let focus = st.focus.min(fields.len() - 1);
+    let slots = (rows[1].height as usize / 2).max(1);
+    let first = focus
+        .saturating_sub(slots / 2)
+        .min(fields.len().saturating_sub(slots));
+    let mut lines = Vec::new();
+    for (index, &field) in fields.iter().enumerate().skip(first).take(slots) {
+        let current = index == focus;
+        let style = if current {
+            theme.text().bg(theme.tokens.sel)
+        } else {
+            theme.secondary()
+        };
+        lines.push(Line::styled(
+            format!(
+                "{} {}",
+                if current { "❯" } else { " " },
+                WizardState::label(field)
+            ),
+            style,
+        ));
+        let value = match st.kind(field) {
+            WKind::Check => {
+                if st.value(field) == "x" {
+                    "[x]".into()
+                } else {
+                    "[ ]".into()
+                }
+            }
+            _ => st.value(field),
+        };
+        // Show the tail while typing paths and descriptions, so the insertion
+        // point remains inspectable even when the complete text exceeds a row.
+        let width = rows[1].width.saturating_sub(3) as usize;
+        let mut tail = String::new();
+        let mut used = 0;
+        for ch in value.chars().rev() {
+            let size = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            if used + size > width {
+                break;
+            }
+            tail.insert(0, ch);
+            used += size;
+        }
+        lines.push(Line::styled(format!("   {tail}"), style));
+    }
+    frame.render_widget(Paragraph::new(lines).style(theme.base()), rows[1]);
+    let hint = "⇥/↑↓ field · ←→ edit · C-v command";
+    frame.render_widget(Paragraph::new(hint).style(theme.secondary()), rows[2]);
+    let action = if st.focused() == WField::Iso && st.media == MediaKind::Iso {
+        "choose ISO"
+    } else if st.step == 5 {
+        "create"
+    } else {
+        "next"
+    };
+    frame.render_widget(
+        Paragraph::new(format!("⏎ {action} · ⎋ cancel · C-n/p step")).style(theme.secondary()),
+        rows[3],
+    );
+}
+
+fn render_command_review(frame: &mut Frame, theme: &Theme, st: &WizardState, area: Rect) {
+    let rows =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)]).split(area);
+    frame.render_widget(
+        Paragraph::new("Equivalent command").style(theme.secondary()),
+        rows[0],
+    );
+    let plan = crate::command::builders::install::virt_install(st);
+    let command = crate::command::display::display(&plan.steps[0]);
+    let lines = crate::ui::widgets::review::wrap_lines(vec![Line::raw(command)], rows[1].width);
+    let max_scroll = lines
+        .len()
+        .saturating_sub(rows[1].height as usize)
+        .min(u16::MAX as usize) as u16;
+    st.command_max_scroll.set(max_scroll);
+    let scroll = st.command_scroll.min(max_scroll);
+    frame.render_widget(
+        Paragraph::new(lines).scroll((scroll, 0)).style(theme.text()),
+        rows[1],
+    );
+    frame.render_widget(
+        Paragraph::new("↑↓/PgUp/PgDn scroll · ⎋/C-v back").style(theme.secondary()),
+        rows[2],
+    );
 }
 
 fn render_steps(frame: &mut Frame, theme: &Theme, st: &WizardState, area: Rect) {
@@ -1312,10 +1449,10 @@ fn render_command(frame: &mut Frame, theme: &Theme, st: &WizardState, area: Rect
         theme,
         false,
         "Equivalent command",
-        Some(crate::ui::widgets::panel::right(
-            "C-y copy · C-e edit as XML",
-            theme,
-        )),
+        Some(Line::from(Span::styled(
+            "C-v review · C-y copy · C-e XML",
+            theme.secondary(),
+        ))),
         None,
         None,
     );

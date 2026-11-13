@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+<!-- Responsive follow-up: see Compact.dc.html and DESIGN.md §8. Essential labels and key hints use fg2; comment is reserved for incidental copy. -->
 <head>
 <meta charset="utf-8">
 <title>Networks</title>
@@ -20,11 +21,11 @@ body{margin:0}
 .pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
 .p.f>.pt{color:var(--blue)}
 .pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
-.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--fg2);white-space:pre}
 .d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
 .bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
 .br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
-.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab{padding:0 12px;line-height:28px;color:var(--fg2);white-space:pre}
 .tab.on{background:var(--blue);color:var(--bg2);font-weight:700}
 .tab.on b{color:var(--bg2)}
 .tab b{color:var(--orange)}
@@ -127,7 +128,7 @@ body{margin:0}
   <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
     <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
     <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">networks › default</span>
-    <span class="d" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">l</span> leases  <span class="k">s</span> start  <span class="k">D</span> destroy  <span class="k">a</span> autostart  <span class="k">e</span> edit xml  <span class="k">n</span> new  <span class="k">X</span> undefine</span>
+    <span class="f2" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">l</span> leases  <span class="k">s</span> start  <span class="k">D</span> destroy  <span class="k">a</span> autostart  <span class="k">e</span> edit xml  <span class="k">n</span> new  <span class="k">X</span> undefine</span>
   </div>
   <div style="height: 20px; line-height: 20px; padding: 0 10px; white-space: pre"><span class="d">── virsh net-dhcp-leases default</span></div>
 </div>

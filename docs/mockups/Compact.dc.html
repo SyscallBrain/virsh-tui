@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Compact UI reference</title>
+<style>
+:root { --bg:#1a1b26; --bg2:#16161e; --fg:#c0caf5; --fg2:#a9b1d6; --blue:#7aa2f7; --red:#f7768e; --gutter:#3b4261; --sel:#283457; }
+body { background:var(--bg2); color:var(--fg); font:14px/1.5 monospace; margin:24px; }
+main { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; }
+section { width:40ch; }
+h1 { color:var(--blue); font-size:18px; } h2 { color:var(--fg2); font-size:14px; }
+pre { box-sizing:border-box; margin:0; padding:0 1ch; width:40ch; min-height:12em; border:1px solid var(--blue); border-radius:7px; background:var(--bg); white-space:pre-wrap; overflow-wrap:anywhere; }
+.hint { color:var(--fg2); } .focus { background:var(--sel); } .danger { border-color:var(--red); } .action { color:var(--red); }
+</style>
+<h1>Compact UI reference · approved audit follow-up</h1>
+<p>DESIGN.md §8 defines breakpoints and behavior. These 40-column sketches record hierarchy and exact controls; demo snapshots record the terminal cell grid.</p>
+<main>
+<section><h2>Hardware · active form</h2><pre>Memory · device 3/14
+<span class="focus">❯ current memory     16G</span>
+  maximum memory     32G
+  balloon            [x]
+
+<span class="hint">Tab field · i edit · F6 review</span>
+</pre></section>
+<section><h2>Hardware · review (F6)</h2><pre>Pending XML diff · Will run
+- &lt;memory unit="KiB"&gt;16777216&lt;/memory&gt;
++ &lt;memory unit="KiB"&gt;33554432&lt;/memory&gt;
+$ virsh define /tmp/vt-arch-dev.xml
+
+<span class="hint">Esc/F6 editor · ↑↓ scroll · ←→ pan</span>
+</pre></section>
+<section><h2>Wizard · focused form</h2><pre>＋ New domain                  step 3 / 6
+CPU &amp; Memory
+<span class="focus">❯ vCPUs
+   4</span>
+  maximum vCPUs
+   8
+
+<span class="hint">⇥/↑↓ field · ←→ edit · C-v command
+⏎ next · ⎋ cancel · C-n/p step</span>
+</pre></section>
+<section><h2>Wizard · command review (C-v)</h2><pre>Equivalent command
+virt-install --name=fedora-42-ws
+--osinfo=fedora42 --vcpus=4,maxvcpus=8
+--memory=8192,maxmemory=16384
+--graphics=spice --noautoconsole
+
+<span class="hint">↑↓/PgUp/PgDn scroll · ⎋/C-v back</span>
+</pre></section>
+<section><h2>Settings · active pane</h2><pre>Settings › Appearance
+  borders        rounded
+  icons          unicode
+<span class="focus">❯ graphs         braille</span>
+  gradient       [x]
+
+<span class="hint">h/l pane · j/k move · Enter · Esc close</span>
+</pre></section>
+<section><h2>Palette · reference (C-l)</h2><pre>Command palette
+❯ snap
+Reference · C-l results
+virsh snapshot-create-as arch-dev
+--name pre-upgrade --atomic
+SYNOPSIS
+snapshot-create-as &lt;domain&gt; ...
+OPTIONS
+❯ [x] --name  name of snapshot
+
+<span class="hint">C-l pane · ↑/↓ move · Esc close</span>
+</pre></section>
+<section><h2>Snapshot / bulk confirmation</h2><pre class="danger">Revert snapshot
+Revert arch-dev to pre-kernel-6.16?
+Current running state will be discarded.
+1/2/3 state: Running
+f force: false · s safety snapshot: true
+virsh snapshot-create-as arch-dev ...
+virsh snapshot-revert arch-dev ...
+
+<span class="hint">↑↓/PgUp/Dn 1/6 · 2 cmd</span>
+<span class="action"> n cancel    y revert </span>
+</pre></section>
+</main>
+<!-- All commands remain accessible by scrolling; names/paths may wrap. Confirm actions are fixed. Below 40x12 do not accept hidden actions. Wide artboards retain their original structure. -->
+</html>

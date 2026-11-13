@@ -32,9 +32,9 @@ Themes are a flat set of 16 semantic tokens. All widgets use tokens only — nev
 | `hl`      | chips, field background, unfocused selection, gauge track | `#292e42` |
 | `sel`     | focused selection row (visual)                    | `#283457` |
 | `gutter`  | unfocused borders, dashed separators              | `#3b4261` |
-| `comment` | labels, hints, dim text, `shut off`               | `#565f89` |
+| `comment` | incidental text, chart axes and inactive glyphs               | `#565f89` |
 | `fg`      | primary text                                      | `#c0caf5` |
-| `fg2`     | secondary text, values                            | `#a9b1d6` |
+| `fg2`     | secondary text, essential labels, hints, values                            | `#a9b1d6` |
 | `blue`    | focus border, accent, NORMAL mode, active tab     | `#7aa2f7` |
 | `cyan`    | network / IPs / flags in commands / net rx        | `#7dcfff` |
 | `magenta` | memory, snapshots, marks, PALETTE/PICKER mode     | `#bb9af7` |
@@ -64,7 +64,7 @@ renders `bg` as `Color::Reset` (inherit terminal).
 └ row n  (1 line)  MESSAGE   last result: "✓ Started k8s-worker-02  ── virsh start k8s-worker-02" / "-- INSERT --" / errors in red
 ```
 
-- **Tabs**: inactive `comment`, number in `orange` bold; active = bg `bg`, fg `blue`, bold.
+- **Tabs**: inactive `fg2`, number in `orange` bold; active = bg `blue`, fg `bg2`, bold.
 - **Mode pill colours**: NORMAL=blue, INSERT=green, VISUAL=magenta, COMMAND=yellow, PALETTE/PICKER=magenta, CONFIRM=red. Text `bg2`, bold.
 - **Message line**: success `green ✓`, error `red ✗`, info `comment`. Always append `── <command>` in `comment` when a virsh call ran.
 - Full layout from 100×30. Between 40×12 and 100×30: a degraded single-column list per view (review 2026-11-12, P1-40). Below 40×12, show a centered "terminal too small (WxH, need 40×12)" panel.
@@ -212,3 +212,17 @@ Live command jobs show activity on the message line:
 Before the first step the status is `preparing`; after a cancellation request
 it is `cancelling`. ASCII icons use `| / - \\` instead of braille. The
 complete route and platform acceptance inventory remains in progress.
+
+
+## 8. Compact UI follow-up (2026-11-13)
+
+The approved audit follow-up prioritizes the active field and mutation review over secondary panels. `mockups/Compact.dc.html` records the compact presentation; the original artboards remain the wide references.
+
+- Hardware below 150 columns: editor-first layout, 22-column device list at 100+ columns, selected-device title below 100. The field list follows focus. `F6` opens a full-width XML diff and command review; `Esc`/`F6` returns, arrows scroll/pan, `PgUp`/`PgDn` page, `Home` resets. Hardware remains editable in the minimal detail layout.
+- Wizard with inner width below 100 or height below 26: hide the sidebar and inline command; show the step and a focus-following form, with fixed navigation/cancel hints. `C-v` opens the complete wrapped command, arrows/page keys scroll, `Home`/`End` reach the limits, `Esc` returns to the form. `Enter` in review never creates a domain. Short-terminal global status must not overwrite these actions.
+- Settings below 140 columns: show the active Categories, Themes, or Appearance pane. `h/l` switches panes; selected rows follow the viewport.
+- Palette below 140 columns: show Results or Reference at full width. `C-l` switches panes; reference includes the complete command, synopsis, options and description, wrapped without losing spaces or Unicode graphemes. `PgUp/PgDn` scroll; arrow keys select options.
+- Minimal snapshot dialogs render above the background instead of disappearing with the detail panels. Preview text scrolls with arrows/page keys/Home/End and confirm/cancel stay fixed. Revert option hints use `1/2/3` for state, `f` for force and `s` for safety; delete uses `c/o/m` for children/children-only/metadata.
+- Generic confirmations retain all commands, including bulk operations. Wrap long argv, show command count and scroll position, keep typed confirmation and actions outside the scrolling preview. Arrow/page keys scroll even when letters are being entered as a name.
+- Below 40×12, hidden actions cannot execute; enlarge the terminal to continue or use `Esc` to cancel a confirmation. `C-c` can still quit.
+- Essential labels, instructions, inactive tab names and panel footers use `fg2`. Preserve the 16 theme values and the dim `comment` token for incidental content. Compact status hints prioritize navigation, the current action, command entry and help.

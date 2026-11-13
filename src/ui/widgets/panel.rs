@@ -33,10 +33,10 @@ pub fn block(
         b = b.title_top(rt.style(theme.dim()).right_aligned());
     }
     if let Some(fl) = footer_left {
-        b = b.title_bottom(Line::from(Span::styled(format!(" {fl} "), theme.dim())).left_aligned());
+        b = b.title_bottom(Line::from(Span::styled(format!(" {fl} "), theme.secondary())).left_aligned());
     }
     if let Some(fr) = footer_right {
-        b = b.title_bottom(Line::from(Span::styled(format!(" {fr} "), theme.dim())).right_aligned());
+        b = b.title_bottom(Line::from(Span::styled(format!(" {fr} "), theme.secondary())).right_aligned());
     }
     b
 }

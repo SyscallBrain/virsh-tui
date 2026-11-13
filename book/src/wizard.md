@@ -114,3 +114,14 @@ and try again.
 The wizard saves a draft on every change and when you close it. The next
 `Space n` restores it. A successful creation deletes the draft; `Ctrl-r`
 starts over. The draft lives in `~/.local/state/virsh-tui/wizard-draft.toml`.
+
+
+## Small terminals and command review
+
+![Compact wizard](images/wizard-compact.png)
+
+In compact layouts the wizard hides its step sidebar and keeps the focused
+field and navigation visible. `Ctrl-v` opens the complete command, including
+long paths and arguments. Use arrows, `PageUp`/`PageDown`, `Home`/`End` to
+review it; `Esc` or `Ctrl-v` returns to the form. `Enter` in this review does
+not create the domain. Review position is not saved in the draft.

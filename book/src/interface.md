@@ -26,8 +26,9 @@ side by side. Between 100 and 152 it stacks the panels and the metrics move
 to tabs (Overview, CPU, Mem, Disk, Net) under the list. Below 100 × 30
 (down to 40 × 12, so a default 80 × 24 terminal works) every view switches
 to a single list: one row per domain, network, pool, volume or event, with
-the same keys; the side panels and charts are dropped and the detail view
-shows the key facts of the domain. Below 40 × 12 it shows a "terminal too
+the same keys; the side panels and charts are dropped. Hardware retains its compact editor;
+other detail tabs show the key facts of the domain. Snapshot dialogs remain
+visible above that background. Below 40 × 12 it shows a "terminal too
 small" notice.
 
 ## Modes
@@ -93,3 +94,18 @@ and the confirmation lists them all. `Esc` leaves visual mode.
 Start with `--dry-run` to see what each action would run without executing
 it. Messages are prefixed with `[dry-run]`. Queries still run, so the screens
 show real data. `--demo` implies dry run and uses example data.
+
+
+## Compact forms and confirmations
+
+The hardware editor, wizard, Settings and command palette adapt their panels
+so the current field or list has enough room. Essential labels and key hints
+use the secondary foreground colour; decorative and incidental text stays dim.
+
+Confirmation previews retain every command, including bulk actions. Use
+`Up`/`Down`, `PageUp`/`PageDown`, `Home`/`End` to inspect the wrapped preview.
+Confirm/cancel and typed-name input remain fixed below it. Arrow keys scroll
+the preview without becoming part of a typed name.
+
+Below 40×12, actions are blocked while their interface is hidden. Enlarge the
+terminal to continue, use `Esc` to cancel a confirmation, or `Ctrl-c` to quit.

@@ -112,3 +112,13 @@ history windows (`t`: 60 s / 5 min / 1 h) keep their length in time.
 If `config.toml` cannot be parsed, virsh-tui starts on defaults, says so in
 the message line, and does not save over the file until it is fixed. The
 file is written atomically (a temporary file renamed over it).
+
+
+### Compact Settings
+
+![Compact Settings](images/settings-compact.png)
+
+Below 140 columns Settings shows one active pane at a time. Use `h/l` to
+move between categories, themes and appearance options; `j/k` selects a row.
+The current row stays visible as the list scrolls. `Enter` applies a theme
+and `Esc` reverts an uncommitted theme preview and closes Settings.

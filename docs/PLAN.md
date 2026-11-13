@@ -913,3 +913,11 @@ For each screen:
   output, adapt, and record it in `docs/DECISIONS.md`.
 - If you are blocked by something that needs the user (root, a licence choice, a missing package such as `node` for
   cross-checking), ask a concise question and continue with other phases meanwhile.
+
+
+## Post-phase UI audit follow-up (2026-11-13)
+
+User-approved improvements after the original phases: DESIGN.md §8 and
+`superpowers/plans/2026-11-13-compact-ui.md`. Acceptance: editable values and
+fixed modal actions visible at supported sizes; complete commands accessible;
+no hidden confirmation execution; docs/mockups/book synchronized; all §0.2 gates pass.

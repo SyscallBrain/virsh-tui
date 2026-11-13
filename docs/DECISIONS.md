@@ -307,3 +307,11 @@ Google Chrome nor Chromium is available on the validation host. The optional
 - `[profile.release] strip = true` so the packages need no strip step (cross-architecture packaging cannot strip with the host `strip`); `[profile.bench]` keeps symbols for profiling.
 - AUR publishing stays manual (`scripts/aur.sh`, `docs/RELEASE.md`), like lazybw: no AUR SSH key in GitHub secrets.
 - GitHub Actions are pinned by commit SHA and updated by Dependabot; `dtolnay/rust-toolchain` was replaced by plain `rustup` commands.
+
+
+## Compact UI audit follow-up (2026-11-13)
+
+- The user approved the audit recommendations. Keep wide artboards and theme tokens; allocate compact space to editable values instead of shrinking all columns.
+- Hardware review uses F6 so it works in NORMAL and INSERT without stealing typed letters. Wizard command review uses C-v and is excluded from draft persistence/content fingerprints. Palette reuses C-l rather than adding another pane shortcut.
+- Confirmation preview scrolling is separate from typed names. All bulk commands are retained; the old six-command cap is removed. Below the minimum viewport, affirmative input is blocked because its preview cannot be displayed.
+- Compact modes use focus-following lists, cell-aware command wrapping, fixed actions and concise instructions. Full app rendering is tested as well as individual widgets, because the global wizard status previously overwrote the compact footer.

@@ -24,7 +24,7 @@ expression: "shot(120, 36, |f| wizard::render(f, &th, &state))"
   │   uefi · start                                                                                                   │  
   │                                                                                                                  │  
   │ ✓ ready to create                                                                                                │  
-  │ ╭ Equivalent command ────────────────────────────────────────────────────────────── C-y copy · C-e edit as XML ╮ │  
+  │ ╭ Equivalent command ───────────────────────────────────────────────────────── C-v review · C-y copy · C-e XML ╮ │  
   │ │ virt-install \                                                                                               │ │  
   │ │   --name=fedora-42-ws --osinfo=fedora42  \                                                                   │ │  
   │ │   --cdrom=/var/lib/libvirt/isos/Fedora-WS-Live-42.iso  \                                                     │ │  

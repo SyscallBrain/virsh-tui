@@ -36,5 +36,5 @@ expression: "shot(120, 36, |f| render(f, &th, &state))"
  │                                                                                          │ │                       │ 
  │                                                                                          │ │                       │ 
  ╰────────────────────────────────────────────── ␣sc new · ␣sr revert · ␣sd delete · e edit ╯ ╰───────────────────────╯ 
- CONFIRM arch-dev › snapshots › pre-kernel-6.16                             confirm style: y/n · type-name for undefine 
+ CONFIRM arch-dev › snapshots › pre-kernel-6.16                                         n cancel · y confirm · Esc back 
 -- awaiting confirmation --

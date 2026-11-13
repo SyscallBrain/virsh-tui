@@ -373,7 +373,7 @@ pub fn render_page(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap,
                 } else {
                     " / search · ⇥ global keys · ↑↓ scroll · ⎋ close "
                 },
-                theme.dim(),
+                theme.secondary(),
             ))
             .right_aligned(),
         );
@@ -446,7 +446,7 @@ pub fn render_page(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap,
     let footer = Line::from(vec![
         Span::styled("● asks for confirmation  ", Style::default().fg(t.red).bg(t.bg)),
         Span::styled("3j counts work everywhere  ", theme.key()),
-        Span::styled(". repeats last action", theme.dim()),
+        Span::styled(". repeats last action", theme.secondary()),
     ]);
     if inner.height == 0 {
         frame.render_widget(block, modal);

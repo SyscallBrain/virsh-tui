@@ -31,7 +31,7 @@ expression: text
  │                                    │ │                                                                      │ │                                                          │ 
  │                                    │ │                                                                      │ │                                                          │ 
  │                                    │ │                                                                      │ ╰──────────────────────────────────────────────────────────╯ 
- │                                    │ │                                                                      │ ╭ Will run ──────────────────────────────────────── y copy ╮ 
+ │                                    │ │                                                                      │ ╭ Will run ──────────────────────────── F6 review · y copy ╮ 
  │                                    │ │                                                                      │ │ $ virsh define /tmp/vt-arch-dev.xml                      │ 
  │                                    │ │                                                                      │ │ $ virsh setvcpus arch-dev 8 --live                       │ 
  │                                    │ │                                                                      │ │                                                          │ 

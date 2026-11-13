@@ -77,6 +77,11 @@ pub struct HardwareState {
     pub disk_capacity_kib: HashMap<String, u64>,
     /// Boot entry moved by `J`/`K` (index into the boot order).
     pub boot_cursor: usize,
+    /// Full-width review of every pending diff line and command.
+    pub review: bool,
+    pub review_scroll: (u16, u16),
+    /// Last rendered review extent, used to bound input before and after resizing.
+    pub review_limits: std::cell::Cell<(u16, u16)>,
 }
 
 fn kib_to_size(kib: u64) -> String {
@@ -274,6 +279,9 @@ impl HardwareState {
             has_topology: true,
             disk_capacity_kib: HashMap::from([(String::from("vda"), 120 * 1024 * 1024)]),
             boot_cursor: 0,
+            review: false,
+            review_scroll: (0, 0),
+            review_limits: std::cell::Cell::new((0, 0)),
         }
     }
 
@@ -458,6 +466,9 @@ impl HardwareState {
             has_topology: cfg.topology.is_some(),
             disk_capacity_kib: HashMap::new(),
             boot_cursor: 0,
+            review: false,
+            review_scroll: (0, 0),
+            review_limits: std::cell::Cell::new((0, 0)),
         }
     }
 
@@ -970,7 +981,14 @@ fn token_color(theme: &Theme, name: &str) -> ratatui::style::Color {
 
 /// Render the hardware tab: devices | editor | diff + will-run.
 pub fn render(frame: &mut Frame, theme: &Theme, hw: &HardwareState, domain: &str, insert: bool, area: Rect) {
-    let t = &theme.tokens;
+    if hw.review {
+        render_review(frame, theme, hw, domain, area);
+        return;
+    }
+    if area.width < 150 {
+        render_compact(frame, theme, hw, insert, area);
+        return;
+    }
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(38), Constraint::Min(0), Constraint::Length(60)])
@@ -984,7 +1002,160 @@ pub fn render(frame: &mut Frame, theme: &Theme, hw: &HardwareState, domain: &str
         .split(cols[2]);
     render_diff(frame, theme, hw, right[0]);
     render_will_run(frame, theme, hw, domain, right[1]);
-    let _ = t;
+}
+
+/// Compact editor keeps labels and values together and follows field focus.
+fn render_compact(frame: &mut Frame, theme: &Theme, hw: &HardwareState, insert: bool, area: Rect) {
+    let rows = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(area);
+    let editor = if area.width >= 100 {
+        let cols = Layout::horizontal([Constraint::Length(22), Constraint::Min(0)])
+            .spacing(1)
+            .split(rows[0]);
+        render_devices(frame, theme, hw, cols[0]);
+        cols[1]
+    } else {
+        rows[0]
+    };
+    let dev = hw.selected_device();
+    let title = format!("{} · {}/{}", dev.name, hw.selected + 1, hw.devices.len());
+    let block = panel_block(theme, true, &title, None);
+    let inner = block.inner(editor);
+    let mut lines = Vec::new();
+    let mut focus_row = 0;
+    if let Some(form) = hw.forms.get(&dev.id) {
+        for (i, field) in form.fields.iter().enumerate() {
+            let focused = i == form.focus;
+            if focused {
+                focus_row = lines.len();
+            }
+            let marker = if focused { "❯" } else { " " };
+            lines.push(Line::from(Span::styled(
+                format!("{marker} {}", field.label),
+                theme.secondary(),
+            )));
+            let mut value = match field.kind {
+                FieldKind::Checkbox => crate::ui::widgets::form::checkbox(field.current == "x").to_string(),
+                _ if field.current.is_empty() => String::from("—"),
+                _ => field.current.clone(),
+            };
+            if focused && insert {
+                value = compact_value_tail(&value, inner.width.saturating_sub(4));
+            }
+            let style = if focused {
+                Style::default().fg(theme.tokens.fg).bg(theme.tokens.sel)
+            } else {
+                theme.text()
+            };
+            let style = if field.dirty() {
+                style.fg(theme.tokens.yellow)
+            } else {
+                style
+            };
+            lines.push(Line::from(Span::styled(
+                format!("  {value}{}", if focused && insert { " ▏" } else { "" }),
+                style,
+            )));
+            if let Some(warning) = &field.warning {
+                lines.push(Line::from(Span::styled(
+                    format!("  ⚠ {warning}"),
+                    Style::default().fg(theme.tokens.yellow),
+                )));
+            }
+        }
+        if matches!(dev.id.as_str(), "cpus" | "memory") {
+            lines.push(Line::from(format!(
+                "Apply: {} config  {} live",
+                crate::ui::widgets::form::checkbox(hw.apply_config),
+                crate::ui::widgets::form::checkbox(hw.apply_live)
+            )));
+        }
+    } else {
+        lines.push(Line::from("No editable fields for this device."));
+    }
+    let visible = inner.height as usize;
+    let scroll = focus_row.saturating_add(2).saturating_sub(visible);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((scroll as u16, 0))
+            .block(block)
+            .style(theme.base()),
+        editor,
+    );
+    frame.render_widget(
+        Paragraph::new("F6 review · Tab field · i edit · j/k device").style(theme.secondary()),
+        rows[1],
+    );
+}
+
+/// The insertion point is at the end of text fields; keep its grapheme tail visible.
+fn compact_value_tail(value: &str, width: u16) -> String {
+    use unicode_width::UnicodeWidthStr;
+    let width = usize::from(width);
+    if value.width() <= width {
+        return value.to_owned();
+    }
+    let line = Line::from(value);
+    let graphemes: Vec<_> = line.styled_graphemes(Style::default()).collect();
+    let mut used = 1;
+    let mut tail = Vec::new();
+    for grapheme in graphemes.iter().rev() {
+        let cells = grapheme.symbol.width();
+        if used + cells > width {
+            break;
+        }
+        used += cells;
+        tail.push(grapheme.symbol);
+    }
+    format!("…{}", tail.into_iter().rev().collect::<String>())
+}
+
+fn render_review(frame: &mut Frame, theme: &Theme, hw: &HardwareState, domain: &str, area: Rect) {
+    let rows = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(area);
+    let mut lines = vec![Line::from(Span::styled("Pending · XML diff", theme.secondary()))];
+    for line in hw.diff() {
+        let style = match line.kind {
+            crate::xml::diff::DiffKind::Minus => Style::default().fg(theme.tokens.red),
+            crate::xml::diff::DiffKind::Plus => Style::default().fg(theme.tokens.green),
+            _ => theme.secondary(),
+        };
+        lines.push(Line::from(Span::styled(line.text, style)));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled("Will run", theme.secondary())));
+    let plans = hw.will_run(domain);
+    for plan in &plans {
+        for step in &plan.steps {
+            lines.push(Line::from(crate::command::display::spans(theme, step)));
+        }
+    }
+    let block = panel_block(theme, true, "Hardware review", None);
+    let inner = block.inner(rows[0]);
+    let max_scroll = lines.len().saturating_sub(inner.height as usize) as u16;
+    let max_pan = lines
+        .iter()
+        .map(Line::width)
+        .max()
+        .unwrap_or(0)
+        .saturating_sub(inner.width as usize)
+        .min(u16::MAX as usize) as u16;
+    hw.review_limits.set((max_scroll, max_pan));
+    let scroll = (
+        hw.review_scroll.0.min(max_scroll),
+        hw.review_scroll.1.min(max_pan),
+    );
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll(scroll)
+            .block(block)
+            .style(theme.base()),
+        rows[0],
+    );
+    let hint = if area.width < 60 {
+        "Esc/F6 editor · ↑↓ scroll · ←→ pan"
+    } else {
+        "Esc/F6 editor · ↑↓/PgUp/PgDn scroll · ←→ pan · y copy"
+    };
+    frame.render_widget(Paragraph::new(hint).style(theme.secondary()), rows[1]);
 }
 
 fn render_devices(frame: &mut Frame, theme: &Theme, hw: &HardwareState, area: Rect) {
@@ -1005,7 +1176,14 @@ fn render_devices(frame: &mut Frame, theme: &Theme, hw: &HardwareState, area: Re
                     Style::default().fg(token_color(theme, d.color)).bg(bg),
                 ),
                 Span::styled(format!("{:14}", d.name), style),
-                Span::styled(d.summary.clone(), theme.dim()),
+                Span::styled(
+                    if area.width < 30 {
+                        String::new()
+                    } else {
+                        d.summary.clone()
+                    },
+                    theme.dim(),
+                ),
             ])
             .style(Style::default().bg(bg)),
         );
@@ -1257,6 +1435,6 @@ fn render_will_run(frame: &mut Frame, theme: &Theme, hw: &HardwareState, domain:
         Span::raw(" "),
         Span::styled(" gx open XML ", Style::default().fg(t.fg2).bg(t.hl)),
     ]));
-    let block = panel_block(theme, false, "Will run", Some(String::from("y copy")));
+    let block = panel_block(theme, false, "Will run", Some(String::from("F6 review · y copy")));
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
 }

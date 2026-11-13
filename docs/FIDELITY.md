@@ -167,3 +167,14 @@ Several items ticked above were **not** true before this review and were fixed h
   palette identity have regression coverage. Rendering styles and strings are unchanged.
 - The parallel view loads preserve the rendered state, the per-command error
   handling and the `incomplete` flag; only the order of independent reads changes.
+
+
+## Compact UI audit follow-up (2026-11-13)
+
+- [x] Hardware at 120×36: visible values, focus-following form, F6 full command/XML review.
+- [x] Wizard at 80×24 and 40×12: focused fields, fixed actions and C-v full command review.
+- [x] Settings/Palette: active pane fills compact width; reference and options remain accessible.
+- [x] Snapshot confirmations remain visible in minimal layouts; hidden affirmative input is blocked below 40×12.
+- [x] Generic bulk confirmations retain all commands, wrap long values and keep actions visible.
+- [x] Essential copy uses fg2 with unchanged theme tokens.
+- Reference: DESIGN.md §8 and mockups/Compact.dc.html. These approved compact states supersede the previous clipped snapshot layouts; wide structure is preserved.

@@ -14,6 +14,7 @@ with box-drawing and braille glyphs (Fira Code / JetBrains Mono work).
 """
 
 import html
+import os
 from collections import Counter
 from itertools import groupby
 import re
@@ -43,12 +44,19 @@ SHOTS = {
     "palette": ("palette", "tokyo-night"),
     "help": ("help", "tokyo-night"),
     "settings": ("settings", "tokyo-night"),
+    "hardware-compact": ("hardware", "tokyo-night"),
+    "wizard-compact": ("wizard", "tokyo-night"),
+    "settings-compact": ("settings", "tokyo-night"),
+    "snapshots-compact": ("snapshots", "tokyo-night"),
     "theme-catppuccin-mocha": ("dashboard", "catppuccin-mocha"),
     "theme-gruvbox-dark": ("host", "gruvbox-dark"),
     "theme-nord": ("networks", "nord"),
     "theme-dracula": ("monitor", "dracula"),
     "theme-tokyo-night-day": ("dashboard", "tokyo-night-day"),
 }
+
+COMPACT_SIZES = {"hardware-compact": "120x36", "wizard-compact": "80x24",
+                 "settings-compact": "80x24", "snapshots-compact": "40x12"}
 
 SGR = re.compile(r"\x1b\[([0-9;]*)m")
 FONT = "'Fira Code', 'JetBrains Mono', 'DejaVu Sans Mono', monospace"
@@ -171,10 +179,11 @@ def shoot(name: str, screen: str, theme: str, tmp: Path, browser: str) -> Path:
     config = tmp / "config.toml"
     config.write_text("")
     args = [str(BIN), "--demo", "--frozen", "--config", str(config), "--theme", theme]
-    args += ["--dump", str(ans), "--size", SIZE]
+    args += ["--dump", str(ans), "--size", COMPACT_SIZES.get(name, SIZE)]
     if screen != "dashboard":
         args += ["--screen", screen]
-    subprocess.run(args, check=True)
+    # The HTML converter consumes RGB SGR; do not inherit a non-truecolor shell.
+    subprocess.run(args, check=True, env={**os.environ, "COLORTERM": "truecolor"})
     body, bg = ansi_to_html(ans.read_text())
     page_file = tmp / f"{name}.html"
     page_file.write_text(page(body, bg))

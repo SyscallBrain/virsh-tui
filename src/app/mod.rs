@@ -265,6 +265,8 @@ pub async fn run_with_shutdown(
         job_finished_at: None,
         help_page: 0,
         help_scroll: 0,
+        confirm_scroll: std::cell::Cell::new(0),
+        viewport: std::cell::Cell::new(None),
         ex_history: Vec::new(),
         ex_history_pos: None,
         events_rx,
@@ -479,6 +481,8 @@ struct App {
     /// Help overlay page (0 global keys, 1 view keys) and scroll.
     help_page: u8,
     help_scroll: usize,
+    confirm_scroll: std::cell::Cell<usize>,
+    viewport: std::cell::Cell<Option<Rect>>,
     /// When the last job finished (a late C-c must not quit).
     job_finished_at: Option<std::time::Instant>,
     /// `:` lines entered this session (Up/Down recall) and the recall position.
@@ -734,6 +738,7 @@ impl App {
 
     /// Draw one frame (views, overlays, chrome).
     fn draw(&self, f: &mut ratatui::Frame) {
+        self.viewport.set(Some(f.area()));
         match self.view {
             View::Gallery => ui::views::gallery::render(f, &self.theme),
             View::Host => ui::views::host::render(f, &self.theme, &self.host),
@@ -771,7 +776,14 @@ impl App {
                 crate::ui::widgets::modal::dim_background(f, &self.theme);
             }
             if let Some((c, _, _)) = &self.confirm {
-                crate::ui::overlays::confirm::render(f, &self.theme, f.area(), c);
+                let max = crate::ui::overlays::confirm::render_scrolled(
+                    f,
+                    &self.theme,
+                    f.area(),
+                    c,
+                    self.confirm_scroll.get(),
+                );
+                self.confirm_scroll.set(self.confirm_scroll.get().min(max));
             }
             if let Some(ex) = &self.ex_line {
                 render_ex_line(f, &self.theme, ex);
@@ -1287,8 +1299,9 @@ impl App {
                 && key.modifiers.is_empty()
                 && matches!(key.code, KeyCode::Char('h' | 'l'));
             let wizard_input = self.wizard.as_ref().is_some_and(|wizard| {
-                !(key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('e'))
-                    && (key.code != KeyCode::Enter || wizard.step < 5 || !wizard.problems().is_empty())
+                wizard.command_review
+                    || (!(key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('e'))
+                        && (key.code != KeyCode::Enter || wizard.step < 5 || !wizard.problems().is_empty()))
             });
             let wizard_shortcut = if self.wizard.is_none()
                 && self.settings.is_none()
@@ -1385,6 +1398,11 @@ impl App {
         };
         let modal_before = snap_modal(self);
         let quit = self.on_key_inner(key);
+        if modal_before != snap_modal(self)
+            && let Some(detail) = &self.detail
+        {
+            detail.snaps.review_scroll.set(0);
+        }
         self.enter_view_if_changed();
         // Settings › Confirmations › snapshot revert off: run the revert with
         // the modal's defaults instead of asking.
@@ -1411,6 +1429,7 @@ impl App {
             self.input_revision = self.input_revision.wrapping_add(1);
         }
         if !had_confirm && self.confirm.is_some() {
+            self.confirm_scroll.set(0);
             self.apply_confirm_settings();
         }
         for (message, target, success) in std::mem::take(&mut self.messages.actions) {
@@ -1443,6 +1462,47 @@ impl App {
             return false;
         }
         self.last_key = std::time::Instant::now();
+        if self.viewport.get().is_some_and(|area| {
+            ui::layout::breakpoint(area.width, area.height) == ui::layout::Breakpoint::TooSmall
+        }) {
+            // No action may run while its UI is hidden. Escape still cancels.
+            if key.code == KeyCode::Esc {
+                self.confirm = None;
+                if let Some(detail) = &mut self.detail {
+                    detail.snap_modal = ui::views::detail::SnapModal::None;
+                }
+            }
+            return key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
+        }
+        let scroll_delta = match key.code {
+            KeyCode::Down => Some(1isize),
+            KeyCode::Up => Some(-1),
+            KeyCode::PageDown => Some(5),
+            KeyCode::PageUp => Some(-5),
+            KeyCode::Home => Some(isize::MIN),
+            KeyCode::End => Some(isize::MAX),
+            _ => None,
+        };
+        if self.confirm.is_some()
+            && let Some(delta) = scroll_delta
+        {
+            self.confirm_scroll
+                .set(self.confirm_scroll.get().saturating_add_signed(delta));
+            return false;
+        }
+        if let Some(detail) = self
+            .detail
+            .as_ref()
+            .filter(|d| self.view == View::Detail && d.snap_modal != ui::views::detail::SnapModal::None)
+            && let Some(delta) = scroll_delta
+        {
+            detail
+                .snaps
+                .review_scroll
+                .set(detail.snaps.review_scroll.get().saturating_add_signed(delta));
+            return false;
+        }
+
         // C-c quits; `q`/`ZZ` are checked only after the overlays that
         // take text input (ex line, palette, wizard, confirm, forms) had their turn.
         // A C-c meant to cancel a job that just finished must not quit: within
@@ -1807,7 +1867,7 @@ impl App {
             return false;
         }
         // Wizard captures all keys while open.
-        if self.wizard.is_some()
+        if self.wizard.as_ref().is_some_and(|w| !w.command_review)
             && !self.demo
             && !self.dry_run
             && key.code == KeyCode::Char('e')
@@ -1821,6 +1881,7 @@ impl App {
             && key.code == KeyCode::Enter
             && key.modifiers.is_empty()
             && let Some(wizard) = self.wizard.as_ref()
+            && !wizard.command_review
             && wizard.step >= 5
             && wizard.problems().is_empty()
         {
@@ -2762,6 +2823,8 @@ mod tests {
             job_finished_at: None,
             help_page: 0,
             help_scroll: 0,
+            confirm_scroll: std::cell::Cell::new(0),
+            viewport: std::cell::Cell::new(None),
             ex_history: Vec::new(),
             ex_history_pos: None,
             events_rx: None,

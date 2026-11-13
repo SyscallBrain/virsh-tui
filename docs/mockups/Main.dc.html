@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+<!-- Responsive follow-up: see Compact.dc.html and DESIGN.md §8. Essential labels and key hints use fg2; comment is reserved for incidental copy. -->
 <head>
 <meta charset="utf-8">
 <title>Domains dashboard</title>
@@ -20,12 +21,12 @@ body{margin:0}
 .pt{position:absolute;top:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--fg2);font-weight:700;white-space:pre}
 .p.f>.pt{color:var(--blue)}
 .pr{position:absolute;top:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
-.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
+.pb{position:absolute;bottom:-11px;right:10px;background:var(--bg);padding:0 6px;color:var(--fg2);white-space:pre}
 .pbl{position:absolute;bottom:-11px;left:10px;background:var(--bg);padding:0 6px;color:var(--comment);white-space:pre}
 .d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
 .bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
 .br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
-.tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
+.tab{padding:0 12px;line-height:28px;color:var(--fg2);white-space:pre}
 .tab.on{background:var(--blue);color:var(--bg2);font-weight:700}
 .tab.on b{color:var(--bg2)}
 .tab b{color:var(--orange)}
@@ -53,7 +54,7 @@ body{margin:0}
         <span class="pt">Domains</span>
         <span class="pr">15 total</span>
         <div style="display: flex; gap: 8px; white-space: pre; margin-bottom: 8px">
-          <span class="d">/ filter…</span><span style="flex: 1"></span>
+          <span class="f2">/ filter…</span><span style="flex: 1"></span>
           <span class="chip" style="background: var(--sel); color: var(--fg)">all 15</span>
           <span class="chip"><span class="gr">●</span> running 9</span>
           <span class="chip"><span class="ye">‖</span> paused 1</span>
@@ -106,16 +107,16 @@ body{margin:0}
         <span class="pt">arch-dev</span>
         <span class="pr"><span class="gr">● running</span></span>
         <div style="display: grid; grid-template-columns: 1.2fr 1fr; column-gap: 16px">
-          <div class="pre"><span class="d">OS       </span>Arch Linux · x86_64</div>
-          <div class="pre"><span class="d">Uptime  </span>3d 04h 17m</div>
-          <div class="pre"><span class="d">Machine  </span>pc-q35-10.1 · KVM</div>
-          <div class="pre"><span class="d">IP      </span><span class="cy">192.168.122.48</span></div>
-          <div class="pre"><span class="d">Firmware </span>UEFI · OVMF · SB off</div>
-          <div class="pre"><span class="d">Display </span>SPICE :5901</div>
-          <div class="pre"><span class="d">vCPU     </span>8 · host-passthrough</div>
-          <div class="pre"><span class="d">Agent   </span><span class="gr">qemu-ga ✓</span></div>
-          <div class="pre"><span class="d">Disks    </span>vda 120G qcow2 · sda iso</div>
-          <div class="pre"><span class="d">Auto    </span><span class="gr">✓ on boot</span></div>
+          <div class="pre"><span class="f2">OS       </span>Arch Linux · x86_64</div>
+          <div class="pre"><span class="f2">Uptime  </span>3d 04h 17m</div>
+          <div class="pre"><span class="f2">Machine  </span>pc-q35-10.1 · KVM</div>
+          <div class="pre"><span class="f2">IP      </span><span class="cy">192.168.122.48</span></div>
+          <div class="pre"><span class="f2">Firmware </span>UEFI · OVMF · SB off</div>
+          <div class="pre"><span class="f2">Display </span>SPICE :5901</div>
+          <div class="pre"><span class="f2">vCPU     </span>8 · host-passthrough</div>
+          <div class="pre"><span class="f2">Agent   </span><span class="gr">qemu-ga ✓</span></div>
+          <div class="pre"><span class="f2">Disks    </span>vda 120G qcow2 · sda iso</div>
+          <div class="pre"><span class="f2">Auto    </span><span class="gr">✓ on boot</span></div>
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; white-space: pre">
           <span class="chip"><span class="k">S</span> shutdown</span>
@@ -179,7 +180,7 @@ body{margin:0}
   <div style="display: flex; height: 22px; line-height: 22px; background: var(--bg2); white-space: pre">
     <span class="pill" style="background: var(--blue); color: var(--bg2)">NORMAL</span>
     <span style="background: var(--hl); color: var(--fg2); padding: 0 10px">domains › arch-dev</span>
-    <span class="d" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">⏎</span> open  <span class="k">s</span> start  <span class="k">S</span> shutdown  <span class="k">p</span> pause  <span class="k">m</span> mark  <span class="k">␣</span> leader  <span class="k">:</span> cmd  <span class="k">?</span> help</span>
+    <span class="f2" style="padding: 0 12px"><span class="k">j/k</span> move  <span class="k">⏎</span> open  <span class="k">s</span> start  <span class="k">S</span> shutdown  <span class="k">p</span> pause  <span class="k">m</span> mark  <span class="k">␣</span> leader  <span class="k">:</span> cmd  <span class="k">?</span> help</span>
     <span style="flex: 1"></span>
     <span style="padding: 0 10px; background: var(--hl)"><span class="gr">● 9</span>  <span class="ye">‖ 1</span>  <span class="rd">✗ 1</span>  <span class="d">○ 4</span></span>
     <span class="pill" style="background: var(--magenta); color: var(--bg2)">3 marked</span>
