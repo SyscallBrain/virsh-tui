@@ -1,8 +1,7 @@
 # CPU performance results
 
-Measured on 2026-11-13, against baseline `a1c42067234cfcbb2b2b9e73f94beb490c4c1884`.
-All implementation work lives in the managed worktree
-`/home/tiago/.codex/worktrees/86b8/virsh_tui`.
+Measured on 2026-11-13 against baseline `a1c42067234cfcbb2b2b9e73f94beb490c4c1884`
+(the commit this branch starts from).
 
 ## Reproduction
 
@@ -11,60 +10,106 @@ cargo bench --bench performance
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
-Rust 1.99.1, Linux x86_64, four virtual CPUs on AMD EPYC 9355P.
-The benchmark uses the standard optimized Cargo bench profile, `black_box`, 20
-warm-up calls and nine timed batches of at least 150 ms, with ten operations per
-clock check. Results are medians of batch mean wall times; the raw files include
-minimum and maximum batch means. They are observations, not timing assertions in
-CI. Shared-host scheduling, other agents and VMs introduce noise.
+To compare against the baseline, check out the baseline commit in a separate
+worktree, copy `benches/performance.rs` and the `[[bench]]` section of
+`Cargo.toml` into it, build both with `cargo bench --bench performance --no-run`,
+then alternate the two binaries (before, after, before, after, …) pinned to the
+same CPU with `taskset -c 3`.
 
-The same final benchmark source was used against the baseline product sources and
-the optimized product. The initial baseline and optimized runs also identified
-these bottlenecks before the final comparison. Build work finishes before each
-measurement loop. Fixtures and terminals are constructed outside timed loops.
-Metrics measurements use distinct domain names, advance sample timestamps, and
-retain constant raw counters; they exercise ingestion, zero-rate computation,
-history writes and cleanup, rather than simulating hypervisor traffic.
+Rust 1.99.1, Linux x86_64, four virtual CPUs on AMD EPYC 9355P. The host was
+shared and not idle (load average 2–5 during the runs), which affects the
+full-frame results most.
+
+The benchmark uses the optimized Cargo bench profile, `black_box`, 20 warm-up
+calls and nine timed batches of at least 150 ms, with ten operations per clock
+check. Each line reports the median of the batch means plus the minimum and
+maximum batch means. These are observations, not CI timing assertions.
+
+The same benchmark source was compiled against the baseline and the optimized
+sources (it only uses APIs that exist in both). Fixtures and terminals are built
+outside the timed loops. Before measuring, the benchmark asserts the result size
+of each fuzzy/palette workload and that every metrics domain was ingested, so a
+case cannot silently time an empty early-exit path. Metrics measurements use
+distinct domain names, advance sample timestamps and keep raw counters constant:
+they exercise ingestion, zero-rate computation, history writes and cleanup, not
+realistic hypervisor traffic.
 
 ## Measurements
 
-See `before.txt`, `after.txt`, `before-cpu3.txt` and `after-cpu3.txt` for all
-raw results, including min/max values.
+Three interleaved rounds (before, after, before, after, before, after), both
+binaries pinned to CPU 3. Raw output: `before-r{1,2,3}.txt` and
+`after-r{1,2,3}.txt`. Values are µs/op: the median over the three rounds of each
+round's median. Speedup is baseline / optimized, with each round's speedup also
+shown so you can see how much it varies.
 
-Final sequential repeat, both processes pinned to CPU 3 with `taskset -c 3`.
-Times below are µs/op; speedup is baseline / optimized. The unpinned run is
-also retained because the shared host produces considerable scheduling variance.
+| Workload | Before µs | After µs | Speedup | Per-round speedups |
+|---|---:|---:|---:|---|
+| braille Fill 60x8 | 5.132 | 2.781 | 1.85× | 2.38 / 1.89 / 1.85 |
+| braille Down 60x8 | 3.958 | 2.795 | 1.42× | 1.95 / 1.42 / 1.42 |
+| braille Line 60x8 | 3.760 | 2.979 | 1.26× | 1.56 / 1.25 / 1.28 |
+| spark rows 60x8 | 5.218 | 1.103 | 4.73× | 5.25 / 4.68 / 4.73 |
+| fuzzy snap 1000 | 118.845 | 120.868 | 0.98× | 1.01 / 0.98 / 0.99 |
+| fuzzy snap 1000 unicode haystacks | 658.426 | 625.022 | 1.05× | 1.42 / 1.03 / 1.05 |
+| fuzzy dömäin 1000 no match | 135.531 | 5.774 | 23.47× | 25.15 / 23.41 / 24.68 |
+| palette visible 1000 | 903.909 | 117.082 | 7.72× | 7.41 / 8.03 / 7.60 |
+| ingest metrics 0 domains | 0.009 | 0.011 | 0.90× | 0.79 / 0.89 / 0.90 |
+| ingest metrics 1 domains | 2.781 | 1.602 | 1.74× | 1.24 / 1.70 / 1.74 |
+| ingest metrics 10 domains | 28.644 | 16.383 | 1.75× | 1.23 / 1.70 / 1.76 |
+| ingest metrics 100 domains | 319.743 | 163.901 | 1.95× | 2.29 / 1.76 / 1.96 |
+| ingest metrics 1000 domains | 5009.846 | 2030.762 | 2.47× | 3.56 / 2.47 / 2.59 |
+| dashboard 120x36 | 166.274 | 165.205 | 1.01× | 1.10 / 0.95 / 1.04 |
+| host 120x36 | 199.149 | 195.899 | 1.02× | 1.19 / 1.02 / 1.04 |
+| monitor 120x36 | 235.810 | 271.985 | 0.87× | 0.75 / 0.90 / 0.86 |
+| dashboard 174x43 | 357.187 | 460.783 | 0.78× | 0.61 / 0.76 / 1.06 |
+| host 174x43 | 320.240 | 318.305 | 1.01× | 0.96 / 0.98 / 1.11 |
+| monitor 174x43 | 413.982 | 393.567 | 1.05× | 1.49 / 1.03 / 1.04 |
+| dashboard navigation 174x43 | 311.203 | 304.730 | 1.02× | 1.05 / 1.02 / 1.01 |
+| palette navigation 1000 174x43 | 2837.170 | 343.504 | 8.26× | 8.57 / 8.56 / 8.18 |
+| XML 10000 lines middle page | 2247.410 | 332.746 | 6.75× | 7.34 / 6.75 / 6.47 |
 
-| Workload | Before µs | After µs | Speedup |
-|---|---:|---:|---:|
-| braille Fill 60x8 | 5.441 | 2.724 | 2.00× |
-| braille Down 60x8 | 4.034 | 2.736 | 1.47× |
-| braille Line 60x8 | 4.095 | 2.862 | 1.43× |
-| spark rows 60x8 | 5.549 | 1.128 | 4.92× |
-| fuzzy snap 1000 | 132.105 | 116.701 | 1.13× |
-| fuzzy dömäin 1000 | 147.843 | 5.165 | 28.62× |
-| palette visible 1000 | 938.505 | 111.703 | 8.40× |
-| ingest metrics 0 domains | 0.010 | 0.014 | 0.70× |
-| ingest metrics 1 domains | 2.839 | 1.578 | 1.80× |
-| ingest metrics 10 domains | 28.260 | 16.808 | 1.68× |
-| ingest metrics 100 domains | 311.354 | 160.903 | 1.94× |
-| ingest metrics 1000 domains | 5731.559 | 2634.534 | 2.18× |
-| dashboard 120x36 | 166.201 | 183.634 | 0.91× |
-| host 120x36 | 198.808 | 209.042 | 0.95× |
-| monitor 120x36 | 241.495 | 255.179 | 0.95× |
-| dashboard 174x43 | 414.491 | 399.699 | 1.04× |
-| host 174x43 | 501.564 | 347.293 | 1.44× |
-| monitor 174x43 | 464.104 | 432.241 | 1.07× |
-| dashboard navigation 174x43 | 330.531 | 339.191 | 0.97× |
-| palette navigation 1000 174x43 | 2962.242 | 347.547 | 8.52× |
-| XML 10000 lines middle page | 2305.638 | 351.185 | 6.57× |
+### Interpretation
 
-The largest repeatable wins are palette navigation (~8.5×), large XML pages
-(~6.6×), multi-row sparks (~4–5×), and metrics ingestion (~2.2× at 1,000
-domains; ~2× at one domain). Compact full frames vary around the baseline;
-these results do not establish a general frame-rate improvement. The empty
-metrics case is a few nanoseconds slower, close to timer-loop overhead; it
-performs no domain work. Large-frame medians also vary between runs.
+Consistent improvements (every round agrees):
+
+- Palette navigation with 1,000 entries: ~8.3×. Previously each frame ranked
+  the list three times and looked up every title linearly, which was O(n²).
+- `PaletteState::visible` with 1,000 entries: ~7.7×.
+- XML page in a 10,000-line document: ~6.7×.
+- Multi-row sparks: ~4.7×.
+- Braille charts: 1.3–1.9×.
+- Metrics ingestion: ~1.7× at 1–10 domains and ~2.5× at 1,000 domains, where
+  the earlier cleanup was quadratic.
+
+Results that need care:
+
+- **Fuzzy matching itself did not get faster** (`fuzzy snap`: ~1.0× for both
+  ASCII and Unicode haystacks). The earlier report's 28× for `fuzzy dömäin` was
+  a **no-match path**: an ASCII haystack can never match a non-ASCII needle, so
+  nucleo returns immediately. The baseline still converted the needle for every
+  item, so the gain there is only the cost of that conversion. The case keeps
+  its explicit "no match" label and is not representative of palette search.
+- **No full-frame improvement is claimed.** Steady-state dashboard, host and
+  monitor frames are within noise. An earlier single pinned run reported
+  `host 174x43` at 1.44×, but neither the unpinned run nor these interleaved
+  rounds reproduce it. `monitor 120x36` was slower in all three rounds (~0.87×)
+  and `dashboard 174x43` varied from 0.61× to 1.06×. That spread is consistent
+  with a busy host, but the monitor slowdown has not been explained and needs to
+  be rechecked on an idle machine before drawing conclusions.
+- The empty metrics case is a couple of nanoseconds slower, because it now
+  builds an empty `HashSet`. No domain work happens in that case.
+
+### Known functional issue found while validating (not caused by this work)
+
+While the benchmark was being fixed, `fuzzy_rank` turned out to pass the raw
+query to `nucleo_matcher`, which expects the needle to be normalized and
+lowercased already. As a result, queries with accents (`dömäin`, `ö`) never
+match, even on items that contain them, and uppercase letters match
+case-sensitively (`Snap` finds `Snapshot` but not `snapshot`). The baseline
+behaves the same way, and
+`fuzzy_preserves_unicode_ranking_and_tie_order` uses the same raw-needle oracle,
+so the test preserves this behavior rather than checking for it. Fixing it
+(for example with `nucleo_matcher::pattern::Atom`/`Pattern`) changes behavior
+and belongs in a separate change.
 
 ## Implementation and correctness
 
@@ -76,7 +121,7 @@ performs no domain work. Large-frame medians also vary between runs.
   Host thread meters reuse each three-row result rather than rendering it three
   times. Existing chart fixtures and screen snapshots remain unchanged.
 - Palette ranking retains item indices, reuses Unicode conversion buffers and
-  converts the query once. Result lookup no longer searches the full list for
+  converts the query once (this only matters for non-ASCII queries; see above). Result lookup no longer searches the full list for
   every title. A frame shares the ranked results with its reference pane and
   command preview. Duplicate titles keep distinct action identities.
 - XML highlighting and span allocation are limited to the viewport, and scroll
@@ -87,8 +132,9 @@ performs no domain work. Large-frame medians also vary between runs.
   counters already read instead of reformatting/reparsing the same virsh keys.
   Sparse multi-device counters, rates, removal and restart behavior are tested.
 
-Validation: `cargo fmt --check`, strict Clippy for all targets, all 186 tests
-(including eight performance regression tests), and `mdbook build book` pass.
+Validation: `cargo fmt --check`, strict Clippy for all targets, the full test
+suite (including the performance regression tests in
+`tests/performance_regressions.rs`) and `mdbook build book` pass.
 The full-screen snapshots required no updates. Independent read-only review
 covered the algorithms, command-preview reuse, metrics semantics and benchmark
 limitations. No libvirt object was mutated during this work.
