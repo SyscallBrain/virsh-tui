@@ -163,8 +163,13 @@ the noise.
 
 `tests/support/parallel_views.py` (driven by `view_loads_overlap_per_object_reads`)
 runs the real binary against a fake `virsh` that reports 12 networks and counts
-how many `net-dumpxml` processes are in flight. It asserts the peak is above 1 and
-within `READ_CONCURRENCY`; the serial implementation peaked at 1.
+how many `net-dumpxml` processes are alive at once. Startup loads the Host and
+Networks views together and both read every network's XML, so the serial
+implementation peaked at 2 (one read per loader). Each view load has its own
+`READ_CONCURRENCY` semaphore, so the test asserts a peak above 2 and at most
+2 × `READ_CONCURRENCY`; the parallel implementation peaks at 6. The fake counts
+live PIDs rather than increments because a restarted load kills its in-flight
+children with SIGKILL, which would otherwise leak into the count.
 
 Validation: `cargo fmt --check`, strict Clippy for all targets, all 480 tests
 (including nine performance regression tests), and `mdbook build book` pass.
@@ -179,7 +184,8 @@ cases change selected rows and include changed-cell writes to the in-memory test
 backend. Neither measures a real terminal's output transport, SSH, rendering,
 virsh startup/connection latency, or a full live libvirt workload. The parallel
 view loads are justified analytically (N serial process spawns become at most
-`READ_CONCURRENCY` in flight) and were not re-timed against a live libvirt with
+`READ_CONCURRENCY` in flight per view load; concurrent loads each have their
+own limit) and were not re-timed against a live libvirt with
 many networks or pools. Do not interpret kernel speedups as a universal
 application speedup. No overall full-frame speedup is claimed where scheduling
 variance overlaps the observed difference.
