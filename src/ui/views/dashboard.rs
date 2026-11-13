@@ -1025,8 +1025,8 @@ fn render_host(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: R
 
 fn render_right(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {
     // Overview: borders, five info rows, a blank line, then the action rows.
-    // The CPU graph gives up to two rows when the terminal is short, so the
-    // chips keep their spacing.
+    // The CPU graph gives up to four rows when the terminal is short, so the
+    // overview never loses the blank line between the info and the actions.
     let chip_rows = action_chips(
         theme,
         state.selected().state,
@@ -1034,7 +1034,7 @@ fn render_right(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: 
     )
     .len();
     let overview_h = (2 + 5 + 1 + chip_rows) as u16;
-    let cpu_h = area.height.saturating_sub(overview_h + 8 + 9).clamp(9, 11);
+    let cpu_h = area.height.saturating_sub(overview_h + 8 + 9).clamp(7, 11);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
