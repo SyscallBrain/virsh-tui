@@ -11,14 +11,14 @@ pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
         ui::views::host::HostState::live_local().await
     } else {
         // Remote: /proc is the wrong machine; libvirt reports the basics.
-        let nodeinfo = crate::backend::virsh::exec::run(uri, &["nodeinfo"])
-            .await
-            .unwrap_or_default();
-        let memstats = crate::backend::virsh::exec::run(uri, &["nodememstats"])
-            .await
-            .unwrap_or_default();
-        let (model, threads, total_kib, available_kib) =
-            crate::backend::virsh::host_local::parse_node_facts(&nodeinfo, &memstats);
+        let (nodeinfo, memstats) = tokio::join!(
+            crate::backend::virsh::exec::run(uri, &["nodeinfo"]),
+            crate::backend::virsh::exec::run(uri, &["nodememstats"]),
+        );
+        let (model, threads, total_kib, available_kib) = crate::backend::virsh::host_local::parse_node_facts(
+            &nodeinfo.unwrap_or_default(),
+            &memstats.unwrap_or_default(),
+        );
         let gib = |kib: u64| kib as f64 / 1024.0 / 1024.0;
         ui::views::host::HostState {
             live: true,
@@ -38,9 +38,18 @@ pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
     };
     host.uri = uri.to_string();
     host.connected = true;
-    host.system = host_system_facts(uri).await;
     let backend = VirshBackend::new(uri);
-    if let Ok(pools) = backend.pools().await {
+    // The four independent reads (system facts, pools, networks, domains) are
+    // separate `virsh` processes: run them concurrently instead of paying the
+    // startup cost four times in a row.
+    let (system, pools, nets, domains) = tokio::join!(
+        host_system_facts(uri),
+        backend.pools(),
+        backend.networks(),
+        backend.list_domains(),
+    );
+    host.system = system;
+    if let Ok(pools) = pools {
         host.pools_active = format!(
             "{}/{} active",
             pools.iter().filter(|p| p.state == "running").count(),
@@ -62,16 +71,22 @@ pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
             })
             .collect();
     }
-    if let Ok(nets) = backend.networks().await {
+    if let Ok(nets) = nets {
         host.nets_active = format!(
             "{}/{} active",
             nets.iter().filter(|n| n.state == "active").count(),
             nets.len()
         );
+        let xml = run_many(
+            uri,
+            nets.iter()
+                .map(|n| vec![String::from("net-dumpxml"), n.name.clone()])
+                .collect(),
+        )
+        .await;
         let mut rows = Vec::new();
-        for n in nets {
-            let cfg = crate::backend::virsh::exec::run(uri, &["net-dumpxml", &n.name])
-                .await
+        for (n, xml) in nets.into_iter().zip(xml) {
+            let cfg = xml
                 .ok()
                 .and_then(|x| crate::backend::virsh::parse_xml::parse_network_xml(&x).ok())
                 .unwrap_or_default();
@@ -86,7 +101,7 @@ pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
         }
         host.nets = rows;
     }
-    if let Ok(domains) = backend.list_domains().await {
+    if let Ok(domains) = domains {
         let running: Vec<_> = domains
             .iter()
             .filter(|d| d.state == crate::model::DomainState::Running)
@@ -334,9 +349,17 @@ pub(super) async fn fill_live_nets(uri: &str) -> ui::views::networks::NetworksSt
     };
     match backend.networks().await {
         Ok(nets) => {
-            for n in &nets {
-                let cfg = crate::backend::virsh::exec::run(uri, &["net-dumpxml", &n.name])
-                    .await
+            // `net-dumpxml` per network is a separate `virsh` process: run them
+            // with bounded concurrency instead of paying the startup cost N times.
+            let xml = run_many(
+                uri,
+                nets.iter()
+                    .map(|n| vec![String::from("net-dumpxml"), n.name.clone()])
+                    .collect(),
+            )
+            .await;
+            for (n, xml) in nets.iter().zip(xml) {
+                let cfg = xml
                     .ok()
                     .and_then(|x| crate::backend::virsh::parse_xml::parse_network_xml(&x).ok())
                     .unwrap_or_default();
@@ -618,7 +641,15 @@ pub(super) async fn fill_live_store(uri: &str) -> ui::views::storage::StorageSta
     st.attachments.clear();
     st.pool_volumes.clear();
     st.incomplete = false;
-    match backend.list_domains().await {
+    let (domains, pools) = tokio::join!(backend.list_domains(), backend.pools());
+    let pools = match pools {
+        Ok(pools) => pools,
+        Err(e) => {
+            st.message = format!("✗ {}", first_line(&e.to_string()));
+            return st;
+        }
+    };
+    match domains {
         Ok(domains) => {
             let mut commands = Vec::new();
             let mut owners = Vec::new();
@@ -652,13 +683,6 @@ pub(super) async fn fill_live_store(uri: &str) -> ui::views::storage::StorageSta
         }
         Err(_) => st.incomplete = true,
     }
-    let pools = match backend.pools().await {
-        Ok(pools) => pools,
-        Err(e) => {
-            st.message = format!("✗ {}", first_line(&e.to_string()));
-            return st;
-        }
-    };
     let pool_xml = run_many(
         uri,
         pools
@@ -690,10 +714,20 @@ pub(super) async fn fill_live_store(uri: &str) -> ui::views::storage::StorageSta
             active: p.state == "running",
             autostart: p.autostart,
         });
-        if p.state != "running" {
-            continue;
-        }
-        let Ok(out) = crate::backend::virsh::exec::run(uri, &["vol-list", "--pool", &p.name]).await else {
+    }
+    // Listing each active pool is a separate `virsh` process: run them with
+    // bounded concurrency instead of paying the startup cost per pool.
+    let active: Vec<_> = pools.iter().filter(|p| p.state == "running").collect();
+    let listings = run_many(
+        uri,
+        active
+            .iter()
+            .map(|p| vec![String::from("vol-list"), String::from("--pool"), p.name.clone()])
+            .collect(),
+    )
+    .await;
+    for (p, listing) in active.iter().zip(listings) {
+        let Ok(out) = listing else {
             st.incomplete = true;
             continue;
         };
