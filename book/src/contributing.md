@@ -1,8 +1,12 @@
 # Contributing
 
 Bug reports, ideas and pull requests are welcome on
-[GitHub](https://github.com/SyscallBrain/virsh-tui). For anything larger
-than a small fix, open an issue first so we can agree on the approach.
+[GitHub](https://github.com/SyscallBrain/virsh-tui). Questions go to
+[Discussions](https://github.com/SyscallBrain/virsh-tui/discussions), and
+security problems to a
+[private advisory](https://github.com/SyscallBrain/virsh-tui/security/advisories/new)
+(see `SECURITY.md`). For anything larger than a small fix, open an issue
+first so we can agree on the approach.
 
 ## Building and testing
 
