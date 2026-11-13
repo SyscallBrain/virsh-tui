@@ -23,8 +23,12 @@
 
 At 153 columns or more the dashboard shows the domain list and the metrics
 side by side. Between 100 and 152 it stacks the panels and the metrics move
-to tabs (Overview, CPU, Mem, Disk, Net) under the list. Below 100 × 30 it
-shows a "terminal too small" notice instead of a broken layout.
+to tabs (Overview, CPU, Mem, Disk, Net) under the list. Below 100 × 30
+(down to 40 × 12, so a default 80 × 24 terminal works) every view switches
+to a single list: one row per domain, network, pool, volume or event, with
+the same keys; the side panels and charts are dropped and the detail view
+shows the key facts of the domain. Below 40 × 12 it shows a "terminal too
+small" notice.
 
 ## Modes
 

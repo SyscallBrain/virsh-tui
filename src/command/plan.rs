@@ -23,7 +23,7 @@ impl CommandStep {
 }
 
 /// A plan: sequential steps stopping at the first failure.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommandPlan {
     pub steps: Vec<CommandStep>,
     /// Past-tense summary for the message line (`Started k8s-worker-02`).

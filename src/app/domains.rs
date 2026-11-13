@@ -4,18 +4,39 @@
 
 use super::*;
 
-/// Targets: marks when non-empty (bulk), else the selection.
+/// Targets: the marked rows that are visible (bulk), else the selection.
+/// Marks hidden by the filter or chip are never acted on.
 pub(super) fn targets(dash: &crate::ui::views::dashboard::DashboardState) -> Vec<String> {
     if dash.rows.is_empty() {
         return vec![];
     }
-    if dash.marks.is_empty() {
-        vec![dash.selected().name.clone()]
+    let visible = dash.visible_rows();
+    let marked: Vec<String> = visible
+        .iter()
+        .filter(|row| dash.marks.contains(&row.name))
+        .map(|row| row.name.clone())
+        .collect();
+    if marked.is_empty() {
+        visible
+            .is_empty()
+            .then(Vec::new)
+            .unwrap_or_else(|| vec![dash.selected().name.clone()])
     } else {
-        let mut v: Vec<String> = dash.marks.iter().cloned().collect();
+        let mut v = marked;
         v.sort();
         v
     }
+}
+
+/// State of a dashboard row by name.
+pub(super) fn row_state(
+    dash: &crate::ui::views::dashboard::DashboardState,
+    name: &str,
+) -> Option<(crate::model::DomainState, bool)> {
+    dash.rows
+        .iter()
+        .find(|row| row.name == name)
+        .map(|row| (row.state, row.autostart))
 }
 
 /// Demo state transitions (mockup simulation).
@@ -40,12 +61,7 @@ pub(super) fn apply_demo_transition(
         for row in &mut dash.rows {
             if row.name == target {
                 row.state = s;
-                row.state_label = match s {
-                    crate::model::DomainState::Running => "running",
-                    crate::model::DomainState::Paused => "paused",
-                    crate::model::DomainState::Crashed => "crashed",
-                    _ => "shut off",
-                };
+                row.state_label = s.label();
             }
         }
     }
@@ -56,11 +72,20 @@ pub(super) fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").to_string()
 }
 
+/// Copy to the clipboard. The `arboard::Clipboard` is kept for the whole
+/// session: on X11/Wayland the owner must stay alive or the content is lost.
 pub(super) fn copy_text(text: &str) {
-    if arboard::Clipboard::new()
-        .and_then(|mut c| c.set_text(text.to_string()))
-        .is_err()
-    {
+    static CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
+    let copied = {
+        let mut guard = CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = arboard::Clipboard::new().ok();
+        }
+        guard
+            .as_mut()
+            .is_some_and(|clipboard| clipboard.set_text(text.to_string()).is_ok())
+    };
+    if !copied {
         use std::io::Write;
         let seq = format!("\x1b]52;c;{}\x07", base64_clone(text));
         let _ = write!(std::io::stdout(), "{seq}");
@@ -225,48 +250,76 @@ pub(super) fn dispatch_action(
                 }
             }
         }
-        A::Destroy => ask_confirm(confirm, "⚠ Destroy domain", "destroy", &targets(dash), |d| {
-            lifecycle::destroy(d)
-        }),
+        A::Destroy => ask_confirm(
+            confirm,
+            crate::ui::overlays::confirm::ConfirmKind::DomainDestroy,
+            "⚠ Destroy domain",
+            "destroy",
+            &targets(dash),
+            lifecycle::destroy,
+        ),
         A::Reboot => {
             let t = targets(dash);
             preview_targets(uri, &t, lifecycle::reboot, dry_run, demo, dash, history, messages);
         }
         A::Reset => ask_confirm(
             confirm,
+            crate::ui::overlays::confirm::ConfirmKind::DomainReset,
             "⚠ Reset domain",
             "reset",
             &targets(dash),
             lifecycle::reset,
         ),
         A::Pause => {
+            // Per target: paused guests resume, the others pause.
             let t = targets(dash);
-            if dash.selected().state == crate::model::DomainState::Paused {
-                preview_targets(uri, &t, lifecycle::resume, dry_run, demo, dash, history, messages);
-            } else {
-                preview_targets(uri, &t, lifecycle::pause, dry_run, demo, dash, history, messages);
+            let (paused, running): (Vec<String>, Vec<String>) = t.into_iter().partition(|name| {
+                row_state(dash, name).is_some_and(|(s, _)| s == crate::model::DomainState::Paused)
+            });
+            if !paused.is_empty() {
+                preview_targets(
+                    uri,
+                    &paused,
+                    lifecycle::resume,
+                    dry_run,
+                    demo,
+                    dash,
+                    history,
+                    messages,
+                );
+            }
+            if !running.is_empty() {
+                preview_targets(
+                    uri,
+                    &running,
+                    lifecycle::pause,
+                    dry_run,
+                    demo,
+                    dash,
+                    history,
+                    messages,
+                );
             }
         }
-        A::ManagedSave => {
-            let t = targets(dash);
-            preview_targets(
-                uri,
-                &t,
-                lifecycle::managed_save,
-                dry_run,
-                demo,
-                dash,
-                history,
-                messages,
-            );
-        }
+        A::ManagedSave => ask_confirm(
+            confirm,
+            crate::ui::overlays::confirm::ConfirmKind::Always,
+            "Managed-save domain",
+            "managed-save",
+            &targets(dash),
+            lifecycle::managed_save,
+        ),
         A::Autostart => {
+            // Toggle each target from its own state.
             let t = targets(dash);
-            let enable = !dash.selected().autostart;
+            let states: std::collections::HashMap<String, bool> = t
+                .iter()
+                .map(|name| (name.clone(), row_state(dash, name).is_some_and(|(_, a)| a)))
+                .collect();
             preview_targets(
                 uri,
                 &t,
-                move |d| lifecycle::autostart(d, enable),
+                move |d| lifecycle::autostart(d, !states.get(d).copied().unwrap_or(false)),
                 dry_run,
                 demo,
                 dash,
@@ -289,9 +342,14 @@ pub(super) fn dispatch_action(
         }
         A::Undefine => {
             let t = targets(dash);
-            ask_confirm(confirm, "⚠ Undefine domain", "undefine", &t, |d| {
-                lifecycle::undefine(d, false, false, false)
-            });
+            ask_confirm(
+                confirm,
+                crate::ui::overlays::confirm::ConfirmKind::DomainUndefine,
+                "⚠ Undefine domain",
+                "undefine",
+                &t,
+                |d| lifecycle::undefine(d, false, false, true),
+            );
             // Undefine is irreversible: require typing the name(s) (DESIGN.md §1.4).
             if let Some((c, _, _)) = confirm.as_mut() {
                 c.type_name = Some(t.join(", "));
@@ -337,9 +395,13 @@ pub(super) fn dispatch_action(
             };
         }
         A::YankCmd => {
-            if let Some(last) = history.last() {
-                copy_text(last);
-            }
+            dash.message = match history.last() {
+                Some(last) => {
+                    copy_text(last);
+                    format!("✓ Copied command  ── {last}")
+                }
+                None => String::from("✗ no command run yet"),
+            };
         }
         A::ExportXml => {
             let name = dash.selected().name.clone();
@@ -353,31 +415,21 @@ pub(super) fn dispatch_action(
             )));
         }
         A::Clone => {
+            // The name is edited on the ex line (`:clone <vm> <new-name>`).
             let sel = dash.selected().name.clone();
-            let uri = uri.to_string();
-            let build: crate::command::plan::PlanBuilder = std::sync::Arc::new(move |d: &str| {
-                crate::command::builders::lifecycle::clone_on(&uri, d, &format!("{d}-clone"))
-            });
-            let commands = build(&sel)
-                .steps
-                .iter()
-                .map(crate::command::display::display)
-                .collect();
-            *confirm = Some((
-                crate::ui::overlays::confirm::Confirm {
-                    title: String::from("Clone domain"),
-                    question: format!("clone {sel} to {sel}-clone?"),
-                    commands,
-                    confirm_label: String::from("y clone"),
-                    type_name: None,
-                    typed: String::new(),
-                },
-                build,
-                vec![sel],
-            ));
+            if !sel.is_empty() {
+                *ex_line = Some(crate::input::textinput::TextInput::with(&format!(
+                    "clone {sel} {sel}-clone"
+                )));
+            }
         }
         A::Console if demo || dry_run => dash.message = "[dry-run] Open console".into(),
-        A::Console => external::console(uri, &dash.selected().name),
+        A::Console => {
+            if let Some(message) = external::console(uri, &dash.selected().name) {
+                messages.push(message.clone());
+                dash.message = message;
+            }
+        }
         A::Viewer if demo || dry_run => dash.message = "[dry-run] Open viewer".into(),
         A::Viewer => dash.message = "✗ Viewer request was not submitted".into(),
         A::Refresh if !demo => {}
@@ -390,6 +442,7 @@ pub(super) fn dispatch_action(
 /// Stage a confirm modal for a destructive plan builder.
 pub(super) fn ask_confirm(
     confirm: &mut Option<crate::command::plan::PendingConfirm>,
+    kind: crate::ui::overlays::confirm::ConfirmKind,
     title: &str,
     verb: &str,
     targets: &[String],
@@ -398,10 +451,26 @@ pub(super) fn ask_confirm(
     if targets.is_empty() {
         return;
     }
-    let plan = build(targets.first().map(|s| s.as_str()).unwrap_or(""));
-    let commands = plan.steps.iter().map(crate::command::display::display).collect();
+    // Every target's commands (bulk), capped so the modal stays readable.
+    const SHOWN: usize = 6;
+    let mut commands: Vec<String> = targets
+        .iter()
+        .flat_map(|t| {
+            build(t)
+                .steps
+                .iter()
+                .map(crate::command::display::display)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    if commands.len() > SHOWN {
+        let more = commands.len() - SHOWN;
+        commands.truncate(SHOWN);
+        commands.push(format!("… and {more} more"));
+    }
     *confirm = Some((
         crate::ui::overlays::confirm::Confirm {
+            kind,
             title: title.to_string(),
             question: format!("{} {}?", capitalize(verb), targets.join(", ")),
             commands,
@@ -484,4 +553,25 @@ pub(super) fn prefill_command(
         A::Migrate => format!("migrate {domain} qemu+ssh://HOST/system --live --persistent --verbose"),
         _ => return None,
     })
+}
+
+/// `:clone` refusal reason: virt-clone needs a shut-off (or paused) source,
+/// and a free, valid name.
+pub(super) fn clone_problem(
+    dash: &crate::ui::views::dashboard::DashboardState,
+    domain: &str,
+    new_name: &str,
+) -> Option<String> {
+    match row_state(dash, domain) {
+        None => return Some(format!("✗ no domain named {domain}")),
+        Some((crate::model::DomainState::Running, _)) => {
+            return Some(format!(
+                "✗ {domain} is running: shut it down or pause it before cloning"
+            ));
+        }
+        _ => {}
+    }
+    let existing: Vec<&str> = dash.rows.iter().map(|r| r.name.as_str()).collect();
+    (!crate::ui::overlays::wizard::valid_name(new_name, &existing))
+        .then(|| format!("✗ `{new_name}` is not a valid new domain name (or already exists)"))
 }

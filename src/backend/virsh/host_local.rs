@@ -36,6 +36,11 @@ pub fn parse_nodeinfo(text: &str, hostname: &str) -> HostInfo {
 /// Uptime of a running domain on a local URI, from its QEMU pid file
 /// (`/run/libvirt/qemu/<name>.pid`) and `/proc/<pid>/stat` start time.
 pub fn domain_uptime(name: &str) -> Option<String> {
+    domain_uptime_secs(name).map(fmt_uptime)
+}
+
+/// [`domain_uptime`] in seconds.
+pub fn domain_uptime_secs(name: &str) -> Option<u64> {
     if name.contains('/') {
         return None;
     }
@@ -55,8 +60,26 @@ pub fn domain_uptime(name: &str) -> Option<String> {
         .next()?
         .parse()
         .ok()?;
-    let secs = proc_uptime_secs(&stat, host_up, USER_HZ)?;
-    Some(fmt_uptime(secs))
+    proc_uptime_secs(&stat, host_up, USER_HZ)
+}
+
+/// Inverse of [`fmt_uptime`] (`3d 04h`, `5h 12m`, `2m`) for fixtures; `—` → None.
+pub fn parse_uptime_label(label: &str) -> Option<u64> {
+    let mut total = 0u64;
+    let mut any = false;
+    for part in label.split_whitespace() {
+        let (num, unit) = part.split_at(part.find(|c: char| !c.is_ascii_digit())?);
+        let n: u64 = num.parse().ok()?;
+        total += n * match unit {
+            "d" => 86_400,
+            "h" => 3600,
+            "m" => 60,
+            "s" => 1,
+            _ => return None,
+        };
+        any = true;
+    }
+    any.then_some(total)
 }
 
 /// Clock ticks per second in `/proc/<pid>/stat` (USER_HZ, fixed at 100 on Linux).
@@ -105,7 +128,9 @@ pub fn parse_proc_stat(text: &str) -> Vec<CpuTimes> {
         if nums.len() < 4 {
             continue;
         }
-        let total: u64 = nums.iter().sum();
+        // user nice system idle iowait irq softirq steal: `guest` and
+        // `guest_nice` (fields 9-10) are already counted in user/nice.
+        let total: u64 = nums.iter().take(8).sum();
         let idle = nums[3] + nums.get(4).copied().unwrap_or(0);
         out.push(CpuTimes { total, idle });
     }
@@ -231,4 +256,30 @@ mod tests {
         assert!(info.threads > 0);
         assert!(info.mem_kib > 0);
     }
+}
+
+/// Host facts from `virsh nodeinfo` + `virsh nodememstats` (any URI,
+/// remote included): (cpu model, threads, total KiB, available KiB).
+pub fn parse_node_facts(nodeinfo: &str, memstats: &str) -> (String, u32, u64, u64) {
+    let field = |text: &str, key: &str| {
+        text.lines()
+            .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim() == key))
+            .map(|(_, v)| v.trim().to_string())
+            .unwrap_or_default()
+    };
+    let kib = |v: String| {
+        v.split_whitespace()
+            .next()
+            .and_then(|n| n.parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    let model = field(nodeinfo, "CPU model");
+    let threads = field(nodeinfo, "CPU(s)").parse().unwrap_or(0);
+    let total = kib(field(memstats, "total")).max(kib(field(nodeinfo, "Memory size")));
+    // Older libvirt has no `available`: free + buffers + cached.
+    let available = match kib(field(memstats, "available")) {
+        0 => kib(field(memstats, "free")) + kib(field(memstats, "buffers")) + kib(field(memstats, "cached")),
+        n => n,
+    };
+    (model, threads, total, available)
 }

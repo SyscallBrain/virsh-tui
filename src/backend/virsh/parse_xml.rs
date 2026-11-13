@@ -128,6 +128,18 @@ pub fn parse_domain_xml(text: &str) -> Result<DomainConfig> {
                             .and_then(|t| t.attribute("bus"))
                             .unwrap_or("")
                             .to_string(),
+                        format: find_child(dev, "driver")
+                            .and_then(|d| d.attribute("type"))
+                            .unwrap_or("")
+                            .to_string(),
+                        pool: find_child(dev, "source")
+                            .and_then(|s| s.attribute("pool"))
+                            .unwrap_or("")
+                            .to_string(),
+                        volume: find_child(dev, "source")
+                            .and_then(|s| s.attribute("volume"))
+                            .unwrap_or("")
+                            .to_string(),
                     });
                 }
                 "disk" => {
@@ -145,6 +157,9 @@ pub fn parse_domain_xml(text: &str) -> Result<DomainConfig> {
                             .and_then(|t| t.attribute("bus"))
                             .unwrap_or("")
                             .to_string(),
+                        format: String::new(),
+                        pool: String::new(),
+                        volume: String::new(),
                     });
                 }
                 "interface" => {
@@ -169,6 +184,7 @@ pub fn parse_domain_xml(text: &str) -> Result<DomainConfig> {
                             .and_then(|t| t.attribute("dev"))
                             .unwrap_or("")
                             .to_string(),
+                        link_down: find_child(dev, "link").and_then(|l| l.attribute("state")) == Some("down"),
                     });
                 }
                 "channel"

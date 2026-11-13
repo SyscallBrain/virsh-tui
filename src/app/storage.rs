@@ -36,16 +36,20 @@ pub(super) fn handle_storage_key(
                 }
                 return true;
             }
-            KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let Some(p) = store.picker.as_mut() {
-                    p.selected = p.selected.saturating_sub(1);
-                }
+            KeyCode::Down => {
+                picker_move(store, 1);
                 return true;
             }
-            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let Some(p) = store.picker.as_mut() {
-                    p.selected += 1;
-                }
+            KeyCode::Up => {
+                picker_move(store, -1);
+                return true;
+            }
+            KeyCode::Char('j' | 'n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                picker_move(store, 1);
+                return true;
+            }
+            KeyCode::Char('k' | 'p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                picker_move(store, -1);
                 return true;
             }
             KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -59,7 +63,11 @@ pub(super) fn handle_storage_key(
                 }
                 return true;
             }
-            KeyCode::Char(c) if key.modifiers.is_empty() => {
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
                 if let Some(p) = store.picker.as_mut() {
                     p.query.push(c);
                     p.selected = 0;
@@ -93,6 +101,17 @@ pub(super) fn handle_storage_key(
     }
 }
 
+/// Move the picker cursor; rows are drawn top-down, clamped to the list.
+fn picker_move(store: &mut ui::views::storage::StorageState, delta: isize) {
+    let total = store.picker_isos().len();
+    if let Some(p) = store.picker.as_mut() {
+        p.selected = p
+            .selected
+            .saturating_add_signed(delta)
+            .min(total.saturating_sub(1));
+    }
+}
+
 /// Preview pool actions; live actions are submitted as jobs.
 fn pool_action(
     tok: &str,
@@ -108,7 +127,10 @@ fn pool_action(
         "b" => sb::pool_build(&pool),
         "s" => sb::pool_start(&pool),
         "r" => sb::pool_refresh(&pool),
-        "a" => sb::pool_autostart(&pool, true),
+        "a" => sb::pool_autostart(
+            &pool,
+            !store.pools.get(store.pool_selected).is_some_and(|p| p.autostart),
+        ),
         _ => return,
     };
     preview_store_plan(&plan, &pool, store, dry_run, demo, history, messages);
@@ -124,37 +146,52 @@ pub(super) fn vol_action(
 ) {
     use crate::command::builders::storage as sb;
     let pool = store.selected_pool().to_string();
+    if tok == "D" {
+        // Pool destroy does not depend on a selected volume.
+        if pool.is_empty() {
+            return;
+        }
+        let build: crate::command::plan::PlanBuilder =
+            std::sync::Arc::new(move |p: &str| sb::pool_destroy(p));
+        let commands = build(&pool)
+            .steps
+            .iter()
+            .map(crate::command::display::display)
+            .collect();
+        *confirm = Some((
+            crate::ui::overlays::confirm::Confirm {
+                kind: crate::ui::overlays::confirm::ConfirmKind::Always,
+                title: String::from("⚠ Destroy pool"),
+                question: format!("destroy pool {pool}?"),
+                commands,
+                confirm_label: String::from("y destroy"),
+                type_name: None,
+                typed: String::new(),
+            },
+            build,
+            vec![pool],
+        ));
+        return;
+    }
     let Some(vol) = store.selected_vol().map(|v| v.name.clone()) else {
         return;
     };
     match tok {
-        "D" | "X" if store.volumes.get(store.vol_selected).is_some() => {
-            let (question, build, targets): (String, crate::command::plan::PlanBuilder, Vec<String>) =
-                if tok == "D" {
-                    let pool = pool.clone();
-                    (
-                        format!("destroy pool {pool}?"),
-                        std::sync::Arc::new(move |p: &str| sb::pool_destroy(p)),
-                        vec![pool],
-                    )
-                } else {
-                    let (pool, vol) = (pool.clone(), vol.clone());
-                    let question = format!("delete {vol} from {pool}?");
-                    let targets = vec![vol.clone()];
-                    (
-                        question,
-                        std::sync::Arc::new(move |_: &str| sb::vol_delete(&pool, &vol)),
-                        targets,
-                    )
-                };
-            let commands = build(targets.first().map(|s| s.as_str()).unwrap_or(""))
+        "X" => {
+            let (pool, vol) = (pool.clone(), vol.clone());
+            let question = format!("delete {vol} from {pool}?");
+            let targets = vec![vol.clone()];
+            let build: crate::command::plan::PlanBuilder =
+                std::sync::Arc::new(move |_: &str| sb::vol_delete(&pool, &vol));
+            let commands = build("")
                 .steps
                 .iter()
                 .map(crate::command::display::display)
                 .collect();
             *confirm = Some((
                 crate::ui::overlays::confirm::Confirm {
-                    title: String::from("⚠ Delete"),
+                    kind: crate::ui::overlays::confirm::ConfirmKind::VolumeDelete,
+                    title: String::from("⚠ Delete volume"),
                     question,
                     commands,
                     confirm_label: String::from("y delete"),
@@ -165,19 +202,27 @@ pub(super) fn vol_action(
                 targets,
             ));
         }
+        // virsh: vol-resize <vol> <capacity> [--pool <pool>], vol-clone <vol>
+        // <newname> [--pool], vol-upload <vol> <file> [--pool].
         "R" => {
             *ex_line = Some(crate::input::textinput::TextInput::with(&format!(
-                "vol-resize {pool} {vol} "
+                "vol-resize {} --pool {} ",
+                shell_word(&vol),
+                shell_word(&pool)
             )));
         }
         "C" => {
             *ex_line = Some(crate::input::textinput::TextInput::with(&format!(
-                "vol-clone {pool} {vol} "
+                "vol-clone {} --pool {} ",
+                shell_word(&vol),
+                shell_word(&pool)
             )));
         }
         "u" => {
             *ex_line = Some(crate::input::textinput::TextInput::with(&format!(
-                "vol-upload {pool} {vol} "
+                "vol-upload {} --pool {} ",
+                shell_word(&vol),
+                shell_word(&pool)
             )));
         }
         "W" => {
@@ -193,6 +238,7 @@ pub(super) fn vol_action(
                 .collect();
             *confirm = Some((
                 crate::ui::overlays::confirm::Confirm {
+                    kind: crate::ui::overlays::confirm::ConfirmKind::VolumeWipe,
                     title: String::from("⚠ Wipe volume"),
                     question,
                     commands,
@@ -240,7 +286,12 @@ pub(super) async fn cdrom_of(uri: &str, domain: &str) -> Option<(String, String,
         .await
         .ok()?;
     let cfg = crate::backend::virsh::parse_xml::parse_domain_xml(&xml).ok()?;
-    let cd = cfg.disks.iter().find(|d| d.device == "cdrom")?;
+    // Inserting: prefer an empty drive when there are several.
+    let drives: Vec<&crate::model::DiskInfo> = cfg.disks.iter().filter(|d| d.device == "cdrom").collect();
+    let cd = drives
+        .iter()
+        .find(|d| d.source.is_empty())
+        .or_else(|| drives.first())?;
     Some((cd.target.clone(), cd.bus.clone(), cd.source.clone()))
 }
 
@@ -258,23 +309,12 @@ fn insert_picked(
     let isos = state_isos(store, &p);
     let Some(iso) = isos
         .get(p.selected.min(isos.len().saturating_sub(1)))
-        .map(|i| i.name.clone())
+        .map(|i| i.path.clone())
     else {
         store.message = String::from("no ISO selected");
         return;
     };
-    let pool_path = p
-        .pools
-        .get(p.pool_idx)
-        .and_then(|pool| store.pools.iter().find(|pp| &pp.name == pool))
-        .map(|pp| pp.path.clone())
-        .unwrap_or_else(|| String::from("/var/lib/libvirt/isos"));
-    let plan = crate::command::builders::hardware::change_media(
-        &p.domain,
-        &p.target,
-        Some(&format!("{pool_path}/{iso}")),
-        p.live,
-    );
+    let plan = crate::command::builders::hardware::change_media(&p.domain, &p.target, Some(&iso), p.live);
     preview_store_plan(&plan, &p.domain, store, dry_run, demo, history, messages);
 }
 
@@ -340,4 +380,9 @@ fn preview_store_plan(
     let prefix = if demo { "✓" } else { "[dry-run]" };
     store.message = format!("{prefix} {}  ── {first}", plan.summary);
     messages.push_action(store.message.clone(), target, true);
+}
+
+/// Quote a word for the ex line (parsed with shlex) when it needs it.
+pub(super) fn shell_word(s: &str) -> String {
+    shlex::try_quote(s).map_or_else(|_| s.to_string(), |q| q.into_owned())
 }

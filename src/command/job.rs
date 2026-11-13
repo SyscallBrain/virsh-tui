@@ -62,6 +62,9 @@ pub struct BatchOutcome {
     pub completed_steps: Vec<CommandEvent>,
     pub outputs: Vec<super::process::StepOutput>,
     pub completed_targets: Vec<String>,
+    /// Every failed target (bulk batches keep going after a failure):
+    /// (target, step, message). `result` carries the first one.
+    pub failures: Vec<(String, usize, String)>,
     pub result: BatchResult,
 }
 
@@ -75,6 +78,7 @@ pub async fn run_batch(
     let mut completed_steps = Vec::new();
     let mut outputs = Vec::new();
     let mut completed_targets = Vec::new();
+    let mut failures: Vec<(String, usize, String)> = Vec::new();
     let mut result = BatchResult::Success;
     'targets: for (target, plan) in &batch.plans {
         for (index, step) in plan.steps.iter().enumerate() {
@@ -121,18 +125,10 @@ pub async fn run_batch(
                     }
                 }
                 Ok(output) => {
-                    let message = crate::model::sanitize(
-                        String::from_utf8_lossy(&output.stderr)
-                            .lines()
-                            .next()
-                            .unwrap_or("unknown error"),
-                    );
-                    result = BatchResult::Failed {
-                        target: target.clone(),
-                        step: index + 1,
-                        message,
-                    };
-                    break 'targets;
+                    let message = stderr_summary(&String::from_utf8_lossy(&output.stderr));
+                    // One target failing does not stop the others (bulk).
+                    failures.push((target.clone(), index + 1, message));
+                    continue 'targets;
                 }
                 Err(RunError::Cancelled) => {
                     result = BatchResult::Cancelled;
@@ -143,18 +139,24 @@ pub async fn run_batch(
                     break 'targets;
                 }
                 Err(error) => {
-                    result = BatchResult::Failed {
-                        target: target.clone(),
-                        step: index + 1,
-                        message: error.to_string(),
-                    };
-                    break 'targets;
+                    failures.push((target.clone(), index + 1, error.to_string()));
+                    continue 'targets;
                 }
             }
         }
         completed_targets.push(target.clone());
     }
+    if matches!(result, BatchResult::Success)
+        && let Some((target, step, message)) = failures.first().cloned()
+    {
+        result = BatchResult::Failed {
+            target,
+            step,
+            message,
+        };
+    }
     BatchOutcome {
+        failures,
         started_steps,
         completed_steps,
         outputs,
@@ -173,6 +175,7 @@ pub async fn run_network_create(
     events: mpsc::Sender<CommandEvent>,
 ) -> BatchOutcome {
     let outcome = |result| BatchOutcome {
+        failures: Vec::new(),
         started_steps: vec![],
         completed_steps: vec![],
         outputs: vec![],
@@ -387,12 +390,17 @@ pub async fn run_media_change(
         let xml = std::str::from_utf8(bytes).map_err(|error| error.to_string())?;
         let config =
             crate::backend::virsh::parse_xml::parse_domain_xml(xml).map_err(|error| error.to_string())?;
-        let target = config
+        // Several drives: eject the one holding media, insert into an empty one.
+        let drives: Vec<&crate::model::DiskInfo> = config
             .disks
             .iter()
-            .find(|disk| disk.device == "cdrom")
+            .filter(|disk| disk.device == "cdrom" && !disk.target.is_empty())
+            .collect();
+        let target = drives
+            .iter()
+            .find(|disk| disk.source.is_empty() == iso.is_some())
+            .or_else(|| drives.first())
             .map(|disk| disk.target.as_str())
-            .filter(|target| !target.is_empty())
             .ok_or_else(|| "no CD-ROM drive found".to_string())?;
         let mut step = super::builders::hardware::change_media(&target_domain, target, iso.as_deref(), live)
             .steps
@@ -503,6 +511,7 @@ pub async fn run_hardware_apply(
     events: mpsc::Sender<CommandEvent>,
 ) -> BatchOutcome {
     let failed = |result| BatchOutcome {
+        failures: Vec::new(),
         started_steps: vec![],
         completed_steps: vec![],
         outputs: vec![],
@@ -724,6 +733,7 @@ pub async fn run_xml_define(
     events: mpsc::Sender<CommandEvent>,
 ) -> BatchOutcome {
     let failed = |result| BatchOutcome {
+        failures: Vec::new(),
         started_steps: vec![],
         completed_steps: vec![],
         outputs: vec![],
@@ -758,13 +768,20 @@ pub async fn run_xml_define(
         }
     };
     let path = super::tempxml::path_arg(&file);
+    // `net-define --validate` only exists since libvirt 7.8: ask virsh first
+    // (`define --validate` is much older and always available).
+    let validate = !network
+        || program != "virsh"
+        || super::super::backend::virsh::exec::run(&uri, &["help", "net-define"])
+            .await
+            .is_ok_and(|help| help.contains("--validate"));
+    let mut argv = vec![if network { "net-define" } else { "define" }.into(), path];
+    if validate {
+        argv.push("--validate".into());
+    }
     let step = super::plan::CommandStep {
         program,
-        argv: vec![
-            if network { "net-define" } else { "define" }.into(),
-            path,
-            "--validate".into(),
-        ],
+        argv,
         stdin: None,
     };
     let plan = CommandPlan {
@@ -783,4 +800,19 @@ pub async fn run_xml_define(
         events,
     )
     .await
+}
+
+/// One-line cause of a failed command. virt-install prints `WARNING` lines
+/// before its `ERROR` line, so prefer the first error marker (`ERROR …` from
+/// virt-install, `error: …` from virsh), then the first non-warning line.
+pub fn stderr_summary(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let line = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("ERROR").map(str::trim_start))
+        .or_else(|| lines.iter().copied().find(|l| l.starts_with("error:")))
+        .or_else(|| lines.iter().copied().find(|l| !l.starts_with("WARNING")))
+        .or_else(|| lines.first().copied())
+        .unwrap_or("unknown error");
+    crate::model::sanitize(line)
 }

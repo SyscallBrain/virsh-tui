@@ -3,7 +3,10 @@
 ![Help overlay](images/help.png)
 
 `?` shows the bindings inside virsh-tui. The overlay is built from the active
-key map, so it reflects your `keymap.toml`. Type to filter it.
+key map, so it reflects your `keymap.toml`. Type to filter it; `Tab` switches
+to the keys of individual views and dialogs (Storage, Networks, the hardware
+editor, snapshot dialogs, the media picker, Events), `↑` / `↓` scroll. While
+an overlay is open it takes every key: nothing reaches the view behind it.
 
 ## Default bindings
 
@@ -30,9 +33,9 @@ key map, so it reflects your `keymap.toml`. Type to filter it.
 | `D` | destroy (force off) | `destroy` |
 | `r` | reboot | `reboot` |
 | `R` | reset | `reset` |
-| `p` | pause / resume | `pause` |
-| `Z` | managed save (suspend to disk) | `managed_save` |
-| `a` | toggle autostart | `autostart` |
+| `p` | pause / resume (decided per domain) | `pause` |
+| `Z` | managed save (suspend to disk), confirms | `managed_save` |
+| `a` | toggle autostart (per domain) | `autostart` |
 | `c` | serial console | `console` |
 | `v` | graphical viewer | `viewer` |
 | `e` | edit XML | `edit_xml` |
@@ -89,7 +92,20 @@ key map, so it reflects your `keymap.toml`. Type to filter it.
 | `.` | repeat the last change | |
 | `q`, `ZZ`, `Ctrl-c` | quit (see active jobs below) | `quit` |
 
-Some screens add their own keys, listed in the status bar: the
+`Z` waits 0.6 s for a second `Z` (`ZZ` quits); only a lone `Z` runs managed
+save, after a confirmation. `Z` followed by another key does nothing.
+A count is capped at 9999 (`9999j`). `q` and the view keys refuse to leave a
+domain with unsaved hardware edits (`:w` applies, `:q!` discards). A `Ctrl-c`
+pressed just after a job finished does not quit; press it again.
+
+On marked rows, actions apply to the marked rows that are visible (marks
+hidden by the filter or a chip are left alone), always ask for confirmation
+when they affect more than one domain, and the marks are cleared when the
+job ends. A failing domain does not stop the others; the message line reports
+`n ok / m failed` with the names, details in `:messages`.
+
+Some screens add their own fixed keys (not remappable), listed in the status
+bar and on the second page of `?`: the
 [hardware editor](views/detail.md#hardware), the [wizard](wizard.md),
 [Networks](views/networks.md) and [Storage](views/storage.md).
 
@@ -114,8 +130,9 @@ console = ["C-t"]
 - Sub-tables such as `[normal.domains]` are accepted to group entries, but
   their bindings apply in every view.
 
-Unknown action names and syntax errors are reported in the message line when
-virsh-tui starts; the rest of the file still applies. The help overlay and
+Unknown action names, unknown key names (such as `Ctrl-q` instead of `C-q`)
+and syntax errors are reported in the message line when virsh-tui starts;
+the rest of the file still applies. The help overlay and
 the which-key popup show your bindings.
 
 All action names: `move_up`, `move_down`, `go_top`, `go_bottom`, `half_down`,

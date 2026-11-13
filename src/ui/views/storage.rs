@@ -20,6 +20,8 @@ pub struct PoolRow {
     pub frac: f64,
     pub value: String,
     pub active: bool,
+    /// `pool-autostart` state (the `a` key toggles it).
+    pub autostart: bool,
 }
 
 /// Volume row.
@@ -38,6 +40,8 @@ pub struct VolumeRow {
 pub struct IsoEntry {
     pub pool: String,
     pub name: String,
+    /// Full path as reported by `vol-list` (never rebuilt from the pool path).
+    pub path: String,
     pub size: String,
     pub date: String,
 }
@@ -71,8 +75,20 @@ pub struct StorageState {
     pub uri: String,
     pub connected: bool,
     pub picker: Option<MediaPicker>,
-    /// (domain, disk source path) for every defined domain (live mode).
+    /// (domain, disk reference) for every defined domain (live mode): a source
+    /// path, or [`volume_key`] for `<source pool= volume=>` disks.
     pub attachments: Vec<(String, String)>,
+    /// Volumes of every active pool, loaded once per view load (live mode):
+    /// switching pools does not spawn virsh again.
+    pub pool_volumes: std::collections::HashMap<String, Vec<VolumeRow>>,
+    /// Pools whose volume list could not be read completely: their
+    /// ownership labels are not trusted.
+    pub incomplete: bool,
+}
+
+/// Attachment key for a `<source pool='p' volume='v'>` disk.
+pub fn volume_key(pool: &str, volume: &str) -> String {
+    format!("{pool}\u{0}{volume}")
 }
 
 impl StorageState {
@@ -87,6 +103,7 @@ impl StorageState {
                     frac: 0.66,
                     value: String::from("612 / 931 GiB"),
                     active: true,
+                    autostart: true,
                 },
                 PoolRow {
                     name: String::from("nvme-fast"),
@@ -95,6 +112,7 @@ impl StorageState {
                     frac: 0.67,
                     value: String::from("1.2 / 1.8 TiB"),
                     active: true,
+                    autostart: true,
                 },
                 PoolRow {
                     name: String::from("isos"),
@@ -103,6 +121,7 @@ impl StorageState {
                     frac: 0.31,
                     value: String::from("62 / 200 GiB"),
                     active: true,
+                    autostart: true,
                 },
                 PoolRow {
                     name: String::from("nfs-backup"),
@@ -111,6 +130,7 @@ impl StorageState {
                     frac: 0.82,
                     value: String::from("6.6 / 8.0 TiB"),
                     active: true,
+                    autostart: true,
                 },
                 PoolRow {
                     name: String::from("zfs-tank"),
@@ -119,6 +139,7 @@ impl StorageState {
                     frac: 0.0,
                     value: String::from("inactive"),
                     active: false,
+                    autostart: true,
                 },
             ],
             volumes: vec![
@@ -199,18 +220,21 @@ impl StorageState {
                 IsoEntry {
                     pool: String::from("isos"),
                     name: String::from("archlinux-2026.10.01-x86_64.iso"),
+                    path: String::from("/var/lib/libvirt/isos/archlinux-2026.10.01-x86_64.iso"),
                     size: String::from("1.2G"),
                     date: String::from("5 days ago"),
                 },
                 IsoEntry {
                     pool: String::from("isos"),
                     name: String::from("archlinux-2026.09.01-x86_64.iso"),
+                    path: String::from("/var/lib/libvirt/isos/archlinux-2026.09.01-x86_64.iso"),
                     size: String::from("1.2G"),
                     date: String::from("5 weeks ago"),
                 },
                 IsoEntry {
                     pool: String::from("isos"),
                     name: String::from("Archcraft-Linux-2026.08-desktop.iso"),
+                    path: String::from("/var/lib/libvirt/isos/Archcraft-Linux-2026.08-desktop.iso"),
                     size: String::from("3.4G"),
                     date: String::from("2 months ago"),
                 },
@@ -223,6 +247,8 @@ impl StorageState {
             connected: true,
             picker: None,
             attachments: Vec::new(),
+            pool_volumes: Default::default(),
+            incomplete: false,
         }
     }
 
@@ -271,6 +297,17 @@ impl StorageState {
     }
 
     /// Selected volume.
+    /// Show the cached volumes of the selected pool, keeping the cursor on
+    /// `keep` (a volume name) when it is still there.
+    pub fn show_pool_volumes(&mut self, keep: Option<&str>) {
+        let pool = self.selected_pool().to_string();
+        self.volumes = self.pool_volumes.get(&pool).cloned().unwrap_or_default();
+        self.vol_selected = keep
+            .and_then(|name| self.volumes.iter().position(|v| v.name == name))
+            .unwrap_or(0)
+            .min(self.volumes.len().saturating_sub(1));
+    }
+
     pub fn selected_vol(&self) -> Option<&VolumeRow> {
         self.volumes.get(self.vol_selected)
     }
@@ -323,6 +360,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &StorageState, dimmed: bo
     let area = frame.area();
     if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::TooSmall {
         crate::ui::layout::render_too_small(frame, theme);
+        return;
+    }
+    if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
+        render_minimal(frame, theme, state);
         return;
     }
     let rows = Layout::default()
@@ -675,4 +716,75 @@ fn split_match(name: &str, query: &str) -> (String, String) {
         }
     }
     (String::new(), name.to_string())
+}
+
+/// Small-terminal storage: pools, or the selected pool's volumes (h/l).
+fn render_minimal(frame: &mut Frame, theme: &Theme, state: &StorageState) {
+    use crate::ui::views::minimal::{Row, col, render};
+    let t = &theme.tokens;
+    let (title, header, rows, selected): (String, String, Vec<Row>, usize) = if state.focus_pools {
+        (
+            format!("4 Storage · pools · {}", state.uri),
+            format!(" {}{}USAGE", col("POOL", 18), col("STATE", 9)),
+            state
+                .pools
+                .iter()
+                .map(|p| {
+                    Row::styled(
+                        format!(
+                            "{}{}{}",
+                            col(&p.name, 18),
+                            col(if p.active { "active" } else { "inactive" }, 9),
+                            p.value
+                        ),
+                        Style::default().fg(if p.active { t.green } else { t.fg2 }),
+                    )
+                })
+                .collect(),
+            state.pool_selected,
+        )
+    } else {
+        (
+            format!("4 Storage · {} · {}", state.selected_pool(), state.uri),
+            format!(
+                " {}{}{}USED BY",
+                col("VOLUME", 22),
+                col("FORMAT", 7),
+                col("SIZE", 8)
+            ),
+            state
+                .volumes
+                .iter()
+                .map(|v| {
+                    let style = if v.used_by.starts_with('⚠') {
+                        Style::default().fg(t.yellow)
+                    } else {
+                        Style::default().fg(t.fg)
+                    };
+                    Row::styled(
+                        format!(
+                            "{}{}{}{}",
+                            col(&v.name, 22),
+                            col(&v.format, 7),
+                            col(&v.capacity, 8),
+                            v.used_by
+                        ),
+                        style,
+                    )
+                })
+                .collect(),
+            state.vol_selected,
+        )
+    };
+    let selected = (!rows.is_empty()).then_some(selected);
+    render(
+        frame,
+        theme,
+        &title,
+        &header,
+        &rows,
+        selected,
+        " j/k h/l pools/volumes ⏎ insert ? help",
+        &state.message,
+    );
 }

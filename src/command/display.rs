@@ -47,7 +47,9 @@ pub fn spans<'a>(theme: &Theme, step: &'a CommandStep) -> Vec<Span<'a>> {
         } else {
             theme.text()
         };
-        out.push(Span::styled(a.clone(), style));
+        // Quoted like `display`: what is shown can be pasted into a shell.
+        let shown = shlex::try_quote(a).map_or_else(|_| a.clone(), |q| q.into_owned());
+        out.push(Span::styled(shown, style));
         out.push(Span::raw(" "));
     }
     out

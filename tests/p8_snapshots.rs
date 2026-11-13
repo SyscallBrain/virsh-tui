@@ -9,11 +9,13 @@ fn tree_builds_prefixes() {
             name: String::from("base"),
             parent: None,
             state: String::from("shutoff"),
+            created: String::new(),
         },
         Snapshot {
             name: String::from("child"),
             parent: Some(String::from("base")),
             state: String::from("shutoff"),
+            created: String::new(),
         },
     ];
     let rows = build_tree(&snaps, None);

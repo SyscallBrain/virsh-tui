@@ -17,6 +17,17 @@ knows about:
 - `--flags` of any `virsh` subcommand, read from `virsh help <command>`
 - file paths for words that start with `/`, `~/` or `./`
 
+## Editing the line
+
+`Up` / `Down` recall earlier lines of the session. `Left` / `Right`,
+`Home` / `End` (or `Ctrl-a` / `Ctrl-e`) move the cursor; `Delete` deletes
+under it, `Ctrl-w` deletes the previous word and `Ctrl-u` everything before
+the cursor. Pasted text (bracketed paste) is inserted as text; outside the
+command line or a text field a paste is ignored, so it can never run keys.
+Arguments are split like a shell splits them, so quote paths with spaces:
+`:attach-iso vm "/isos/My Distro.iso"`. Commands that take one argument
+reject extra words instead of ignoring them.
+
 ## virsh-tui commands
 
 | Command | Action |
@@ -25,19 +36,20 @@ knows about:
 | `:shutdown <domain>` | ACPI shutdown |
 | `:destroy <domain>` | force off (confirms) |
 | `:rename <domain> <new-name>` | rename (the domain must be shut off) |
+| `:clone <domain> <new-name>` | clone with `virt-clone` (shut off or paused source; `Space c` prefills it) |
 | `:desc <domain> <text>` | set the description |
-| `:attach-disk <domain> <source> <target>` | attach a disk |
+| `:attach-disk <domain> <source> <target>` | attach a disk (format from the extension or the image header; `--live` only if the domain runs) |
 | `:detach-disk <domain> <target>` | detach a disk |
 | `:attach-nic <domain> <source> <model>` | attach a NIC to a network |
-| `:block-resize <domain> <target> <size>` | grow a disk |
+| `:block-resize <domain> <target> <size>` | grow a disk of a running domain (size needs a unit: `40G`; always confirms) |
 | `:attach-iso <domain> [target] <iso>` | insert an ISO (alias `:media`) |
 | `:attach-hostdev <domain> <nodedev>` | pass a host device through |
 | `:connect <uri>` | switch connection |
 | `:theme <name>` | switch theme (saved to the config) |
 | `:sort name\|state\|cpu\|mem\|uptime` | sort the domain list |
-| `:set <key>=<value>` | change a setting and save it |
+| `:set <key>=<value>` | change a setting, validated, applied at once and saved |
 | `:42` | jump to row 42 |
-| `:messages` | show the message history |
+| `:messages` | open the message history (job output included; `j`/`k` scroll) |
 | `:help [topic]` | open the help |
 | `:w` | apply hardware changes |
 | `:q` | close the current screen, or quit from the dashboard |
@@ -61,7 +73,10 @@ runs, so pipes, redirections and variables have no effect. The connection is
 set with `:connect`, not with `-c`. Destructive subcommands such as
 `destroy`, `undefine` or `vol-delete` ask for confirmation first. The first
 line of the output appears in the message line and the rest in
-`:messages`.
+`:messages`. The list also covers `vol-upload`, `managedsave-remove`,
+`detach-*`, `blockresize`, `vol-resize --shrink`, `migrate`,
+`checkpoint-delete`, `nwfilter-undefine`, `secret-undefine` and
+`qemu-monitor-command`.
 
 Raw commands use the same single active job as other actions, including commands
 that only read data. While a job is running, another command or connection change

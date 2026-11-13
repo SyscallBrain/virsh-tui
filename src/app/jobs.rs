@@ -15,6 +15,9 @@ pub(super) struct EditorDraft {
     pub network: bool,
     pub wizard: Option<(u64, String)>,
     pub generation: u64,
+    /// The object XML this draft was made from: a retained draft is only
+    /// reopened while the object still has exactly this XML.
+    pub base: String,
 }
 
 pub(super) struct ActiveJob {
@@ -45,7 +48,56 @@ impl Drop for ActiveJob {
     }
 }
 
+impl ActiveJob {
+    /// A job with no workflow extras (callers set the ones they need).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn new(
+        id: u64,
+        uri: String,
+        origin: View,
+        plans: Vec<(String, CommandPlan)>,
+        cancel: tokio::sync::watch::Sender<bool>,
+        events: tokio::sync::mpsc::Receiver<CommandEvent>,
+        started_ledger: crate::command::job::StartedLedger,
+        task: tokio::task::JoinHandle<BatchOutcome>,
+    ) -> Self {
+        Self {
+            id,
+            uri,
+            origin,
+            started: std::time::Instant::now(),
+            plans,
+            cancel,
+            events,
+            progress: None,
+            raw: false,
+            submitted_network: None,
+            submitted_wizard: None,
+            viewer_after: None,
+            snapshot_domain: None,
+            refresh_storage: false,
+            hardware_snapshot: None,
+            editor_draft: None,
+            started_ledger,
+            task,
+        }
+    }
+}
+
 impl App {
+    /// One job at a time: say so (and flash the job line) when busy.
+    pub(super) fn refuse_if_busy(&mut self) -> bool {
+        let Some(job) = &self.active_job else {
+            return false;
+        };
+        self.show_message(format!(
+            "⚠ Job #{} is running; wait or press C-c to cancel",
+            job.id
+        ));
+        self.busy_feedback = Some(std::time::Instant::now());
+        true
+    }
+
     pub(super) fn store_editor_draft(&mut self, draft: EditorDraft) {
         let existing = self.editor_retries.iter().position(|current| {
             current.uri == draft.uri
@@ -68,19 +120,37 @@ impl App {
             return;
         };
         let target = detail.domain.clone();
-        let previous = self.editor_retries.iter().position(|draft| {
-            !draft.network
-                && draft.wizard.is_none()
-                && draft.uri == self.uri
-                && draft.epoch == self.connection_epoch
-                && draft.target == target
-        });
-        if let Some(index) = previous {
-            let draft = self.editor_retries.remove(index);
-            self.open_editor_draft(draft);
-        } else {
-            self.request_domain_editor(target);
+        // Always re-read the domain: a retained draft is only reused when the
+        // domain did not change since (see `take_retained_domain_draft`).
+        self.request_domain_editor(target);
+    }
+
+    /// A retained draft for `target` on this connection, if the domain still
+    /// has the XML it was made from. A stale draft is saved to a file (its
+    /// path is reported) instead of being defined over newer changes.
+    pub(super) fn take_retained_domain_draft(&mut self, target: &str, fresh: &str) -> Option<EditorDraft> {
+        let index = self.editor_retries.iter().position(|draft| {
+            !draft.network && draft.wizard.is_none() && draft.uri == self.uri && draft.target == target
+        })?;
+        let mut draft = self.editor_retries.remove(index);
+        if draft.base == fresh {
+            draft.epoch = self.connection_epoch;
+            return Some(draft);
         }
+        match crate::command::tempxml::write("stale", &draft.xml).and_then(|file| {
+            file.keep()
+                .map(|(_, path)| path)
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))
+        }) {
+            Ok(path) => self.show_message(format!(
+                "⚠ {target} changed since your unsaved XML draft; the draft was saved to {}",
+                path.display()
+            )),
+            Err(_) => self.show_message(format!(
+                "⚠ {target} changed since your unsaved XML draft; it was discarded"
+            )),
+        }
+        None
     }
 
     pub(super) fn open_editor_draft(&mut self, mut draft: EditorDraft) {
@@ -101,7 +171,8 @@ impl App {
                 return;
             }
         };
-        if !external::edit_file(temporary.path()) || external::shutdown_requested() {
+        let outcome = external::edit_file_status(temporary.path());
+        if outcome != external::Foreground::Success || external::shutdown_requested() {
             let changed = std::fs::metadata(temporary.path()).ok().is_none_or(|meta| {
                 meta.len() > 1024 * 1024
                     || std::fs::read(temporary.path())
@@ -117,6 +188,17 @@ impl App {
             if let Some(path) = retained {
                 tracing::warn!(path = %path.display(), "editor stopped; XML retained");
                 self.show_message(format!("⚠ Editor stopped; XML retained at {}", path.display()));
+            } else if !external::shutdown_requested() {
+                let editor = external::editor_argv().join(" ");
+                self.show_message(match outcome {
+                    external::Foreground::SpawnFailed(e) => {
+                        format!("✗ cannot start the editor ({e}); set $EDITOR or Settings › editor")
+                    }
+                    external::Foreground::Failed(Some(code)) => {
+                        format!("✗ editor `{editor}` exited with status {code}; nothing changed")
+                    }
+                    _ => format!("✗ editor `{editor}` was interrupted; nothing changed"),
+                });
             }
             return;
         }
@@ -134,11 +216,17 @@ impl App {
             return;
         }
         let edited = String::from_utf8_lossy(&bytes).into_owned();
-        if edited == draft.xml && draft.wizard.is_none() {
-            if edited.starts_with("<!-- virsh-tui edit error:") {
-                self.store_editor_draft(draft);
-            }
-            self.show_message("no changes to XML".into());
+        // Quitting without changes abandons the draft. For the wizard, an
+        // unchanged first draft means "create as generated", but an unchanged
+        // retry (it still carries the error comment) is not resubmitted:
+        // that would fail again and reopen the editor forever.
+        let retry = edited.starts_with("<!-- virsh-tui edit error:");
+        if edited == draft.xml && (draft.wizard.is_none() || retry) {
+            self.show_message(if draft.wizard.is_some() {
+                "no changes to XML; fix the wizard fields or edit the XML again".into()
+            } else {
+                "no changes to XML".into()
+            });
             return;
         }
         draft.xml = edited;
@@ -167,7 +255,7 @@ impl App {
                 && self
                     .wizard
                     .as_ref()
-                    .and_then(|wizard| toml::to_string(wizard).ok())
+                    .map(|wizard| wizard.content_snapshot())
                     .as_ref()
                     == Some(snapshot)
         } else if draft.network {
@@ -189,8 +277,6 @@ impl App {
         use crate::command::builders::lifecycle;
         use crate::input::engine::KeyAction as A;
         let selected = targets(&self.dash);
-        let paused = self.dash.selected().state == crate::model::DomainState::Paused;
-        let autostart = !self.dash.selected().autostart;
         let selected = if action == A::Shutdown {
             let (running, skipped): (Vec<_>, Vec<_>) = selected.into_iter().partition(|name| {
                 self.dash
@@ -208,14 +294,17 @@ impl App {
         };
         let mut plans = Vec::new();
         for target in selected {
+            // Direction is decided per target, never from the cursor row.
+            let (state, autostart) =
+                row_state(&self.dash, &target).unwrap_or((crate::model::DomainState::Other, false));
             let plan = match action {
                 A::Start => lifecycle::start(&target),
                 A::Shutdown => lifecycle::shutdown(&target),
                 A::Reboot => lifecycle::reboot(&target),
-                A::Pause if paused => lifecycle::resume(&target),
+                A::Pause if state == crate::model::DomainState::Paused => lifecycle::resume(&target),
                 A::Pause => lifecycle::pause(&target),
                 A::ManagedSave => lifecycle::managed_save(&target),
-                A::Autostart => lifecycle::autostart(&target, autostart),
+                A::Autostart => lifecycle::autostart(&target, !autostart),
                 A::SendKey => lifecycle::send_key(&target),
                 _ => return None,
             };
@@ -283,19 +372,21 @@ impl App {
             'b' => storage::pool_build(&name),
             's' => storage::pool_start(&name),
             'r' => storage::pool_refresh(&name),
-            'a' => storage::pool_autostart(&name, true),
+            'a' => storage::pool_autostart(
+                &name,
+                !self
+                    .store
+                    .pools
+                    .get(self.store.pool_selected)
+                    .is_some_and(|pool| pool.autostart),
+            ),
             _ => return None,
         };
         Some(vec![(name, plan)])
     }
 
     pub(super) fn submit_plans(&mut self, plans: Vec<(String, CommandPlan)>) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         let id = self.next_job_id;
@@ -311,36 +402,21 @@ impl App {
         };
         let (task, started_ledger) = crate::command::job::spawn_tracked(run_batch(batch, control, events));
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
-            uri: self.uri.clone(),
-            origin: self.view,
-            started: std::time::Instant::now(),
+            self.uri.clone(),
+            self.view,
             plans,
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: None,
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
         true
     }
 
     pub(super) fn submit_network_create(&mut self, name: String, xml: String) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         let draft = self.nets.new_form.take();
@@ -367,26 +443,19 @@ impl App {
             ],
         };
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(name, plan)],
+            self.view,
+            vec![(name, plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: draft,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: None,
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
+        if let Some(job) = self.active_job.as_mut() {
+            job.submitted_network = draft;
+        }
         true
     }
 
@@ -409,7 +478,7 @@ impl App {
         let mut plan = crate::command::builders::install::virt_install(&draft);
         plan.steps[0].argv.insert(0, self.uri.clone());
         plan.steps[0].argv.insert(0, "--connect".into());
-        let snapshot = toml::to_string(&draft).ok();
+        let snapshot = Some(draft.content_snapshot());
         let viewer_after = (draft.start_after && draft.open_console).then(|| draft.name.clone());
         if draft.start_after {
             if !self.submit_plans(vec![(draft.name, plan)]) {
@@ -424,7 +493,7 @@ impl App {
                 self.busy_feedback = Some(std::time::Instant::now());
                 return false;
             }
-            plan.steps[0].argv.push("--print-xml".into());
+            plan.steps[0].argv.push("--print-xml=1".into());
             plan.steps.push(crate::command::plan::CommandStep::new(
                 "virsh",
                 vec!["define", "<private-xml>", "--validate"],
@@ -444,26 +513,16 @@ impl App {
                     events,
                 ));
             self.busy_feedback = None;
-            self.active_job = Some(ActiveJob {
+            self.active_job = Some(ActiveJob::new(
                 id,
-                uri: self.uri.clone(),
-                origin: self.view,
-                started: std::time::Instant::now(),
-                plans: vec![(draft.name, plan)],
+                self.uri.clone(),
+                self.view,
+                vec![(draft.name, plan)],
                 cancel,
-                events: receiver,
-                progress: None,
-                raw: false,
-                submitted_network: None,
-                submitted_wizard: None,
-                viewer_after: None,
-                snapshot_domain: None,
-                refresh_storage: false,
-                hardware_snapshot: None,
-                editor_draft: None,
+                receiver,
                 started_ledger,
                 task,
-            });
+            ));
         }
         if let Some(job) = self.active_job.as_mut() {
             job.submitted_wizard = snapshot.map(|snapshot| (self.wizard_revision, snapshot));
@@ -494,6 +553,13 @@ impl App {
             && detail.snaps.create_name.trim().is_empty()
         {
             self.show_message("✗ snapshot name is required".into());
+            return true;
+        }
+        if matches!(detail.snap_modal, SnapModal::Revert | SnapModal::Delete)
+            && key.code == KeyCode::Char('y')
+            && detail.snaps.selected_name().is_empty()
+        {
+            self.show_message("✗ no snapshot selected".into());
             return true;
         }
         let domain = detail.domain.clone();
@@ -549,13 +615,7 @@ impl App {
                 self.show_message("no ISO selected".into());
                 return true;
             };
-            let pool_path = picker
-                .pools
-                .get(picker.pool_idx)
-                .and_then(|pool| self.store.pools.iter().find(|entry| &entry.name == pool))
-                .map(|entry| entry.path.as_str())
-                .unwrap_or("/var/lib/libvirt/isos");
-            Some(format!("{pool_path}/{}", iso.name))
+            Some(iso.path.clone())
         } else {
             None
         };
@@ -594,12 +654,7 @@ impl App {
     }
 
     pub(super) fn submit_description(&mut self, domain: String, description: String) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         if domain.is_empty() {
@@ -633,36 +688,21 @@ impl App {
             ],
         };
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(domain, plan)],
+            self.view,
+            vec![(domain, plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: None,
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
         true
     }
 
     pub(super) fn submit_hostdev(&mut self, domain: String, node: String) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         if domain.is_empty() || node.is_empty() {
@@ -693,37 +733,22 @@ impl App {
             ],
         };
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(domain, plan)],
+            self.view,
+            vec![(domain, plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: None,
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
         true
     }
 
     pub(super) fn submit_hardware(&mut self) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
-            return true;
+        if self.refuse_if_busy() {
+            return false;
         }
         let Some(detail) = self.detail.as_ref() else {
             return false;
@@ -742,12 +767,26 @@ impl App {
             self.show_message(message);
             return true;
         }
+        let problems = detail.hw.problems();
+        if !problems.is_empty() {
+            let message = format!("✗ {}", problems.join("; "));
+            self.messages.push(message.clone());
+            self.show_message(message);
+            return true;
+        }
         let domain = detail.domain.clone();
         let hardware = detail.hw.clone();
         let plans = hardware.will_run(&domain);
         if plans.is_empty() {
             self.show_message("nothing to apply".into());
             return true;
+        }
+        let notes = hardware.restart_notes();
+        if !notes.is_empty() {
+            self.messages.push(format!(
+                "⚠ {domain}: {} — saved to the config, applies after a restart",
+                notes.join(", ")
+            ));
         }
         let fingerprint = hardware.draft_fingerprint();
         let mut steps: Vec<_> = plans.iter().flat_map(|plan| plan.steps.iter().cloned()).collect();
@@ -767,8 +806,10 @@ impl App {
             summary: format!("Applied hardware changes on {domain}"),
             steps,
         };
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        // The hardware form is about to change on the host: drop reads that
+        // would refill it with the old state.
+        self.cancel_read(ReadKind::Hardware);
+        self.cancel_read(ReadKind::Detail);
         let id = self.next_job_id;
         self.next_job_id += 1;
         let (cancel, control) = tokio::sync::watch::channel(false);
@@ -785,36 +826,24 @@ impl App {
                 events,
             ));
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(domain.clone(), plan)],
+            self.view,
+            vec![(domain.clone(), plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: Some((domain, fingerprint)),
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
+        if let Some(job) = self.active_job.as_mut() {
+            job.hardware_snapshot = Some((domain, fingerprint));
+        }
         true
     }
 
     pub(super) fn submit_xml_export(&mut self) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         let domain = self.dash.selected().name.clone();
@@ -852,36 +881,21 @@ impl App {
             )],
         };
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(domain, plan)],
+            self.view,
+            vec![(domain, plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: None,
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
         true
     }
 
     pub(super) fn submit_xml_editor(&mut self, draft: EditorDraft) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         if draft.uri != self.uri || draft.epoch != self.connection_epoch {
@@ -916,36 +930,24 @@ impl App {
             )],
         };
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(target, plan)],
+            self.view,
+            vec![(target, plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: false,
-            hardware_snapshot: None,
-            editor_draft: Some(draft),
+            receiver,
             started_ledger,
             task,
-        });
+        ));
+        if let Some(job) = self.active_job.as_mut() {
+            job.editor_draft = Some(draft);
+        }
         true
     }
 
     pub(super) fn submit_media_change(&mut self, domain: String, iso: Option<String>, running: bool) -> bool {
-        if let Some(job) = &self.active_job {
-            self.show_message(format!(
-                "⚠ Job #{} is running; wait or press C-c to cancel",
-                job.id
-            ));
-            self.busy_feedback = Some(std::time::Instant::now());
+        if self.refuse_if_busy() {
             return false;
         }
         if domain.is_empty() {
@@ -978,26 +980,19 @@ impl App {
             steps,
         };
         self.busy_feedback = None;
-        self.active_job = Some(ActiveJob {
+        self.active_job = Some(ActiveJob::new(
             id,
             uri,
-            origin: self.view,
-            started: std::time::Instant::now(),
-            plans: vec![(domain, plan)],
+            self.view,
+            vec![(domain, plan)],
             cancel,
-            events: receiver,
-            progress: None,
-            raw: false,
-            submitted_network: None,
-            submitted_wizard: None,
-            viewer_after: None,
-            snapshot_domain: None,
-            refresh_storage: true,
-            hardware_snapshot: None,
-            editor_draft: None,
+            receiver,
             started_ledger,
             task,
-        });
+        ));
+        if let Some(job) = self.active_job.as_mut() {
+            job.refresh_storage = true;
+        }
         true
     }
 
@@ -1014,14 +1009,22 @@ impl App {
         let Some(job) = self.active_job.take() else {
             return;
         };
+        self.job_finished_at = Some(std::time::Instant::now());
         let id = job.id;
+        // A finished bulk job consumes its marks (they would otherwise stay
+        // armed for the next, unrelated action).
+        if job.plans.len() > 1 && job.uri == self.uri {
+            let done: std::collections::HashSet<&str> = job.plans.iter().map(|(t, _)| t.as_str()).collect();
+            self.dash.marks.retain(|m| !done.contains(m.as_str()));
+            self.dash.visual_anchor = None;
+        }
         let mut last_message = None;
         let wizard_matches = job.submitted_wizard.as_ref().is_some_and(|(revision, snapshot)| {
             *revision == self.wizard_revision
                 && self
                     .wizard
                     .as_ref()
-                    .and_then(|wizard| toml::to_string(wizard).ok())
+                    .map(|wizard| wizard.content_snapshot())
                     .as_ref()
                     == Some(snapshot)
         });
@@ -1169,18 +1172,55 @@ impl App {
                         last_message = Some(message);
                     }
                 }
+                let bulk = job.plans.len() > 1;
+                let steps_of = |target: &str| {
+                    job.plans
+                        .iter()
+                        .find(|(name, _)| name == target)
+                        .map_or(0, |(_, plan)| plan.steps.len())
+                };
+                let failures: Vec<(String, usize, String)> = if outcome.failures.is_empty() {
+                    match &outcome.result {
+                        BatchResult::Failed {
+                            target,
+                            step,
+                            message,
+                        } => {
+                            vec![(target.clone(), *step, message.clone())]
+                        }
+                        _ => vec![],
+                    }
+                } else {
+                    outcome.failures.clone()
+                };
+                if bulk {
+                    for (target, step, message) in &failures {
+                        let line = format!("✗ {target}: step {step}/{} failed: {message}", steps_of(target));
+                        self.messages.push(line.clone());
+                        self.record_action_event(&line, target, false);
+                    }
+                }
                 let error = match outcome.result {
                     BatchResult::Success => None,
+                    BatchResult::Failed { target, .. } if bulk => {
+                        let failed: Vec<&str> = failures.iter().map(|(t, _, _)| t.as_str()).collect();
+                        let ok = outcome.completed_targets.len();
+                        let summary = format!(
+                            "✗ {ok} ok / {} failed: {} (details in :messages)",
+                            failed.len(),
+                            failed.join(", ")
+                        );
+                        last_message = Some(summary.clone());
+                        self.messages.push(summary);
+                        let _ = target;
+                        None
+                    }
                     BatchResult::Failed {
                         target,
                         step,
                         message,
                     } => {
-                        let total = job
-                            .plans
-                            .iter()
-                            .find(|(name, _)| name == &target)
-                            .map_or(0, |(_, plan)| plan.steps.len());
+                        let total = steps_of(&target);
                         Some((target, format!("✗ step {step}/{total} failed: {message}")))
                     }
                     BatchResult::Timeout => Some((
@@ -1225,7 +1265,7 @@ impl App {
             && let Some((revision, snapshot)) = &draft.wizard
             && *revision == self.wizard_revision
             && let Some(wizard) = self.wizard.as_mut()
-            && toml::to_string(&*wizard).ok().as_ref() == Some(snapshot)
+            && &wizard.content_snapshot() == snapshot
         {
             wizard.error = last_message.clone().unwrap_or_default();
         }
@@ -1236,8 +1276,16 @@ impl App {
             self.store_editor_draft(draft);
         }
         self.show_message(last_message.unwrap_or_else(|| "✓ done".into()));
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        // Reads that started before the job finished may hold stale state:
+        // drop them and restart the ones the user is waiting for.
+        let reading_networks = self.selection_task.contains_key(&ReadKind::Networks);
+        self.cancel_read(ReadKind::Detail);
+        self.cancel_read(ReadKind::Picker);
+        self.cancel_read(ReadKind::Snapshots);
+        self.cancel_read(ReadKind::Networks);
+        if reading_networks && self.view == View::Networks {
+            self.request_selection_after_load();
+        }
         if self.detail_loading && self.view == View::Detail {
             let tab = self.detail.as_ref().map(|detail| detail.tab);
             let pending = self
@@ -1278,12 +1326,25 @@ impl App {
                 false,
             );
         }
+        // Loads that started before the job may return pre-job data: drop
+        // them all, and restart every one that was in flight or queued (not
+        // only Storage/Networks), so no view is left on "loading…".
+        let interrupted: Vec<View> = self
+            .view_load_tasks
+            .iter()
+            .filter(|(_, task)| !task.0.is_finished())
+            .map(|(view, _)| *view)
+            .chain(self.view_load_pending.iter().copied())
+            .collect();
         for serial in self.view_load_serial.values_mut() {
             *serial = serial.wrapping_add(1);
         }
         self.view_load_tasks.clear();
         self.view_load_pending.clear();
         self.view_load_refreshing.clear();
+        for view in interrupted {
+            self.request_view_load(view);
+        }
         if job.uri == self.uri {
             if job.refresh_storage && job.origin != View::Storage {
                 self.request_view_load(View::Storage);
@@ -1336,7 +1397,7 @@ pub(super) fn raw_job_step(line: &str) -> Option<Result<crate::command::plan::Co
     if argv[0].starts_with('-') {
         return Some(Err("✗ the connection is set with :connect, not -c".into()));
     }
-    if crate::ui::overlays::confirm::Confirm::destructive(&argv[0]) {
+    if crate::ui::overlays::confirm::Confirm::destructive_argv(&argv) {
         return None;
     }
     Some(Ok(crate::command::plan::CommandStep {
@@ -1347,7 +1408,12 @@ pub(super) fn raw_job_step(line: &str) -> Option<Result<crate::command::plan::Co
 }
 
 /// Capture command-line plans that need no asynchronous preparation.
-pub(super) fn ex_job_plans(line: &str) -> Option<Vec<(String, CommandPlan)>> {
+/// Short ex forms as job plans. `active` tells whether a domain is running or
+/// paused: `--live` is only valid then (virsh rejects it for a shut-off domain).
+pub(super) fn ex_job_plans(
+    line: &str,
+    active: impl Fn(&str) -> bool,
+) -> Option<Result<Vec<(String, CommandPlan)>, String>> {
     use crate::command::builders::{hardware, lifecycle};
     use crate::input::ex::ExCommand;
     let (target, plan) = match crate::input::ex::parse(line).ok()? {
@@ -1360,26 +1426,46 @@ pub(super) fn ex_job_plans(line: &str) -> Option<Vec<(String, CommandPlan)>> {
             (target, plan)
         }
         ExCommand::AttachDisk(target, src, dev) => {
-            let plan = hardware::attach_disk(&target, &src, &dev, true, true);
+            let Some(format) = hardware::image_format(&src) else {
+                return Some(Err(format!(
+                    "✗ cannot tell the image format of {src}: run :attach-disk {target} {src} {dev} --driver qemu --subdriver <qcow2|raw> --config"
+                )));
+            };
+            let live = active(&target);
+            let plan = hardware::attach_disk_formatted(&target, &src, &dev, &format, live, true);
             (target, plan)
         }
         ExCommand::DetachDisk(target, dev) => {
-            let plan = hardware::detach_disk(&target, &dev, true);
+            let live = active(&target);
+            let plan = hardware::detach_disk(&target, &dev, live);
             (target, plan)
         }
         ExCommand::AttachNic(target, src, model) => {
-            let plan = hardware::attach_nic(&target, &src, &model, None, true);
+            let live = active(&target);
+            let plan = hardware::attach_nic(&target, &src, &model, None, live);
             (target, plan)
         }
         ExCommand::Resize(target, dev, size) => {
+            if !active(&target) {
+                return Some(Err(format!(
+                    "✗ block-resize needs a running domain; {target} is not running (use vol-resize)"
+                )));
+            }
+            let Some(kib) = crate::ui::views::detail::hardware::size_to_kib(&size) else {
+                return Some(Err(format!(
+                    "✗ invalid size `{size}`: use a unit (512M, 8G, 1.5T)"
+                )));
+            };
+            let size = crate::ui::views::detail::hardware::kib_arg(kib);
             let plan = hardware::block_resize(&target, &dev, &size);
             (target, plan)
         }
         ExCommand::Media(target, dev, iso) if !dev.is_empty() => {
-            let plan = hardware::change_media(&target, &dev, iso.as_deref(), true);
+            let live = active(&target);
+            let plan = hardware::change_media(&target, &dev, iso.as_deref(), live);
             (target, plan)
         }
         _ => return None,
     };
-    Some(vec![(target, plan)])
+    Some(Ok(vec![(target, plan)]))
 }

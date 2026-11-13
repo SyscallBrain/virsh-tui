@@ -100,8 +100,10 @@ fn hardware_editor_uses_the_real_domain_xml() {
         .iter()
         .flat_map(|p| p.steps.iter().map(|s| s.argv.clone()))
         .collect();
-    // Topology auto-adjusts → one define of the edited real XML, no --live steps.
-    assert_eq!(argv[0][0], "define");
+    // No <topology> in the XML: it is left alone (review P1-13), so the change
+    // is config-only native commands, no define and no --live steps.
+    assert_eq!(argv[0], ["setvcpus", "real-vm", "4", "--maximum", "--config"]);
+    assert!(argv.iter().all(|a| a[0] != "define"));
     assert!(argv.iter().all(|a| !a.contains(&String::from("--live"))));
     let edited = hw.edited_xml();
     assert!(edited.contains("<name>real-vm</name>"));

@@ -10,9 +10,26 @@ use ratatui::{
 
 use crate::theme::Theme;
 
+/// What a confirmation guards. Settings › Confirmations is keyed on this,
+/// never on the title or label text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfirmKind {
+    DomainDestroy,
+    DomainReset,
+    DomainUndefine,
+    VolumeDelete,
+    VolumeWipe,
+    /// Always asks (pool destroy, network destroy/undefine, detach, clone,
+    /// managed-save, raw destructive commands, …).
+    #[default]
+    Always,
+}
+
 /// Pending confirmation.
 #[derive(Debug, Clone)]
 pub struct Confirm {
+    /// What this confirmation guards (drives Settings › Confirmations).
+    pub kind: ConfirmKind,
     /// Title, e.g. `⚠ Destroy domain`.
     pub title: String,
     /// Question line.
@@ -33,15 +50,26 @@ impl Confirm {
         self.type_name.as_ref().is_none_or(|n| *n == self.typed)
     }
 
-    /// The destructive list always confirms (Appendix A).
+    /// The destructive list always confirms (Appendix A): commands that
+    /// destroy data or running state, or that a typo turns into an outage.
     pub fn destructive(action: &str) -> bool {
         matches!(
             action,
             "destroy"
                 | "reset"
                 | "undefine"
+                | "managedsave-remove"
                 | "snapshot-revert"
                 | "snapshot-delete"
+                | "checkpoint-delete"
+                | "detach-disk"
+                | "detach-interface"
+                | "detach-device"
+                | "detach-device-alias"
+                | "blockresize"
+                | "blockcommit"
+                | "blockpull"
+                | "migrate"
                 | "net-destroy"
                 | "net-undefine"
                 | "pool-destroy"
@@ -49,9 +77,22 @@ impl Confirm {
                 | "pool-undefine"
                 | "vol-delete"
                 | "vol-wipe"
-                | "detach"
+                | "vol-upload"
+                | "iface-destroy"
+                | "iface-undefine"
+                | "nodedev-destroy"
+                | "nwfilter-undefine"
+                | "secret-undefine"
+                | "qemu-monitor-command"
+                | "qemu-agent-command"
                 | "migrate-undefine"
         )
+    }
+
+    /// [`Confirm::destructive`] for a whole argv (`vol-resize --shrink`).
+    pub fn destructive_argv(argv: &[String]) -> bool {
+        argv.first().is_some_and(|a| Self::destructive(a))
+            || (argv.first().is_some_and(|a| a == "vol-resize") && argv.iter().any(|a| a == "--shrink"))
     }
 }
 

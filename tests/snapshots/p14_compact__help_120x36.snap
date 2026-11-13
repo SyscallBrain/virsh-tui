@@ -4,7 +4,7 @@ expression: "shot(120, 36, |f|\noverlays::help::render(f, &th, \"\", &virsh_tui:
 ---
                                                                                                                         
                                                                                                                         
-  ╭ ? Keybindings ─────────────────────────────────────────────────────────────────────────────── / search · ⎋ close ╮  
+  ╭ ? Keybindings ───────────────────────────────────────────────────────────────── / search · ⇥ view keys · ⎋ close ╮  
   │ Navigation                  Domain                       Leader  ␣                   Ex commands                 │  
   │ j / k       down / up       s           start            ␣n          new domain      :start      arch-dev        │  
   │ gg / G      top / bottom    S           shutdown (ACPI)  ␣c          clone           :setmem     arch-dev 8G --l │  

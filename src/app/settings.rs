@@ -210,7 +210,8 @@ pub(super) fn cycle_option(idx: usize, config: &mut Config, theme: &mut Theme) {
     *theme = current_theme(config);
 }
 
-/// Apply `:set key=value` to config, theme, and disk. Returns the message.
+/// Apply `:set key=value` to config, theme, runtime config and disk.
+/// Values are validated; a rejected value changes nothing. Returns the message.
 pub(super) fn apply_setting(
     _uri: &str,
     config: &mut Config,
@@ -219,28 +220,60 @@ pub(super) fn apply_setting(
     value: &str,
 ) -> String {
     let v = value.trim();
-    match key {
-        "theme" => {
-            config.appearance.theme = v.to_string();
-            *theme = current_theme(config);
+    let boolean = || match v {
+        "true" | "on" | "yes" => Ok(true),
+        "false" | "off" | "no" => Ok(false),
+        _ => Err(format!("✗ {key} takes true or false")),
+    };
+    let one_of = |allowed: &[&str]| {
+        if allowed.contains(&v) {
+            Ok(v.to_string())
+        } else {
+            Err(format!("✗ {key} must be one of: {}", allowed.join(", ")))
         }
-        "transparent" => config.appearance.transparent = v == "true",
-        "borders" => config.appearance.borders = v.to_string(),
-        "icons" => config.appearance.icons = v.to_string(),
-        "graphs" => config.appearance.graphs = v.to_string(),
-        "gradient" => config.appearance.gradient = v == "true",
-        "dim_modals" => config.appearance.dim_modals = v == "true",
-        "default_uri" => config.general.default_uri = v.to_string(),
-        "editor" => config.general.editor = v.to_string(),
-        "start_view" => config.general.start_view = v.to_string(),
-        "viewer" => config.console.viewer = v.to_string(),
-        "escape" => config.console.escape = v.to_string(),
-        "refresh_interval_secs" => {
-            config.general.refresh_interval_secs = v.parse().unwrap_or(1);
+    };
+    let mut next = config.clone();
+    let result: Result<(), String> = (|| {
+        match key {
+            "theme" => {
+                if ui::views::settings::resolve(v).1.is_some() {
+                    return Err(format!("✗ unknown theme `{v}`"));
+                }
+                next.appearance.theme = v.to_string();
+            }
+            "transparent" => next.appearance.transparent = boolean()?,
+            "borders" => next.appearance.borders = one_of(&["rounded", "plain", "double", "thick"])?,
+            "icons" => next.appearance.icons = one_of(&["unicode", "nerd", "ascii"])?,
+            "graphs" => next.appearance.graphs = one_of(&["braille", "block", "tty"])?,
+            "gradient" => next.appearance.gradient = boolean()?,
+            "dim_modals" => next.appearance.dim_modals = boolean()?,
+            "default_uri" if !v.is_empty() => next.general.default_uri = v.to_string(),
+            "editor" if !v.is_empty() => next.general.editor = v.to_string(),
+            "start_view" => {
+                next.general.start_view = one_of(&["domains", "host", "networks", "storage", "events"])?;
+            }
+            "viewer" => next.console.viewer = one_of(&["virt-viewer", "remote-viewer"])?,
+            "escape" if !v.is_empty() => next.console.escape = v.to_string(),
+            "refresh_interval_secs" => {
+                next.general.refresh_interval_secs = v
+                    .parse()
+                    .ok()
+                    .filter(|n| (1..=60).contains(n))
+                    .ok_or_else(|| format!("✗ {key} takes 1-60 (seconds)"))?;
+            }
+            "default_uri" | "editor" | "escape" => return Err(format!("✗ {key} cannot be empty")),
+            _ => return Err(format!("✗ unknown setting: {key}")),
         }
-        _ => return format!("✗ unknown setting: {key}"),
+        Ok(())
+    })();
+    if let Err(message) = result {
+        return message;
     }
+    *config = next;
     *theme = current_theme(config);
+    // Code without a handle on the config (viewer, editor, confirmations)
+    // reads the runtime copy.
+    crate::config::set_runtime(config);
     match config.save() {
         Ok(()) => format!("set {key}={v}"),
         Err(e) => format!("✗ save failed: {e}"),

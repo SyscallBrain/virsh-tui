@@ -104,16 +104,20 @@ pub fn clone_on(uri: &str, domain: &str, new_name: &str) -> CommandPlan {
 }
 
 /// virsh undefine d [options]
+///
+/// `nvram`: delete the UEFI variables file; otherwise `--keep-nvram` is
+/// passed, without which virsh refuses to undefine a UEFI domain.
+/// `snapshots`: also drop snapshot metadata and a managed-save image (virsh
+/// refuses to undefine a domain that has either; the disks are untouched).
 pub fn undefine(domain: &str, remove_storage: bool, nvram: bool, snapshots: bool) -> CommandPlan {
     let mut argv = vec!["undefine".to_string(), domain.to_string()];
     if remove_storage {
         argv.push("--remove-all-storage".to_string());
     }
-    if nvram {
-        argv.push("--nvram".to_string());
-    }
+    argv.push(if nvram { "--nvram" } else { "--keep-nvram" }.to_string());
     if snapshots {
         argv.push("--snapshots-metadata".to_string());
+        argv.push("--managed-save".to_string());
     }
     CommandPlan {
         steps: vec![CommandStep {

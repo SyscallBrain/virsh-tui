@@ -206,6 +206,9 @@ impl KeyAction {
     }
 }
 
+/// Largest count prefix honoured (`9999j`); more digits are clamped.
+pub const MAX_COUNT: u32 = 9999;
+
 /// A resolved action with count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResolvedAction {
@@ -255,7 +258,9 @@ impl KeyEngine {
             return vec![];
         }
         if tok.chars().all(|c| c.is_ascii_digit()) && self.pending.is_empty() {
-            self.count_buf.push_str(&tok);
+            if self.count_buf.len() < 5 {
+                self.count_buf.push_str(&tok);
+            }
             return vec![];
         }
         // Dot thirst: repeat last mutating action — but "." is also bound to repeat,
@@ -331,7 +336,11 @@ impl KeyEngine {
         if self.count_buf.is_empty() {
             1
         } else {
-            self.count_buf.parse().unwrap_or(1)
+            // A runaway count (`3000000j`) must not block the UI.
+            self.count_buf
+                .parse::<u32>()
+                .unwrap_or(MAX_COUNT)
+                .clamp(1, MAX_COUNT)
         }
     }
 

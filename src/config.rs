@@ -17,6 +17,10 @@ pub struct Config {
     /// `save` writes back to it.
     #[serde(skip)]
     pub source: Option<std::path::PathBuf>,
+    /// Parse error of the file at `source`: the app runs on defaults and
+    /// never overwrites that file (the user's settings would be lost).
+    #[serde(skip)]
+    pub load_error: Option<String>,
 }
 
 /// General options.
@@ -27,7 +31,6 @@ pub struct General {
     pub refresh_interval_secs: u64,
     pub editor: String,
     pub start_view: String,
-    pub confirm_style: String,
 }
 
 impl Default for General {
@@ -37,7 +40,6 @@ impl Default for General {
             refresh_interval_secs: 1,
             editor: String::from("vi"),
             start_view: String::from("domains"),
-            confirm_style: String::from("yn"),
         }
     }
 }
@@ -80,11 +82,9 @@ pub struct Connections {
 impl Default for Connections {
     fn default() -> Self {
         Self {
-            uris: vec![
-                String::from("qemu:///system"),
-                String::from("qemu:///session"),
-                String::from("qemu+ssh://user@host/system"),
-            ],
+            // Only working local URIs: a placeholder like
+            // `qemu+ssh://user@host/system` would just fail when picked.
+            uris: vec![String::from("qemu:///system"), String::from("qemu:///session")],
             default: String::from("qemu:///system"),
         }
     }
@@ -112,9 +112,21 @@ impl Default for Monitoring {
 
 static RUNTIME: std::sync::RwLock<Option<Config>> = std::sync::RwLock::new(None);
 
+/// Refresh interval of the runtime config (read every frame: no clone).
+static REFRESH_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// The active refresh interval in seconds (≥ 1).
+pub fn refresh_interval_secs() -> u64 {
+    REFRESH_SECS.load(std::sync::atomic::Ordering::Relaxed).max(1)
+}
+
 /// Publish the active config (the one loaded from `--config` or the default
 /// path, plus Settings changes) for code that has no handle to it.
 pub fn set_runtime(c: &Config) {
+    REFRESH_SECS.store(
+        c.general.refresh_interval_secs.max(1),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     if let Ok(mut g) = RUNTIME.write() {
         *g = Some(c.clone());
     }
@@ -198,7 +210,10 @@ impl Config {
                 Ok(cfg) => cfg,
                 Err(e) => {
                     tracing::warn!("ignoring invalid config {}: {e}", path.display());
-                    Self::default()
+                    let mut cfg = Self::default();
+                    let first = e.to_string().lines().next().unwrap_or_default().to_string();
+                    cfg.load_error = Some(format!("{}: {first}", path.display()));
+                    cfg
                 }
             },
         };
@@ -206,15 +221,26 @@ impl Config {
         cfg
     }
 
-    /// Save to disk.
+    /// Save to disk atomically (temporary file + rename in the same
+    /// directory). Refused while the file on disk could not be parsed.
     pub fn save(&self) -> Result<()> {
+        if let Some(error) = &self.load_error {
+            return Err(color_eyre::eyre::eyre!(
+                "not saved: fix the config file first ({error})"
+            ));
+        }
         let Some(path) = self.source.clone().or_else(Self::path) else {
             return Ok(());
         };
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, toml::to_string_pretty(self)?)?;
+        let dir = path
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        std::fs::create_dir_all(&dir)?;
+        let mut file = tempfile::NamedTempFile::new_in(&dir)?;
+        std::io::Write::write_all(&mut file, toml::to_string_pretty(self)?.as_bytes())?;
+        file.as_file().sync_all()?;
+        file.persist(&path).map_err(|e| e.error)?;
         Ok(())
     }
 }

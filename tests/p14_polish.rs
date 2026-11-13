@@ -5,7 +5,9 @@ fn breakpoints() {
     use virsh_tui::ui::layout::{Breakpoint, breakpoint};
     assert_eq!(breakpoint(174, 43), Breakpoint::Wide);
     assert_eq!(breakpoint(120, 36), Breakpoint::Compact);
-    assert_eq!(breakpoint(80, 24), Breakpoint::TooSmall);
+    // Review P1-40: 80x24 gets the degraded single-column layout.
+    assert_eq!(breakpoint(80, 24), Breakpoint::Minimal);
+    assert_eq!(breakpoint(39, 24), Breakpoint::TooSmall);
 }
 
 #[test]

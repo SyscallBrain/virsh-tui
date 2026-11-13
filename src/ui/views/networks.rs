@@ -67,6 +67,9 @@ pub enum NetFocus {
     Leases,
 }
 
+/// One `domiflist` row with its domain: (domain, interface, type, source, mac).
+pub type DomainIface = (String, String, String, String, String);
+
 /// Networks screen state.
 #[derive(Debug, Clone, Default)]
 pub struct NetworksState {
@@ -86,6 +89,9 @@ pub struct NetworksState {
     pub traffic: Option<NetTraffic>,
     /// Domain to open after `⏎` on a lease (handled by the app loop).
     pub pending_open: Option<String>,
+    /// `domiflist` of every domain, read once per view load (live mode):
+    /// (domain, interface, type, source, mac). `None` until loaded.
+    pub domain_ifaces: Option<Vec<DomainIface>>,
 }
 
 impl NetworksState {
@@ -264,6 +270,7 @@ impl NetworksState {
             live: false,
             traffic: None,
             pending_open: None,
+            domain_ifaces: None,
         }
     }
 
@@ -323,17 +330,7 @@ impl NetworksState {
 
 /// Auto-compute DHCP range (.2 – .254) for an IPv4 CIDR.
 pub fn dhcp_range(cidr: &str) -> Option<(String, String)> {
-    let (addr, prefix) = cidr.split_once('/')?;
-    prefix.parse::<u8>().ok()?;
-    let mut parts: Vec<&str> = addr.split('.').collect();
-    if parts.len() != 4 || parts.iter().any(|p| p.parse::<u8>().is_err()) {
-        return None;
-    }
-    parts[3] = "2";
-    let start = parts.join(".");
-    parts[3] = "254";
-    let end = parts.join(".");
-    Some((start, end))
+    crate::command::builders::network::default_dhcp_range(cidr)
 }
 
 /// Render the networks screen.
@@ -341,6 +338,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &NetworksState) {
     let area = frame.area();
     if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::TooSmall {
         crate::ui::layout::render_too_small(frame, theme);
+        return;
+    }
+    if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
+        render_minimal(frame, theme, state);
         return;
     }
     let rows = Layout::default()
@@ -814,4 +815,37 @@ fn render_new_form(frame: &mut Frame, theme: &Theme, state: &NetworksState) {
     ]));
     let block = panel_block(theme, false, "New network", Some(String::from("net-define")));
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), modal);
+}
+
+/// Small-terminal networks: one row per network.
+fn render_minimal(frame: &mut Frame, theme: &Theme, state: &NetworksState) {
+    use crate::ui::views::minimal::{Row, col, render};
+    let t = &theme.tokens;
+    let rows: Vec<Row> = state
+        .networks
+        .iter()
+        .map(|n| {
+            Row::styled(
+                format!(
+                    "{}{}{}{}",
+                    col(&n.name, 18),
+                    col(if n.active { "active" } else { "inactive" }, 9),
+                    col(&n.mode, 8),
+                    n.subnet
+                ),
+                Style::default().fg(if n.active { t.green } else { t.fg2 }),
+            )
+        })
+        .collect();
+    let selected = (!rows.is_empty()).then_some(state.selected);
+    render(
+        frame,
+        theme,
+        &format!("3 Networks · {}", state.uri),
+        &format!(" {}{}{}SUBNET", col("NAME", 18), col("STATE", 9), col("MODE", 8)),
+        &rows,
+        selected,
+        " j/k s start D destroy n new ? help",
+        &state.message,
+    );
 }

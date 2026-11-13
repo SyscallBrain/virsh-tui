@@ -35,17 +35,54 @@ impl VirshBackend {
     /// `virsh domstats --raw` lists every domain (active and inactive) with its
     /// state, so a single call feeds both the table and the metrics store.
     pub async fn domains_with_stats(&self) -> Result<(Vec<DomainSummary>, Vec<RawDomainStats>)> {
-        let stats_text = exec::run(&self.uri, &["domstats", "--raw"]).await?;
+        let (summaries, stats, _) = self.domains_with_stats_cached(None).await?;
+        Ok((summaries, stats))
+    }
+
+    /// The autostart flags (`list --autostart`, a second virsh process).
+    pub async fn autostart_names(&self) -> std::collections::HashSet<String> {
+        exec::run(&self.uri, &["list", "--all", "--autostart", "--name"])
+            .await
+            .unwrap_or_default()
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// [`Self::domains_with_stats`] reusing known autostart flags (`None`:
+    /// read them). Returns the flags used, for the caller to cache: the
+    /// poller re-reads them only every few ticks, saving one virsh (one SSH
+    /// session on remote URIs) per refresh.
+    pub async fn domains_with_stats_cached(
+        &self,
+        autostart: Option<&std::collections::HashSet<String>>,
+    ) -> Result<(
+        Vec<DomainSummary>,
+        Vec<RawDomainStats>,
+        std::collections::HashSet<String>,
+    )> {
+        // `--nowait`: a domain busy with a long job (migration, snapshot)
+        // must not stall the whole refresh. Older virsh lacks the flag.
+        static NOWAIT_UNSUPPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let stats_text = if NOWAIT_UNSUPPORTED.load(std::sync::atomic::Ordering::Relaxed) {
+            exec::run(&self.uri, &["domstats", "--raw"]).await?
+        } else {
+            match exec::run(&self.uri, &["domstats", "--raw", "--nowait"]).await {
+                Ok(text) => text,
+                Err(e) if e.to_string().contains("nowait") => {
+                    NOWAIT_UNSUPPORTED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    exec::run(&self.uri, &["domstats", "--raw"]).await?
+                }
+                Err(e) => return Err(e),
+            }
+        };
         let stats = parse_domstats::parse_domstats_raw(&stats_text)?;
-        let autostart: std::collections::HashSet<String> =
-            exec::run(&self.uri, &["list", "--all", "--autostart", "--name"])
-                .await
-                .unwrap_or_default()
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .map(str::to_string)
-                .collect();
+        let autostart = match autostart {
+            Some(known) => known.clone(),
+            None => self.autostart_names().await,
+        };
         let summaries = stats
             .iter()
             .map(|s| DomainSummary {
@@ -62,7 +99,7 @@ impl VirshBackend {
                 has_managed_save: false,
             })
             .collect();
-        Ok((summaries, stats))
+        Ok((summaries, stats, autostart))
     }
 }
 
@@ -98,9 +135,7 @@ impl Backend for VirshBackend {
     }
 
     async fn snapshots(&self, domain: &str) -> Result<Vec<Snapshot>> {
-        let text = exec::run(&self.uri, &["snapshot-list", domain, "--parent"])
-            .await
-            .unwrap_or_default();
+        let text = exec::run(&self.uri, &["snapshot-list", domain, "--parent"]).await?;
         Ok(parse_list::parse_snapshot_list(&text))
     }
 }

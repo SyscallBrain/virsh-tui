@@ -239,14 +239,117 @@ pub fn sections(map: &Keymap) -> Vec<Section> {
     ]
 }
 
+/// Page 2 (`⇥`): keys that only exist in one view or modal (not in the
+/// keymap: they are fixed raw keys).
+pub fn view_sections() -> Vec<Section> {
+    let s = |title: &str, color: &'static str, rows: &[(&str, &str, bool)]| Section {
+        title: title.to_string(),
+        color,
+        rows: rows
+            .iter()
+            .map(|(k, d, c)| (k.to_string(), d.to_string(), *c))
+            .collect(),
+    };
+    vec![
+        s(
+            "Storage",
+            "yellow",
+            &[
+                ("h / l", "pools ⇄ volumes", false),
+                ("b / s / r", "build / start / refresh pool", false),
+                ("a", "toggle pool autostart", false),
+                ("D", "destroy pool", true),
+                ("n", "new volume (:vol-create-as)", false),
+                ("X", "delete volume", true),
+                ("W", "wipe volume", true),
+                ("R / C / u", "resize / clone / upload", false),
+                ("⏎", "insert ISO into a domain", false),
+            ],
+        ),
+        s(
+            "Networks",
+            "cyan",
+            &[
+                ("n", "new network form", false),
+                ("e", "edit XML ($EDITOR)", false),
+                ("l", "focus leases", false),
+                ("␣l / ␣L", "pin / unpin lease", false),
+                ("yi", "copy lease IP", false),
+                ("s / D / X", "start / destroy / undefine", false),
+            ],
+        ),
+        s(
+            "Hardware tab",
+            "magenta",
+            &[
+                ("i", "INSERT (edit field)", false),
+                ("⇥ / S-⇥", "next / previous field", false),
+                ("h / l", "number −1 / +1 (INSERT)", false),
+                ("C-a / C-x", "increment / decrement", false),
+                ("a", "attach (prefilled :line)", false),
+                ("d", "detach disk / NIC", true),
+                ("h/l · J/K", "boot entry: select · move", false),
+                ("u", "undo field", false),
+                ("y", "copy will-run commands", false),
+                (":w / :q!", "apply / discard", false),
+            ],
+        ),
+        s(
+            "Snapshot modals",
+            "green",
+            &[
+                ("y / ⏎", "confirm", false),
+                ("n / ⎋", "cancel", false),
+                ("1 / 2 / 3", "after revert: run/pause/saved", false),
+                ("f / s", "force · safety snapshot", false),
+                ("c / o / m", "delete children/only/meta", true),
+            ],
+        ),
+        s(
+            "Media picker",
+            "orange",
+            &[
+                ("type", "fuzzy filter", false),
+                ("C-j / C-k, ↓ / ↑", "move", false),
+                ("⇥", "next pool", false),
+                ("⏎ / C-e", "insert / eject", false),
+            ],
+        ),
+        s(
+            "Events",
+            "teal",
+            &[
+                ("f / F", "cycle filter chips", false),
+                ("/", "search", false),
+                ("⏎", "open the object", false),
+            ],
+        ),
+        s(
+            ":messages",
+            "blue",
+            &[
+                ("j / k", "scroll", false),
+                ("g / G", "oldest / newest", false),
+                ("⎋", "close", false),
+            ],
+        ),
+    ]
+}
+
 /// Help overlay state (live `/` filter).
 #[derive(Debug, Clone, Default)]
 pub struct HelpState {
     pub filter: String,
 }
 
-/// Render the help modal (156×37, 4 columns).
+/// Render the help modal (156×37, 4 columns). `page` 0: global keys (the
+/// mockup); 1: view keys. `scroll` skips lines in every column.
 pub fn render(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap) {
+    render_page(frame, theme, filter, map, 0, 0);
+}
+
+/// [`render`] with a page and scroll offset.
+pub fn render_page(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap, page: u8, scroll: usize) {
     let t = &theme.tokens;
     let area = frame.area();
     let w = 156u16.min(area.width.saturating_sub(4));
@@ -263,8 +366,23 @@ pub fn render(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap) {
         .border_type(theme.border)
         .border_style(Style::default().fg(t.blue).bg(t.bg))
         .title(Span::styled(" ? Keybindings ", theme.panel_title(true)))
-        .title_top(Line::from(Span::styled(" / search · ⎋ close ", theme.dim())).right_aligned());
-    let inner = Rect::new(modal.x + 2, modal.y + 1, modal.width - 4, modal.height - 2);
+        .title_top(
+            Line::from(Span::styled(
+                if page == 0 {
+                    " / search · ⇥ view keys · ⎋ close "
+                } else {
+                    " / search · ⇥ global keys · ↑↓ scroll · ⎋ close "
+                },
+                theme.dim(),
+            ))
+            .right_aligned(),
+        );
+    let inner = Rect::new(
+        modal.x + 2,
+        modal.y + 1,
+        modal.width.saturating_sub(4),
+        modal.height.saturating_sub(2),
+    );
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -280,8 +398,13 @@ pub fn render(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap) {
             inner.width,
             inner.height.saturating_sub(2),
         ));
-    let sections = sections(map);
-    let groups: [&[Section]; 4] = [&sections[0..2], &sections[2..4], &sections[4..6], &sections[6..8]];
+    let sections = if page == 0 { sections(map) } else { view_sections() };
+    let n = sections.len();
+    let groups: [&[Section]; 4] = if page == 0 {
+        [&sections[0..2], &sections[2..4], &sections[4..6], &sections[6..8]]
+    } else {
+        [&sections[0..2], &sections[2..3], &sections[3..5], &sections[5..n]]
+    };
     for (col, group) in cols.iter().zip(groups) {
         let mut lines: Vec<Line> = Vec::new();
         for sec in group {
@@ -317,6 +440,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap) {
             }
             lines.push(Line::from(""));
         }
+        let lines: Vec<Line> = lines.into_iter().skip(scroll).collect();
         frame.render_widget(Paragraph::new(lines).style(theme.base()), *col);
     }
     let footer = Line::from(vec![
@@ -324,6 +448,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, filter: &str, map: &Keymap) {
         Span::styled("3j counts work everywhere  ", theme.key()),
         Span::styled(". repeats last action", theme.dim()),
     ]);
+    if inner.height == 0 {
+        frame.render_widget(block, modal);
+        return;
+    }
     let footer_area = Rect::new(inner.x, inner.y + inner.height - 1, inner.width, 1);
     frame.render_widget(Paragraph::new(footer).style(theme.base()), footer_area);
     frame.render_widget(block, modal);

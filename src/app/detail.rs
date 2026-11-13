@@ -47,18 +47,28 @@ pub(super) fn handle_hardware_key(
                 edit_focused(&mut d.hw, &dev_id, EditOp::Adjust(if c == 'a' { 1 } else { -1 }));
                 return true;
             }
-            KeyCode::Char(c) if key.modifiers.is_empty() => {
-                let is_number =
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                use crate::ui::widgets::form::FieldKind;
+                let kind =
                     d.hw.forms
                         .get(dev_id.as_str())
                         .and_then(|f| f.fields.get(f.focus))
-                        .is_some_and(|f| {
-                            matches!(
-                                f.kind,
-                                crate::ui::widgets::form::FieldKind::Number { .. }
-                                    | crate::ui::widgets::form::FieldKind::Size
-                            )
-                        });
+                        .map(|f| f.kind.clone());
+                let is_number = matches!(kind, Some(FieldKind::Number { .. }));
+                let is_size = matches!(kind, Some(FieldKind::Size));
+                // Numbers take digits only; sizes digits, `.` and a binary unit.
+                let accepted = match kind {
+                    Some(FieldKind::Number { .. }) => c.is_ascii_digit(),
+                    Some(FieldKind::Size) => {
+                        c.is_ascii_digit()
+                            || matches!(c, '.' | 'K' | 'M' | 'G' | 'T' | 'k' | 'm' | 'g' | 't' | 'i' | 'B')
+                    }
+                    _ => true,
+                };
                 if is_number && matches!(c, 'h' | 'l' | 'H' | 'L') {
                     let delta = match c {
                         'h' => -1,
@@ -68,12 +78,15 @@ pub(super) fn handle_hardware_key(
                         _ => 0,
                     };
                     edit_focused(&mut d.hw, &dev_id, EditOp::Adjust(delta));
-                } else {
+                } else if accepted {
                     edit_focused(&mut d.hw, &dev_id, EditOp::Push(c));
+                } else if is_size || is_number {
+                    d.message = String::from("-- INSERT --  digits only (sizes take a unit: 512M, 8G)");
                 }
                 return true;
             }
-            _ => return false,
+            // INSERT owns the keyboard until Esc.
+            _ => return true,
         }
     }
     // NORMAL mode hardware keys.
@@ -93,15 +106,22 @@ pub(super) fn handle_hardware_key(
             true
         }
         "a" => {
+            use crate::input::engine::KeyAction as A;
             let dev = d.hw.selected_device().id.to_string();
-            let prefix = if dev.starts_with("disk") {
-                "attach-disk <src> <target>"
+            let active = matches!(
+                d.state,
+                crate::model::DomainState::Running | crate::model::DomainState::Paused
+            );
+            let line = if dev.starts_with("disk") {
+                prefill_command(A::DiskAttach, &d.domain, Some(&d.config), active)
             } else if dev.starts_with("nic") {
-                "attach-nic <source> <model>"
+                prefill_command(A::NicAttach, &d.domain, Some(&d.config), active)
             } else {
-                "attach-hostdev "
+                Some(format!("attach-hostdev {} ", d.domain))
             };
-            *ex_line = Some(crate::input::textinput::TextInput::with(prefix));
+            if let Some(line) = line {
+                *ex_line = Some(crate::input::textinput::TextInput::with(&line));
+            }
             true
         }
         "d" => {
@@ -114,6 +134,10 @@ pub(super) fn handle_hardware_key(
         }
         "K" => {
             boot_reorder(d, -1);
+            true
+        }
+        "l" | "h" if d.hw.selected_device().id == "boot" => {
+            boot_cursor_next(d, if tok.token() == "l" { 1 } else { -1 });
             true
         }
         "Tab" => {
@@ -215,10 +239,52 @@ pub(super) fn boot_reorder(d: &mut ui::views::detail::DetailState, dir: i32) {
     if devs.len() < 2 {
         return;
     }
-    let from = 0;
-    let to = if dir > 0 { 1 } else { devs.len() - 1 };
+    // Move the entry under the boot cursor one place; the cursor follows it.
+    let from = d.hw.boot_cursor.min(devs.len() - 1);
+    let to = if dir > 0 {
+        (from + 1).min(devs.len() - 1)
+    } else {
+        from.saturating_sub(1)
+    };
     crate::xml::edit::move_boot_device(&mut devs, from, to);
+    d.hw.boot_cursor = to;
     d.hw.set_field("boot", "order", &devs.join(","));
+    let shown: Vec<String> = devs
+        .iter()
+        .enumerate()
+        .map(|(i, dev)| if i == to { format!("[{dev}]") } else { dev.clone() })
+        .collect();
+    d.message = format!("boot order: {}  (h/l select · J/K move)", shown.join(" › "));
+}
+
+/// Select the next/previous boot entry for `J`/`K` (`l`/`h`, wraps).
+pub(super) fn boot_cursor_next(d: &mut ui::views::detail::DetailState, delta: isize) {
+    let count =
+        d.hw.field_value("boot", "order")
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .count();
+    if count > 0 {
+        d.hw.boot_cursor = (d.hw.boot_cursor as isize + delta).rem_euclid(count as isize) as usize;
+        let devs: Vec<String> =
+            d.hw.field_value("boot", "order")
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        let shown: Vec<String> = devs
+            .iter()
+            .enumerate()
+            .map(|(i, dev)| {
+                if i == d.hw.boot_cursor {
+                    format!("[{dev}]")
+                } else {
+                    dev.clone()
+                }
+            })
+            .collect();
+        d.message = format!("boot order: {}  (h/l select · J/K move)", shown.join(" › "));
+    }
 }
 
 /// Stage detach confirmation for disk/NIC devices.
@@ -229,11 +295,16 @@ pub(super) fn stage_detach(
     use crate::command::builders::hardware;
     let dev = d.hw.selected_device();
     let domain = d.domain.clone();
+    // `--live` only applies to a running (or paused) domain; virsh rejects it otherwise.
+    let active = matches!(
+        d.state,
+        crate::model::DomainState::Running | crate::model::DomainState::Paused
+    );
     let (title, build): (String, crate::command::plan::PlanBuilder) = if dev.id.starts_with("disk") {
         let target = dev.name.split_whitespace().last().unwrap_or("vda").to_string();
         (
             String::from("⚠ Detach disk"),
-            std::sync::Arc::new(move |d: &str| hardware::detach_disk(d, &target, true)),
+            std::sync::Arc::new(move |d: &str| hardware::detach_disk(d, &target, active)),
         )
     } else if dev.id.starts_with("nic") {
         let mac = d.hw.field_value(&dev.id, "mac");
@@ -255,7 +326,7 @@ pub(super) fn stage_detach(
             d.message = String::from("✗ cannot identify selected NIC");
             return;
         };
-        let live = d.state == crate::model::DomainState::Running;
+        let live = active;
         (
             String::from("⚠ Detach NIC"),
             std::sync::Arc::new(move |d: &str| {
@@ -277,6 +348,7 @@ pub(super) fn stage_detach(
         .collect();
     *confirm = Some((
         crate::ui::overlays::confirm::Confirm {
+            kind: crate::ui::overlays::confirm::ConfirmKind::Always,
             title,
             question: format!("detach {} from {}?", dev.name, domain),
             commands,
@@ -336,11 +408,17 @@ pub(super) fn handle_snap_modal(
             KeyCode::Char(' ') if d.snaps.create_focus == 3 => {
                 d.snaps.create_quiesce = !d.snaps.create_quiesce
             }
-            KeyCode::Char(c) if key.modifiers.is_empty() => match d.snaps.create_focus {
-                0 => d.snaps.create_name.push(c),
-                1 => d.snaps.create_desc.push(c),
-                _ => {}
-            },
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                match d.snaps.create_focus {
+                    0 => d.snaps.create_name.push(c),
+                    1 => d.snaps.create_desc.push(c),
+                    _ => {}
+                }
+            }
             _ => {}
         },
         SnapModal::Revert => match key.code {
@@ -425,17 +503,55 @@ fn preview_snapshot(
 }
 
 pub(super) async fn load_detail(uri: &str, st: &mut ui::views::detail::DetailState) {
-    st.uptime = crate::backend::virsh::host_local::domain_uptime(&st.domain).unwrap_or_else(|| "—".into());
-    if let Ok(xml) = crate::backend::virsh::exec::run(uri, &["dumpxml", &st.domain, "--inactive"]).await
-        && let Ok(cfg) = crate::backend::virsh::parse_xml::parse_domain_xml(&xml)
-    {
-        let running = st.state == crate::model::DomainState::Running;
-        st.hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, &xml, running);
-        st.config = cfg;
-        st.xml = xml;
-        st.fold = ui::views::detail::XmlFold::new(st.xml.lines().count());
+    // The pid-file uptime only exists on this machine.
+    st.uptime = if is_local_uri(uri) {
+        crate::backend::virsh::host_local::domain_uptime(&st.domain)
+    } else {
+        None
+    }
+    .unwrap_or_else(|| "—".into());
+    let xml = match crate::backend::virsh::exec::run(uri, &["dumpxml", &st.domain, "--inactive"]).await {
+        Ok(xml) => xml,
+        Err(e) => {
+            st.message = format!("✗ cannot read the configuration of {}: {e}", st.domain);
+            return;
+        }
+    };
+    match crate::backend::virsh::parse_xml::parse_domain_xml(&xml) {
+        Ok(cfg) => {
+            let running = st.state == crate::model::DomainState::Running;
+            st.hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, &xml, running);
+            for disk in cfg
+                .disks
+                .iter()
+                .filter(|d| d.device != "cdrom" && !d.target.is_empty())
+            {
+                if let Ok(info) =
+                    crate::backend::virsh::exec::run(uri, &["domblkinfo", &st.domain, &disk.target]).await
+                    && let Some(bytes) = parse_domblkinfo_capacity(&info)
+                {
+                    st.hw.disk_capacity_kib.insert(disk.target.clone(), bytes / 1024);
+                }
+            }
+            st.config = cfg;
+            st.xml = xml;
+            st.fold = ui::views::detail::XmlFold::new(st.xml.lines().count());
+        }
+        Err(e) => {
+            st.message = format!("✗ cannot parse the configuration of {}: {e}", st.domain);
+            st.xml = xml;
+            st.fold = ui::views::detail::XmlFold::new(st.xml.lines().count());
+            return;
+        }
     }
     refresh_snapshots(uri, st).await;
+}
+
+/// `Capacity:       21474836480` from `virsh domblkinfo` (bytes).
+pub(super) fn parse_domblkinfo_capacity(text: &str) -> Option<u64> {
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("Capacity:"))
+        .and_then(|v| v.trim().parse().ok())
 }
 
 pub(super) fn detail_initial(
@@ -477,8 +593,12 @@ pub(super) fn detail_initial(
 /// Reload the snapshot tree (and the current snapshot) of the detail domain.
 pub(super) async fn refresh_snapshots(uri: &str, d: &mut ui::views::detail::DetailState) {
     use crate::backend::{Backend, virsh::VirshBackend};
-    let Ok(snaps) = VirshBackend::new(uri).snapshots(&d.domain).await else {
-        return;
+    let snaps = match VirshBackend::new(uri).snapshots(&d.domain).await {
+        Ok(snaps) => snaps,
+        Err(e) => {
+            d.message = format!("✗ cannot list snapshots of {}: {e}", d.domain);
+            return;
+        }
     };
     let current = crate::backend::virsh::exec::run(uri, &["snapshot-current", "--name", &d.domain])
         .await
@@ -490,6 +610,26 @@ pub(super) async fn refresh_snapshots(uri: &str, d: &mut ui::views::detail::Deta
     d.snaps.current = current;
     d.snaps.frozen = false;
     d.snaps.selected = d.snaps.rows.iter().position(|r| r.name == keep).unwrap_or(0);
+    // Details/description of every snapshot (bounded concurrency).
+    let xmls = run_many(
+        uri,
+        snaps
+            .iter()
+            .map(|s| vec![String::from("snapshot-dumpxml"), d.domain.clone(), s.name.clone()])
+            .collect(),
+    )
+    .await;
+    d.snaps.infos = snaps
+        .iter()
+        .zip(xmls)
+        .filter_map(|(s, xml)| {
+            let info = ui::views::detail::snapshots::snap_info(&xml.ok()?, &snaps)?;
+            Some((s.name.clone(), info))
+        })
+        .collect();
+    d.snaps.details.clear();
+    d.snaps.description.clear();
+    d.snaps.sync_details();
 }
 
 /// Detail-view keys. Returns true when the app should quit.
@@ -522,6 +662,14 @@ pub(super) fn dispatch_detail(
                 d.snap_modal = SnapModal::Create;
                 return false;
             }
+            A::SnapshotRevert if d.snaps.rows.is_empty() => {
+                d.message = String::from("✗ no snapshot to revert to");
+                return false;
+            }
+            A::SnapshotDelete if d.snaps.rows.is_empty() => {
+                d.message = String::from("✗ no snapshot to delete");
+                return false;
+            }
             A::SnapshotRevert => {
                 d.snap_modal = SnapModal::Revert;
                 return false;
@@ -540,7 +688,7 @@ pub(super) fn dispatch_detail(
                     d.message = format!("[dry-run] Edit snapshot {snap} XML");
                     return false;
                 }
-                suspend_run(&[
+                if let Some(message) = suspend_run(&[
                     "virsh",
                     "-c",
                     uri,
@@ -548,7 +696,9 @@ pub(super) fn dispatch_detail(
                     &d.domain.clone(),
                     "--snapshotname",
                     &snap,
-                ]);
+                ]) {
+                    d.message = message;
+                }
                 return false;
             }
             _ => {}
@@ -592,7 +742,11 @@ pub(super) fn dispatch_detail(
             };
         }
         A::Console if demo || dry_run => d.message = "[dry-run] Open console".into(),
-        A::Console => external::console(uri, &d.domain),
+        A::Console => {
+            if let Some(message) = external::console(uri, &d.domain) {
+                d.message = message;
+            }
+        }
         _ => {}
     }
     let _ = view;
@@ -667,6 +821,12 @@ fn preview_hardware(
             "✗ cannot apply {} yet (read-only): undo with u or :q!",
             unsupported.join(", ")
         );
+        messages.push_action(detail.message.clone(), &detail.domain, false);
+        return;
+    }
+    let problems = detail.hw.problems();
+    if !problems.is_empty() {
+        detail.message = format!("✗ {}", problems.join("; "));
         messages.push_action(detail.message.clone(), &detail.domain, false);
         return;
     }

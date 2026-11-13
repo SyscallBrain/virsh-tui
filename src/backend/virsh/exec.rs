@@ -41,11 +41,7 @@ pub async fn run(uri: &str, args: &[&str]) -> Result<String> {
     structured_result(run_output(uri, args).await?)
 }
 
-/// Run an arbitrary user command, preserving a notice if stdout is truncated.
-pub async fn run_raw(uri: &str, args: &[&str]) -> Result<String> {
-    raw_result(run_output(uri, args).await?)
-}
-
+#[cfg(test)]
 fn raw_result(output: crate::command::process::StepOutput) -> Result<String> {
     if !output.status.success() {
         return Err(eyre!("virsh failed: {}", friendly_first_line(&output.stderr)));
@@ -63,7 +59,16 @@ async fn run_output(uri: &str, args: &[&str]) -> Result<crate::command::process:
     }
     let step = crate::command::plan::CommandStep::new("virsh", args.to_vec());
     let (_cancel, mut control) = tokio::sync::watch::channel(false);
-    crate::command::process::run_step(uri, &step, &mut control)
+    // Listings grow with the number of guests/volumes/leases.
+    let out_limit = if matches!(
+        args.first().copied(),
+        Some("domstats" | "list" | "vol-list" | "pool-list" | "net-list" | "net-dhcp-leases")
+    ) {
+        crate::command::process::LARGE_OUTPUT_LIMIT
+    } else {
+        1024 * 1024
+    };
+    crate::command::process::run_step_with_output_limit(uri, &step, &mut control, out_limit)
         .await
         .map_err(|error| match error {
             crate::command::process::RunError::Timeout => eyre!("virsh timed out"),
@@ -96,25 +101,6 @@ fn friendly_first_line(stderr: &[u8]) -> String {
         format!("{first} (is libvirtd running?)")
     } else {
         first
-    }
-}
-
-/// Blocking variant for startup/cache paths (spawns `virsh` synchronously).
-pub fn run_blocking(uri: &str, args: &[&str]) -> Result<String> {
-    if crate::command::exec::is_demo() {
-        return Err(eyre!("demo mode: virsh is not executed"));
-    }
-    let output = std::process::Command::new("virsh")
-        .arg("-c")
-        .arg(uri)
-        .args(args)
-        .env("LC_ALL", "C")
-        .stdin(std::process::Stdio::null())
-        .output()?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    } else {
-        Err(eyre!("virsh failed"))
     }
 }
 

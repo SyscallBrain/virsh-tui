@@ -305,13 +305,13 @@ async fn cancellation_stops_child_and_grandchild_in_owned_group() {
 }
 
 #[tokio::test]
-async fn batch_stops_after_first_failure_and_keeps_successful_targets() {
+async fn batch_continues_after_a_failed_target_and_reports_it() {
     use virsh_tui::command::{
         job::{BatchResult, OwnedBatch, run_batch},
         plan::CommandPlan,
     };
     let dir = tempfile::tempdir().unwrap();
-    let marker = dir.path().join("should-not-exist");
+    let marker = dir.path().join("c-ran");
     let batch = OwnedBatch {
         uri: "test:///default".into(),
         demo: false,
@@ -329,9 +329,11 @@ async fn batch_stops_after_first_failure_and_keeps_successful_targets() {
     let (_tx, rx) = tokio::sync::watch::channel(false);
     let (events, _receiver) = tokio::sync::mpsc::channel(64);
     let result = run_batch(batch, rx, events).await;
-    assert_eq!(result.completed_targets, vec!["A"]);
-    assert!(matches!(result.result, BatchResult::Failed { .. }));
-    assert!(!marker.exists());
+    // Review P1-1: a failing target does not stop the bulk action.
+    assert_eq!(result.completed_targets, vec!["A", "C"]);
+    assert!(matches!(result.result, BatchResult::Failed { ref target, .. } if target == "B"));
+    assert_eq!(result.failures.len(), 1);
+    assert!(marker.exists());
 }
 
 #[cfg(unix)]
@@ -1007,6 +1009,9 @@ fn signals_stop_held_job_and_read_and_restore_terminal() {
         ("read", "SIGINT"),
         ("job", "SIGTERM"),
         ("read", "SIGTERM"),
+        // Review P1-43: a closed terminal or SIGQUIT stops the children too.
+        ("read", "SIGHUP"),
+        ("job", "SIGQUIT"),
     ] {
         let status = std::process::Command::new("python3")
             .arg(concat!(

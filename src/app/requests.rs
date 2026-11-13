@@ -66,15 +66,21 @@ pub(super) enum SelectionResult {
         selected: String,
         state: Box<ui::views::networks::NetworksState>,
     },
-    Storage {
-        uri: String,
-        serial: u64,
-        selected: String,
-        state: Box<ui::views::storage::StorageState>,
-    },
 }
 
 pub(super) struct SelectionTask(pub tokio::task::JoinHandle<SelectionResult>);
+
+/// Independent kinds of background reads: each has its own slot and serial,
+/// so starting one never cancels (and strands) another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum ReadKind {
+    Detail,
+    Picker,
+    Editor,
+    Hardware,
+    Snapshots,
+    Networks,
+}
 impl Drop for SelectionTask {
     fn drop(&mut self) {
         self.0.abort();
@@ -89,31 +95,68 @@ impl Drop for ViewLoadTask {
 }
 
 impl App {
-    pub(super) fn request_domain_editor(&mut self, target: String) {
+    /// Start a read of `kind`: a fresh serial (results of an older read of
+    /// the same kind become stale) and the previous task of that kind aborted.
+    pub(super) fn begin_read(&mut self, kind: ReadKind) -> u64 {
         self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.read_serials.insert(kind, self.read_serial);
+        self.selection_task.remove(&kind);
+        self.read_serial
+    }
+
+    /// Drop a read of `kind` (its result, if it still arrives, is ignored).
+    pub(super) fn cancel_read(&mut self, kind: ReadKind) {
+        self.read_serial = self.read_serial.wrapping_add(1);
+        self.read_serials.insert(kind, self.read_serial);
+        self.selection_task.remove(&kind);
+    }
+
+    /// Drop every read (connection change).
+    pub(super) fn cancel_all_reads(&mut self) {
+        for kind in [
+            ReadKind::Detail,
+            ReadKind::Picker,
+            ReadKind::Editor,
+            ReadKind::Hardware,
+            ReadKind::Snapshots,
+            ReadKind::Networks,
+        ] {
+            self.cancel_read(kind);
+        }
+    }
+
+    /// The result of read `serial` of `kind` is still wanted.
+    pub(super) fn read_current(&self, kind: ReadKind, serial: u64) -> bool {
+        self.read_serials.get(&kind).copied().unwrap_or(self.read_serial) == serial
+    }
+
+    pub(super) fn request_domain_editor(&mut self, target: String) {
+        self.begin_read(ReadKind::Editor);
         self.editor_generation = self.editor_generation.wrapping_add(1);
         let uri = self.uri.clone();
         let epoch = self.connection_epoch;
         let serial = self.read_serial;
         let generation = self.editor_generation;
         self.show_message("Loading secure domain XML…".into());
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            let result = crate::backend::virsh::exec::run(
-                &uri,
-                &["dumpxml", &target, "--inactive", "--security-info"],
-            )
-            .await
-            .map_err(|error| error.to_string());
-            SelectionResult::DomainEditorSource {
-                uri,
-                epoch,
-                serial,
-                target,
-                generation,
-                result,
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Editor,
+            SelectionTask(tokio::spawn(async move {
+                let result = crate::backend::virsh::exec::run(
+                    &uri,
+                    &["dumpxml", &target, "--inactive", "--security-info"],
+                )
+                .await
+                .map_err(|error| error.to_string());
+                SelectionResult::DomainEditorSource {
+                    uri,
+                    epoch,
+                    serial,
+                    target,
+                    generation,
+                    result,
+                }
+            })),
+        );
     }
     pub(super) fn request_media_preview(&mut self, domain: String, iso: Option<String>) {
         let config = self
@@ -144,16 +187,13 @@ impl App {
     }
 
     pub(super) fn request_wizard_editor(&mut self) {
-        let Some(wizard) = self.wizard.as_ref() else {
+        let Some(wizard) = self.wizard.clone() else {
             return;
         };
-        let Ok(snapshot) = toml::to_string(wizard) else {
-            return;
-        };
+        let snapshot = wizard.content_snapshot();
         let target = wizard.name.clone();
         let revision = self.wizard_revision;
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Editor);
         if let Some(index) = self.editor_retries.iter().position(|draft| {
             draft.uri == self.uri
                 && draft.epoch == self.connection_epoch
@@ -163,12 +203,12 @@ impl App {
             self.open_editor_draft(draft);
             return;
         }
-        let mut step = crate::command::builders::install::virt_install(wizard)
+        let mut step = crate::command::builders::install::virt_install(&wizard)
             .steps
             .remove(0);
         step.argv.insert(0, self.uri.clone());
         step.argv.insert(0, "--connect".into());
-        step.argv.push("--print-xml".into());
+        step.argv.push("--print-xml=1".into());
         self.editor_generation = self.editor_generation.wrapping_add(1);
         let generation = self.editor_generation;
         let uri = self.uri.clone();
@@ -177,27 +217,32 @@ impl App {
         if let Some(wizard) = self.wizard.as_mut() {
             wizard.error = "Preparing XML…".into();
         }
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            let (_sender, mut control) = tokio::sync::watch::channel(false);
-            let result = match crate::command::process::run_step(&uri, &step, &mut control).await {
-                Ok(output) if output.status.success() => output
-                    .structured_stdout()
-                    .map_err(|error| error.to_string())
-                    .and_then(|bytes| String::from_utf8(bytes.to_vec()).map_err(|error| error.to_string())),
-                Ok(output) => Err(crate::model::sanitize(&String::from_utf8_lossy(&output.stderr))),
-                Err(error) => Err(error.to_string()),
-            };
-            SelectionResult::WizardEditorSource {
-                uri,
-                epoch,
-                serial,
-                target,
-                generation,
-                revision,
-                snapshot,
-                result,
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Editor,
+            SelectionTask(tokio::spawn(async move {
+                let (_sender, mut control) = tokio::sync::watch::channel(false);
+                let result = match crate::command::process::run_step(&uri, &step, &mut control).await {
+                    Ok(output) if output.status.success() => output
+                        .structured_stdout()
+                        .map_err(|error| error.to_string())
+                        .and_then(|bytes| {
+                            String::from_utf8(bytes.to_vec()).map_err(|error| error.to_string())
+                        }),
+                    Ok(output) => Err(crate::model::sanitize(&String::from_utf8_lossy(&output.stderr))),
+                    Err(error) => Err(error.to_string()),
+                };
+                SelectionResult::WizardEditorSource {
+                    uri,
+                    epoch,
+                    serial,
+                    target,
+                    generation,
+                    revision,
+                    snapshot,
+                    result,
+                }
+            })),
+        );
     }
 
     pub(super) fn request_network_editor(&mut self) {
@@ -205,8 +250,7 @@ impl App {
         if target.is_empty() {
             return;
         }
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Editor);
         if let Some(index) = self.editor_retries.iter().position(|draft| {
             draft.network
                 && draft.uri == self.uri
@@ -223,19 +267,22 @@ impl App {
         let serial = self.read_serial;
         let generation = self.editor_generation;
         self.nets.message = "Loading network XML…".into();
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            let result = crate::backend::virsh::exec::run(&uri, &["net-dumpxml", "--inactive", &target])
-                .await
-                .map_err(|error| error.to_string());
-            SelectionResult::EditorSource {
-                uri,
-                epoch,
-                serial,
-                target,
-                generation,
-                result,
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Editor,
+            SelectionTask(tokio::spawn(async move {
+                let result = crate::backend::virsh::exec::run(&uri, &["net-dumpxml", "--inactive", &target])
+                    .await
+                    .map_err(|error| error.to_string());
+                SelectionResult::EditorSource {
+                    uri,
+                    epoch,
+                    serial,
+                    target,
+                    generation,
+                    result,
+                }
+            })),
+        );
     }
 
     pub(super) fn request_hardware_refresh(
@@ -248,30 +295,32 @@ impl App {
         if !self.detail.as_ref().is_some_and(|detail| detail.domain == domain) {
             return;
         }
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Hardware);
         let uri = self.uri.clone();
         let serial = self.read_serial;
         let epoch = self.connection_epoch;
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            let state =
-                match crate::backend::virsh::exec::run(&uri, &["dumpxml", &domain, "--inactive"]).await {
-                    Ok(xml) => crate::backend::virsh::parse_xml::parse_domain_xml(&xml)
-                        .ok()
-                        .map(|cfg| Box::new((cfg, xml))),
-                    Err(_) => None,
-                };
-            SelectionResult::Hardware {
-                uri,
-                serial,
-                epoch,
-                domain,
-                fingerprint,
-                success,
-                clear_submitted,
-                state,
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Hardware,
+            SelectionTask(tokio::spawn(async move {
+                let state =
+                    match crate::backend::virsh::exec::run(&uri, &["dumpxml", &domain, "--inactive"]).await {
+                        Ok(xml) => crate::backend::virsh::parse_xml::parse_domain_xml(&xml)
+                            .ok()
+                            .map(|cfg| Box::new((cfg, xml))),
+                        Err(_) => None,
+                    };
+                SelectionResult::Hardware {
+                    uri,
+                    serial,
+                    epoch,
+                    domain,
+                    fingerprint,
+                    success,
+                    clear_submitted,
+                    state,
+                }
+            })),
+        );
     }
 
     pub(super) fn request_snapshot_refresh(&mut self, domain: &str) {
@@ -283,22 +332,24 @@ impl App {
         else {
             return;
         };
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Snapshots);
         let uri = self.uri.clone();
         let serial = self.read_serial;
         let epoch = self.connection_epoch;
         let domain = domain.to_string();
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            refresh_snapshots(&uri, &mut detail).await;
-            SelectionResult::Snapshots {
-                uri,
-                serial,
-                epoch,
-                domain,
-                state: Box::new(detail.snaps),
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Snapshots,
+            SelectionTask(tokio::spawn(async move {
+                refresh_snapshots(&uri, &mut detail).await;
+                SelectionResult::Snapshots {
+                    uri,
+                    serial,
+                    epoch,
+                    domain,
+                    state: Box::new(detail.snaps),
+                }
+            })),
+        );
     }
 
     pub(super) fn request_refresh(&mut self) {
@@ -309,9 +360,8 @@ impl App {
             let _ = poller.tx.send(poller::Request::Now);
         }
         if matches!(self.view, View::Host | View::Networks | View::Storage) {
-            if !self.detail_loading && !self.picker_loading {
-                self.read_serial = self.read_serial.wrapping_add(1);
-                self.selection_task.take();
+            if self.view == View::Networks {
+                self.cancel_read(ReadKind::Networks);
             }
             self.view_load_refreshing.insert(self.view);
             self.request_view_load(self.view);
@@ -363,11 +413,7 @@ impl App {
     }
 
     pub(super) fn request_picker(&mut self) {
-        let domain = self
-            .detail
-            .as_ref()
-            .map(|detail| detail.domain.clone())
-            .unwrap_or_else(|| self.dash.selected().name.clone());
+        let domain = self.current_domain_name();
         self.request_picker_for(domain);
         if self.store.picker.is_some() {
             self.view = View::Storage;
@@ -391,8 +437,7 @@ impl App {
         if domain.is_empty() {
             return;
         }
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Picker);
         let mut pools: Vec<_> = self.store.pools.iter().map(|pool| pool.name.clone()).collect();
         if pools.is_empty() {
             pools = vec!["isos".into(), "default".into()];
@@ -436,22 +481,24 @@ impl App {
             self.picker_loading = false;
             return;
         };
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Picker);
         self.picker_loading = true;
         let uri = self.uri.clone();
         let serial = self.read_serial;
         let epoch = self.connection_epoch;
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            let cdrom = cdrom_of(&uri, &domain).await;
-            SelectionResult::Picker {
-                uri,
-                serial,
-                epoch,
-                domain,
-                cdrom,
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Picker,
+            SelectionTask(tokio::spawn(async move {
+                let cdrom = cdrom_of(&uri, &domain).await;
+                SelectionResult::Picker {
+                    uri,
+                    serial,
+                    epoch,
+                    domain,
+                    cdrom,
+                }
+            })),
+        );
     }
 
     pub(super) fn request_detail(&mut self) {
@@ -463,19 +510,28 @@ impl App {
                 .map(|detail| detail.domain.clone())
                 .unwrap_or_default()
         } else if self.view == View::Host {
-            self.host
-                .domains
-                .first()
-                .map(|domain| domain.name.clone())
-                .unwrap_or_default()
+            self.host.selected_name().unwrap_or_default().to_string()
         } else {
             self.dash.selected().name.clone()
         };
         if name.is_empty() {
             return;
         }
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        // Never silently drop unsaved hardware edits of another domain.
+        if let Some(detail) = self.detail.as_ref()
+            && detail.hw.pending_count() > 0
+        {
+            if detail.domain == name {
+                self.view = View::Detail;
+            } else {
+                let other = detail.domain.clone();
+                self.show_message(format!(
+                    "⚠ Unsaved hardware changes on {other}: open it and use :w or :q!"
+                ));
+            }
+            return;
+        }
+        self.begin_read(ReadKind::Detail);
         let mut initial = detail_initial(&name, &self.dash, &self.uri, self.demo);
         self.view = View::Detail;
         if self.demo {
@@ -489,17 +545,20 @@ impl App {
         let serial = self.read_serial;
         let epoch = self.connection_epoch;
         let selected = name;
-        self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-            let mut state = initial;
-            load_detail(&uri, &mut state).await;
-            SelectionResult::Detail {
-                uri,
-                serial,
-                epoch,
-                selected,
-                state: Box::new(state),
-            }
-        })));
+        self.selection_task.insert(
+            ReadKind::Detail,
+            SelectionTask(tokio::spawn(async move {
+                let mut state = initial;
+                load_detail(&uri, &mut state).await;
+                SelectionResult::Detail {
+                    uri,
+                    serial,
+                    epoch,
+                    selected,
+                    state: Box::new(state),
+                }
+            })),
+        );
     }
 
     pub(super) fn request_view_load(&mut self, view: View) {
@@ -529,14 +588,21 @@ impl App {
     }
 
     fn request_selection_inner(&mut self, preserve_refresh: bool) {
-        self.read_serial = self.read_serial.wrapping_add(1);
-        self.selection_task.take();
+        self.begin_read(ReadKind::Networks);
         if preserve_refresh {
             if let Some(serial) = self.view_load_serial.get_mut(&self.view) {
                 *serial = serial.wrapping_add(1);
             }
-            self.view_load_tasks.remove(&self.view);
-            if self.view_load_pending.remove(&self.view) || self.view_load_refreshing.contains(&self.view) {
+            // Any reload in flight (on enter, after a job or a connect) is
+            // restarted, not just the ones flagged as refreshes.
+            let in_flight = self
+                .view_load_tasks
+                .remove(&self.view)
+                .is_some_and(|task| !task.0.is_finished());
+            if self.view_load_pending.remove(&self.view)
+                || self.view_load_refreshing.contains(&self.view)
+                || in_flight
+            {
                 self.view_load_refreshing.insert(self.view);
                 self.request_view_load(self.view);
             }
@@ -553,34 +619,20 @@ impl App {
                 self.nets.attached.clear();
                 self.nets.lease_selected = 0;
                 let mut state = self.nets.clone();
-                self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-                    load_net_selection(&uri, &mut state).await;
-                    SelectionResult::Networks {
-                        uri,
-                        serial,
-                        selected,
-                        state: Box::new(state),
-                    }
-                })));
+                self.selection_task.insert(
+                    ReadKind::Networks,
+                    SelectionTask(tokio::spawn(async move {
+                        load_net_selection(&uri, &mut state).await;
+                        SelectionResult::Networks {
+                            uri,
+                            serial,
+                            selected,
+                            state: Box::new(state),
+                        }
+                    })),
+                );
             }
-            View::Storage => {
-                let selected = self.store.selected_pool().to_string();
-                if selected.is_empty() {
-                    return;
-                }
-                self.store.volumes.clear();
-                self.store.vol_selected = 0;
-                let mut state = self.store.clone();
-                self.selection_task = Some(SelectionTask(tokio::spawn(async move {
-                    load_pool_volumes(&uri, &mut state).await;
-                    SelectionResult::Storage {
-                        uri,
-                        serial,
-                        selected,
-                        state: Box::new(state),
-                    }
-                })));
-            }
+            View::Storage => self.store.show_pool_volumes(None),
             _ => {}
         }
     }
@@ -596,20 +648,27 @@ impl App {
                 result,
             } if self.uri == uri
                 && self.connection_epoch == epoch
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Editor, serial)
                 && self.view == View::Detail
                 && self.detail.as_ref().is_some_and(|detail| detail.domain == target) =>
             {
                 match result {
                     Ok(xml) => {
-                        let draft = jobs::EditorDraft {
-                            uri,
-                            epoch,
-                            target,
-                            xml,
-                            network: false,
-                            wizard: None,
-                            generation,
+                        let draft = match self.take_retained_domain_draft(&target, &xml) {
+                            Some(mut retained) => {
+                                retained.generation = generation;
+                                retained
+                            }
+                            None => jobs::EditorDraft {
+                                uri,
+                                epoch,
+                                target,
+                                base: xml.clone(),
+                                xml,
+                                network: false,
+                                wizard: None,
+                                generation,
+                            },
                         };
                         if self.editor_context_is_current(&draft) {
                             self.open_editor_draft(draft);
@@ -632,12 +691,12 @@ impl App {
                 result,
             } if self.uri == uri
                 && self.connection_epoch == epoch
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Editor, serial)
                 && self.wizard_revision == revision
                 && self
                     .wizard
                     .as_ref()
-                    .and_then(|wizard| toml::to_string(wizard).ok())
+                    .map(|wizard| wizard.content_snapshot())
                     .as_ref()
                     == Some(&snapshot) =>
             {
@@ -647,6 +706,7 @@ impl App {
                             uri,
                             epoch,
                             target,
+                            base: xml.clone(),
                             xml,
                             network: false,
                             wizard: Some((revision, snapshot)),
@@ -677,7 +737,7 @@ impl App {
                 result,
             } if self.uri == uri
                 && self.connection_epoch == epoch
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Editor, serial)
                 && self.view == View::Networks
                 && self.nets.selected_name() == target =>
             {
@@ -687,6 +747,7 @@ impl App {
                             uri,
                             epoch,
                             target,
+                            base: xml.clone(),
                             xml,
                             network: true,
                             wizard: None,
@@ -712,7 +773,7 @@ impl App {
                 clear_submitted,
                 state,
             } if self.uri == uri
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Hardware, serial)
                 && self.connection_epoch == epoch
                 && self.view == View::Detail
                 && self.detail.as_ref().is_some_and(|detail| detail.domain == domain) =>
@@ -771,7 +832,7 @@ impl App {
                 domain,
                 state,
             } if self.uri == uri
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Snapshots, serial)
                 && self.connection_epoch == epoch
                 && self.view == View::Detail
                 && self.detail.as_ref().is_some_and(|detail| detail.domain == domain) =>
@@ -796,7 +857,7 @@ impl App {
                 domain,
                 cdrom,
             } if self.uri == uri
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Picker, serial)
                 && self.connection_epoch == epoch
                 && self
                     .store
@@ -821,7 +882,7 @@ impl App {
                 selected,
                 state,
             } if self.uri == uri
-                && self.read_serial == serial
+                && self.read_current(ReadKind::Detail, serial)
                 && self.connection_epoch == epoch
                 && self.view == View::Detail
                 && self
@@ -863,7 +924,9 @@ impl App {
                         }
                         detail.snap_modal = modal;
                     }
-                    if detail.message == "Loading domain details…" {
+                    if state.message.starts_with('✗') {
+                        detail.message = state.message;
+                    } else if detail.message == "Loading domain details…" {
                         detail.message.clear();
                     }
                 }
@@ -873,19 +936,13 @@ impl App {
                 serial,
                 selected,
                 state,
-            } if self.uri == uri && self.read_serial == serial && self.nets.selected_name() == selected => {
+            } if self.uri == uri
+                && self.read_current(ReadKind::Networks, serial)
+                && self.nets.selected_name() == selected =>
+            {
                 self.nets.leases = state.leases;
                 self.nets.attached = state.attached;
                 self.nets.lease_selected = 0;
-            }
-            SelectionResult::Storage {
-                uri,
-                serial,
-                selected,
-                state,
-            } if self.uri == uri && self.read_serial == serial && self.store.selected_pool() == selected => {
-                self.store.volumes = state.volumes;
-                self.store.vol_selected = 0;
             }
             _ => {}
         }
@@ -893,7 +950,7 @@ impl App {
 }
 
 pub(super) enum HelpData {
-    Index(Vec<crate::backend::virsh::parse_help::HelpEntry>),
+    Index(Option<Vec<crate::backend::virsh::parse_help::HelpEntry>>),
     Doc(String, Option<crate::backend::virsh::parse_help::HelpDoc>),
 }
 
@@ -957,11 +1014,7 @@ impl App {
     }
 
     pub(super) fn open_async_palette(&mut self) {
-        let context = self
-            .detail
-            .as_ref()
-            .map(|detail| detail.domain.clone())
-            .unwrap_or_else(|| self.dash.selected().name.clone());
+        let context = self.current_domain_name();
         let entries: Vec<_> = self
             .virsh_index
             .as_deref()
@@ -1044,7 +1097,11 @@ impl App {
             return;
         }
         match result {
-            Ok(HelpData::Index(entries)) => {
+            Ok(HelpData::Index(None)) => {
+                // Not cached: the next completion/palette asks virsh again.
+                self.show_message(String::from("✗ virsh help is unavailable; completion will retry"));
+            }
+            Ok(HelpData::Index(Some(entries))) => {
                 if task.palette
                     && let Some(palette) = self.palette.as_mut()
                 {
