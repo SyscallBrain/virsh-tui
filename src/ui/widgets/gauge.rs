@@ -1,4 +1,3 @@
-//! gauge widget.
 //! LineGauge widget: thin wrapper over charts::lg.
 pub use super::charts::{lg, lvl};
 /// Render a line gauge cell.

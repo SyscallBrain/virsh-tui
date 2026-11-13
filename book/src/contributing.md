@@ -49,7 +49,7 @@ cargo test --features it
 | `src/input/` | key engine, key map, the `:` parser, Tab completion |
 | `src/theme/` | built-in themes, custom theme loading, the 256-colour fallback |
 | `book/` | this documentation (mdBook) |
-| `docs/` | the UI design spec |
+| `docs/` | the UI design spec (`DESIGN.md`) and the release process (`RELEASE.md`) |
 
 ## Screenshots
 

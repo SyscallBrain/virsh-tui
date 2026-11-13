@@ -1,4 +1,3 @@
-//! table widget.
 //! Table widget: header + hl separator + rows + selection marker.
 pub const SELECT_MARK: char = '\u{258c}';
 pub const MARK_GLYPH: char = '\u{25c6}';

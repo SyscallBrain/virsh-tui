@@ -1,4 +1,3 @@
-//! stacked_bar widget.
 //! Stacked bar.
 pub const PALETTE: [&str; 9] = [
     "orange", "blue", "magenta", "cyan", "green", "yellow", "teal", "red", "fg2",

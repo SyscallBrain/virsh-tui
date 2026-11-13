@@ -1,4 +1,3 @@
-//! keyhints widget.
 //! KeyHints.
 pub fn hints(pairs: &[(&str, &str)]) -> String {
     pairs

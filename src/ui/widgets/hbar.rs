@@ -1,4 +1,3 @@
-//! hbar widget.
 //! HBar widget: thin wrapper over charts::hbar.
 pub use super::charts::hbar;
 /// Render an HBar cell: bar + right-aligned percent.

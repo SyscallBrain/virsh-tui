@@ -1,4 +1,4 @@
-//! Chart maths ported 1:1 from the design spec.
+//! Chart maths ported 1:1 from the original Main mockup.
 //!
 //! Functions: rng, series, sample, braille, spark_rows, hbar, lg, lvl, grad.
 

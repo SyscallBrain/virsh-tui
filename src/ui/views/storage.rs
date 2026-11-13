@@ -92,7 +92,7 @@ pub fn volume_key(pool: &str, volume: &str) -> String {
 }
 
 impl StorageState {
-    /// Demo state from the design spec.
+    /// Demo state from the original Storage mockup renderVals().
     pub fn demo() -> Self {
         Self {
             pools: vec![

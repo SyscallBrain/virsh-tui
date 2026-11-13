@@ -1,6 +1,7 @@
 # virsh-tui — Design Spec
 
-This document is the source of truth for the UI. Every screen on the canvas maps to a section below.
+This document is the source of truth for the UI. Every screen maps to a section below; demo mode (`--demo`) renders
+the reference data for each one.
 Stack: Rust + ratatui (+ crossterm). Every effect in the design is achievable with per-cell fg/bg/modifiers —
 nothing relies on pixel tricks.
 
@@ -42,7 +43,7 @@ Themes are a flat set of 16 semantic tokens. All widgets use tokens only — nev
 | `red`     | crashed, destructive, CONFIRM mode, CPU hot       | `#f7768e` |
 | `teal`    | CPU chart base gradient                           | `#73daca` |
 
-Built-in themes (exact hex values are in every artboard's script, `THEMES` map, key order:
+Built-in themes (exact hex values are in `src/theme/builtin.rs`, key order:
 `bg bg2 hl sel gutter comment fg fg2 blue cyan magenta green yellow orange red teal`):
 
 - `tokyo-night` (**default**), `tokyo-night-storm`, `tokyo-night-day` (light)

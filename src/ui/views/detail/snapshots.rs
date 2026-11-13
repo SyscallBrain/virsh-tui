@@ -229,7 +229,7 @@ pub fn snap_info(xml: &str, rows: &[Snapshot]) -> Option<SnapInfo> {
 }
 
 impl SnapshotState {
-    /// Demo 7-snapshot tree from the design spec.
+    /// Demo 7-snapshot tree from the original Snapshots mockup.
     pub fn demo() -> Self {
         let raw = [
             ("", "base-install", "2026-07-02", "shutoff", "disk", false, false),

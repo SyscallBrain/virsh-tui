@@ -1,4 +1,4 @@
-//! Demo backend data transcribed from the design spec.
+//! Demo backend data transcribed from the original Main mockup renderVals().
 
 use crate::model::DomainState;
 

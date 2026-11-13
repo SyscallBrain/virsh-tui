@@ -248,7 +248,7 @@ impl HostState {
         }
     }
 
-    /// Demo state matching the design spec.
+    /// Demo state matching the original Host mockup renderVals().
     pub fn demo() -> Self {
         let mut rng = charts::Rng::new(99);
         let mut threads = Vec::new();

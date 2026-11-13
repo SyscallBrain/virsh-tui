@@ -95,7 +95,7 @@ pub struct NetworksState {
 }
 
 impl NetworksState {
-    /// Demo state from the design spec.
+    /// Demo state from the original Networks mockup renderVals().
     pub fn demo() -> Self {
         let networks = vec![
             NetRow {

@@ -1,4 +1,4 @@
-//! The 9 built-in themes. Hex values must match docs/DESIGN.md exactly.
+//! The 9 built-in themes. These hex values are the reference (DESIGN.md §1 lists each token's role).
 
 use super::{Theme, ThemeTokens, rgb};
 
@@ -182,7 +182,7 @@ theme!(
     "#83c092"
 );
 
-/// All 9 built-in themes in design order.
+/// All 9 built-in themes, in picker order.
 pub fn all() -> Vec<Theme> {
     vec![
         tokyo_night(),
