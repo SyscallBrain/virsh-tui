@@ -1,7 +1,10 @@
 # CPU performance results
 
-Measured on 2026-11-13 against baseline `a1c42067234cfcbb2b2b9e73f94beb490c4c1884`
-(the commit this branch starts from).
+Measured on 2026-11-13 against baseline `a1c42067234cfcbb2b2b9e73f94beb490c4c1884`,
+the commit this work originally started from. The branch was later rebased onto
+`0e43523`, where `main` had already changed metrics ingestion to move previous
+counters out of the map instead of cloning them. These numbers were not
+re-measured on the rebased tree.
 
 ## Reproduction
 
