@@ -166,7 +166,7 @@ runs the real binary against a fake `virsh` that reports 12 networks and counts
 how many `net-dumpxml` processes are in flight. It asserts the peak is above 1 and
 within `READ_CONCURRENCY`; the serial implementation peaked at 1.
 
-Validation: `cargo fmt --check`, strict Clippy for all targets, all 479 tests
+Validation: `cargo fmt --check`, strict Clippy for all targets, all 480 tests
 (including nine performance regression tests), and `mdbook build book` pass.
 The full-screen snapshots required no updates. Independent read-only review
 covered the algorithms, command-preview reuse, metrics semantics and benchmark
