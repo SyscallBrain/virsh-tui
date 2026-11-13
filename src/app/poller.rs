@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
+use crate::backend::virsh::host_local::{CpuTimes, parse_node_facts, parse_nodecpustats};
 use crate::backend::{Backend, RawDomainStats, virsh::VirshBackend};
-use crate::model::{DomainConfig, DomainSummary, PoolSummary};
+use crate::model::{DomainConfig, DomainSummary, NodeStats, PoolSummary};
 
 /// Data produced by the poller.
 #[derive(Debug)]
@@ -29,6 +30,13 @@ pub enum LiveMsg {
     /// The refresh failed (connection lost); the poller backs off.
     Failed(String),
     Pools(Vec<PoolSummary>),
+    /// Remote hypervisor sample (remote URIs only): whole-host CPU counters,
+    /// memory and the static facts; `hostname` once, from `virsh hostname`.
+    Node {
+        cpu: Option<CpuTimes>,
+        stats: NodeStats,
+        hostname: Option<String>,
+    },
     Config(String, DomainConfig),
     Ip(String, String),
 }
@@ -49,11 +57,16 @@ pub struct Poller {
     pub rx: mpsc::Receiver<LiveMsg>,
     pub tx: mpsc::UnboundedSender<Request>,
     task: tokio::task::JoinHandle<()>,
+    /// Remote host sampler (remote URIs only).
+    node_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for Poller {
     fn drop(&mut self) {
         self.task.abort();
+        if let Some(t) = &self.node_task {
+            t.abort();
+        }
     }
 }
 
@@ -83,6 +96,10 @@ pub fn spawn(uri: &str, interval_secs: u64, balloon_period: Option<u64>) -> Poll
     let (out_tx, rx) = mpsc::channel(64);
     let (tx, mut req_rx) = mpsc::unbounded_channel();
     let uri = uri.to_string();
+    // Remote hosts: /proc is the wrong machine, so CPU and memory come from
+    // libvirt in a task of their own; a slow SSH round trip never delays the
+    // domain sample.
+    let node_task = (!is_local_uri(&uri)).then(|| spawn_node(uri.clone(), interval_secs, out_tx.clone()));
     let task = tokio::spawn(async move {
         let backend = VirshBackend::new(&uri);
         let local = is_local_uri(&uri);
@@ -236,7 +253,66 @@ pub fn spawn(uri: &str, interval_secs: u64, balloon_period: Option<u64>) -> Poll
             }
         }
     });
-    Poller { rx, tx, task }
+    Poller {
+        rx,
+        tx,
+        task,
+        node_task,
+    }
+}
+
+/// Sample a remote hypervisor every `interval_secs`: one `virsh` process
+/// (one SSH session) runs `nodecpustats; nodememstats` per tick. The raw CPU
+/// counters return at once (`--percent` would block for a second); the
+/// busy fraction is computed from consecutive samples by the metrics store.
+/// Failures are skipped silently: the domain poll reports a lost connection.
+fn spawn_node(uri: String, interval_secs: u64, out_tx: mpsc::Sender<LiveMsg>) -> tokio::task::JoinHandle<()> {
+    use crate::backend::virsh::exec::run;
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs.max(1)));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut nodeinfo: Option<String> = None;
+        let mut hostname_sent = false;
+        loop {
+            ticker.tick().await;
+            if nodeinfo.is_none() {
+                nodeinfo = run(&uri, &["nodeinfo"]).await.ok();
+            }
+            let hostname = if hostname_sent {
+                None
+            } else {
+                run(&uri, &["hostname"])
+                    .await
+                    .ok()
+                    .map(|h| crate::model::sanitize(h.trim()))
+                    .filter(|h| !h.is_empty())
+            };
+            hostname_sent |= hostname.is_some();
+            // Drivers without node CPU stats fail the pair: memory alone then.
+            let text = match run(&uri, &["nodecpustats; nodememstats"]).await {
+                Ok(text) => text,
+                Err(_) => match run(&uri, &["nodememstats"]).await {
+                    Ok(text) => text,
+                    Err(_) => continue,
+                },
+            };
+            let (cpu_model, threads, mem_total_kib, mem_available_kib) =
+                parse_node_facts(nodeinfo.as_deref().unwrap_or(""), &text);
+            let msg = LiveMsg::Node {
+                cpu: parse_nodecpustats(&text),
+                stats: NodeStats {
+                    cpu_model,
+                    threads,
+                    mem_total_kib,
+                    mem_available_kib,
+                },
+                hostname,
+            };
+            if out_tx.send(msg).await.is_err() {
+                break;
+            }
+        }
+    })
 }
 
 /// rx/tx byte counters of every bridge in /sys/class/net (virbrN, br0, …),
@@ -287,7 +363,15 @@ pub(super) fn test_poller() -> (Poller, mpsc::UnboundedReceiver<Request>) {
     let (_out, rx) = mpsc::channel(1);
     let (tx, requests) = mpsc::unbounded_channel();
     let task = tokio::spawn(std::future::pending());
-    (Poller { rx, tx, task }, requests)
+    (
+        Poller {
+            rx,
+            tx,
+            task,
+            node_task: None,
+        },
+        requests,
+    )
 }
 
 #[cfg(test)]
@@ -295,7 +379,15 @@ pub(super) fn test_poller_with_messages() -> (Poller, mpsc::Sender<LiveMsg>) {
     let (out, rx) = mpsc::channel(128);
     let (tx, _requests) = mpsc::unbounded_channel();
     let task = tokio::spawn(std::future::pending());
-    (Poller { rx, tx, task }, out)
+    (
+        Poller {
+            rx,
+            tx,
+            task,
+            node_task: None,
+        },
+        out,
+    )
 }
 
 #[cfg(test)]

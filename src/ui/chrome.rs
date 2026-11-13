@@ -4,7 +4,7 @@
 //! message colouring are identical everywhere. In live mode the hostname and
 //! clock are real; demo/tests keep the mockup values (`forge`, frozen time).
 
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 use ratatui::{
     Frame,
@@ -16,7 +16,8 @@ use ratatui::{
 
 use crate::theme::Theme;
 
-/// Live chrome facts (set once at startup in live mode).
+/// Live chrome facts (set once at startup in live mode; the hostname follows
+/// the connection through [`set_hostname`]).
 #[derive(Debug, Clone)]
 pub struct LiveChrome {
     pub hostname: String,
@@ -25,9 +26,20 @@ pub struct LiveChrome {
 
 static LIVE: OnceLock<LiveChrome> = OnceLock::new();
 
+/// Hostname of the current connection, replacing [`LiveChrome::hostname`]
+/// once set (`:connect` to a remote host, `virsh hostname`).
+static HOSTNAME: RwLock<Option<String>> = RwLock::new(None);
+
 /// Switch the chrome to live values (real hostname + wall clock).
 pub fn set_live(info: LiveChrome) {
     let _ = LIVE.set(info);
+}
+
+/// Show `name` as the host in the top bar (live mode only).
+pub fn set_hostname(name: &str) {
+    if let Ok(mut h) = HOSTNAME.write() {
+        *h = Some(name.to_string());
+    }
 }
 
 /// True once live mode is active (false in demo and tests).
@@ -98,7 +110,15 @@ pub fn topbar(
         left.extend(tab_spans(theme, n, label, active == Some(i)));
     }
     let (host, refresh, time) = match LIVE.get() {
-        Some(l) => (l.hostname.clone(), format!("{}s", l.refresh_secs), now_hms()),
+        Some(l) => (
+            HOSTNAME
+                .read()
+                .ok()
+                .and_then(|h| h.clone())
+                .unwrap_or_else(|| l.hostname.clone()),
+            format!("{}s", l.refresh_secs),
+            now_hms(),
+        ),
         None => (String::from("forge"), String::from("1s"), demo_time.to_string()),
     };
     let dim = Style::default().fg(t.comment).bg(t.bg2);

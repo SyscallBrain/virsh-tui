@@ -83,6 +83,10 @@ pub struct HostState {
     pub message: String,
     pub uri: String,
     pub connected: bool,
+    /// Remote hypervisor: CPU and memory come from libvirt (`nodecpustats`,
+    /// `nodememstats`); per-thread meters, frequency, temperature and load
+    /// need this machine's /proc and /sys and are not shown.
+    pub remote: bool,
 }
 
 impl HostState {
@@ -142,6 +146,7 @@ impl HostState {
             message: String::from("-- sampling virsh domstats every 1000 ms --"),
             uri: String::from("qemu:///system"),
             connected: true,
+            remote: false,
         }
     }
 
@@ -164,7 +169,19 @@ impl HostState {
             self.threads.clone_from(&m.host.threads);
             self.threads_total = self.threads.len() as u32;
         }
-        if crate::app::poller::is_local_uri(&dash.uri) {
+        if self.remote {
+            if let Some(node) = &dash.node {
+                let gib = |k: u64| (k as f64 / 1024.0 / 1024.0 * 10.0).round() / 10.0;
+                if node.threads > 0 {
+                    self.threads_total = node.threads;
+                }
+                if node.mem_total_kib > 0 {
+                    self.mem_total_gib = gib(node.mem_total_kib);
+                    self.mem_used_gib = gib(node.mem_total_kib.saturating_sub(node.mem_available_kib));
+                    self.mem_free_gib = gib(node.mem_available_kib);
+                }
+            }
+        } else if crate::app::poller::is_local_uri(&dash.uri) {
             let mem = crate::backend::virsh::host_local::parse_meminfo(
                 &std::fs::read_to_string("/proc/meminfo").unwrap_or_default(),
             );
@@ -466,6 +483,7 @@ impl HostState {
             message: String::from("-- sampling virConnectGetAllDomainStats every 1000 ms --"),
             uri: String::from("qemu:///system"),
             connected: true,
+            remote: false,
         }
     }
 }
@@ -592,7 +610,12 @@ fn render_cpu(frame: &mut Frame, theme: &Theme, state: &HostState, area: Rect, m
         format!("per-thread {}", "─".repeat(inner_w)),
         theme.dim(),
     )));
-    if meters && !state.threads.is_empty() {
+    if state.remote {
+        lines.push(Line::from(Span::styled(
+            "     remote host: per-thread meters need local /proc",
+            theme.dim(),
+        )));
+    } else if meters && !state.threads.is_empty() {
         render_meters(theme, state, inner_w, &mut lines);
     } else if meters {
         lines.push(Line::from(Span::styled(
@@ -604,15 +627,23 @@ fn render_cpu(frame: &mut Frame, theme: &Theme, state: &HostState, area: Rect, m
         .temp_c
         .map(|c| format!("{c:.0}°C"))
         .unwrap_or_else(|| String::from("—"));
-    let right = format!(
-        "{}% · {:.1} GHz · {} · load {:.2} {:.2} {:.2}",
-        (state.cpu_frac * 100.0).round() as u32,
-        state.ghz,
-        temp,
-        state.load.0,
-        state.load.1,
-        state.load.2
-    );
+    let right = if state.remote {
+        format!(
+            "{}% · {} threads",
+            (state.cpu_frac * 100.0).round() as u32,
+            state.threads_total
+        )
+    } else {
+        format!(
+            "{}% · {:.1} GHz · {} · load {:.2} {:.2} {:.2}",
+            (state.cpu_frac * 100.0).round() as u32,
+            state.ghz,
+            temp,
+            state.load.0,
+            state.load.1,
+            state.load.2
+        )
+    };
     let title = format!("CPU · {}", state.cpu_model);
     let block = panel_block(theme, false, &title, Some(right));
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
@@ -698,7 +729,7 @@ fn render_memory(frame: &mut Frame, theme: &Theme, state: &HostState, area: Rect
         theme.dim(),
     )]));
     let right = format!("{} used · {} free", state.mem_used_gib, state.mem_free_gib);
-    let title = format!("Memory · {} GiB", state.mem_total_gib as u32);
+    let title = format!("Memory · {:.0} GiB", state.mem_total_gib);
     let block = panel_block(theme, false, &title, Some(right));
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
 }

@@ -259,6 +259,16 @@ pub struct HostInfo {
     pub mem_kib: u64,
 }
 
+/// Remote hypervisor facts sampled through libvirt (`virsh nodeinfo`,
+/// `nodememstats`), for URIs where this machine's `/proc` does not apply.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NodeStats {
+    pub cpu_model: String,
+    pub threads: u32,
+    pub mem_total_kib: u64,
+    pub mem_available_kib: u64,
+}
+
 /// Libvirt event (subset for P2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LibvirtEvent {

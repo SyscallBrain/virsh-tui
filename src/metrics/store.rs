@@ -135,6 +135,8 @@ pub struct HostSeries {
     pub cpu: Ring,
     pub threads: Vec<f64>,
     prev: Vec<CpuTimes>,
+    /// Previous whole-host counters of a remote hypervisor (`nodecpustats`).
+    node_prev: Option<CpuTimes>,
 }
 
 impl Default for HostSeries {
@@ -143,6 +145,7 @@ impl Default for HostSeries {
             cpu: Ring::new(HISTORY_MAX),
             threads: Vec::new(),
             prev: Vec::new(),
+            node_prev: None,
         }
     }
 }
@@ -357,6 +360,19 @@ impl MetricsStore {
         self.host.prev = cur;
     }
 
+    /// Ingest whole-host CPU counters of a remote hypervisor (`virsh
+    /// nodecpustats`): one CPU history sample per pair, no per-thread data.
+    /// Counters that went backwards (host rebooted) restart the pair.
+    pub fn ingest_node_cpu(&mut self, cur: CpuTimes) {
+        if let Some(prev) = self.host.node_prev
+            && cur.total > prev.total
+            && cur.idle >= prev.idle
+        {
+            self.host.cpu.push((cpu_busy_fraction(prev, cur) * 100.0) as f32);
+        }
+        self.host.node_prev = Some(cur);
+    }
+
     /// Ingest cumulative rx/tx byte counters of host interfaces (bridges).
     pub fn ingest_ifaces(&mut self, counters: &HashMap<String, (u64, u64)>, now: Instant) {
         self.ifaces.retain(|k, _| counters.contains_key(k));
@@ -507,6 +523,31 @@ mod tests {
         assert_eq!(d.now.mem_used_kib, 3_000_000);
         assert_eq!(d.now.first_disk, "vda");
         assert_eq!(d.cpu.len(), 1);
+    }
+
+    #[test]
+    fn remote_node_cpu_from_counter_pairs() {
+        let mut m = MetricsStore::default();
+        m.ingest_node_cpu(CpuTimes {
+            total: 1000,
+            idle: 900,
+        });
+        assert_eq!(m.host.cpu.len(), 0, "first sample has no delta");
+        m.ingest_node_cpu(CpuTimes {
+            total: 2000,
+            idle: 1650,
+        });
+        assert!((m.host.cpu.last().unwrap() - 25.0).abs() < 0.01);
+        // Host rebooted: counters went backwards, the pair restarts.
+        m.ingest_node_cpu(CpuTimes { total: 50, idle: 40 });
+        assert_eq!(m.host.cpu.len(), 1);
+        m.ingest_node_cpu(CpuTimes {
+            total: 150,
+            idle: 140,
+        });
+        assert_eq!(m.host.cpu.len(), 2);
+        assert_eq!(m.host.cpu.last(), Some(0.0));
+        assert!(m.host.threads.is_empty(), "remote hosts have no per-thread data");
     }
 
     #[test]

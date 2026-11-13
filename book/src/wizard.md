@@ -2,9 +2,10 @@
 
 ![New domain wizard](images/wizard.png)
 
-`Space n` opens the new domain wizard. On a remote connection the first
-`Space n` reads the host's CPU and memory with `virsh nodeinfo` /
-`nodememstats` (press it again a moment later). It collects what `virt-install` needs
+`Space n` opens the new domain wizard. On a remote connection the host's
+threads and free memory come from the live `virsh nodeinfo` / `nodememstats`
+sample; right after connecting, before the first sample arrives, `Space n`
+asks you to press it again a moment later. It collects what `virt-install` needs
 in six steps and shows the resulting command at the bottom, highlighting the
 part that belongs to the current step. The command shown is the one that
 runs.

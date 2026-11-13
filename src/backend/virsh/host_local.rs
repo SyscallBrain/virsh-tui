@@ -283,3 +283,83 @@ pub fn parse_node_facts(nodeinfo: &str, memstats: &str) -> (String, u32, u64, u6
     };
     (model, threads, total, available)
 }
+
+/// Whole-host CPU counters from `virsh nodecpustats` (cumulative ns, any URI).
+///
+/// Unlike `--percent`, which blocks for a second while it samples, the raw
+/// counters return at once; the busy fraction comes from two samples, the
+/// same way `/proc/stat` is read locally. libvirt already folds nice, irq
+/// and softirq into `user`/`system`, and `guest` is part of `user`.
+pub fn parse_nodecpustats(text: &str) -> Option<CpuTimes> {
+    let mut total = 0u64;
+    let mut idle = 0u64;
+    let mut seen = false;
+    for line in text.lines() {
+        let Some((key, val)) = line.split_once(':') else {
+            continue;
+        };
+        let Ok(ns) = val.trim().parse::<u64>() else {
+            continue;
+        };
+        match key.trim() {
+            "user" | "system" => total += ns,
+            "idle" | "iowait" => {
+                total += ns;
+                idle += ns;
+            }
+            _ => continue,
+        }
+        seen = true;
+    }
+    (seen && total > 0).then_some(CpuTimes { total, idle })
+}
+
+#[cfg(test)]
+mod node_tests {
+    use super::*;
+
+    #[test]
+    fn nodecpustats_counters() {
+        let text = include_str!("../../../tests/fixtures/virsh/nodecpustats.txt");
+        let t = parse_nodecpustats(text).unwrap();
+        assert_eq!(t.idle, 5_463_520_130_000_000 + 10_339_240_000_000);
+        assert_eq!(
+            t.total,
+            305_254_360_000_000 + 81_362_950_000_000 + 5_463_520_130_000_000 + 10_339_240_000_000
+        );
+    }
+
+    #[test]
+    fn nodecpustats_busy_between_samples() {
+        let a = parse_nodecpustats("user: 100\nsystem: 0\nidle: 900\niowait: 0\n").unwrap();
+        let b = parse_nodecpustats("user: 400\nsystem: 100\nidle: 1500\niowait: 0\n").unwrap();
+        assert!((cpu_busy_fraction(a, b) - 0.4).abs() < 1e-9);
+    }
+
+    #[test]
+    fn nodecpustats_rejects_garbage() {
+        assert_eq!(parse_nodecpustats(""), None);
+        assert_eq!(parse_nodecpustats("error: failed to connect\n"), None);
+    }
+
+    #[test]
+    fn node_facts_from_fixtures() {
+        let (model, threads, total, available) = parse_node_facts(
+            include_str!("../../../tests/fixtures/virsh/nodeinfo.txt"),
+            include_str!("../../../tests/fixtures/virsh/nodememstats.txt"),
+        );
+        assert_eq!(
+            (model.as_str(), threads, total, available),
+            ("x86_64", 6, 8_067_340, 4_726_880)
+        );
+    }
+
+    #[test]
+    fn node_facts_without_available() {
+        let (_, _, total, available) = parse_node_facts(
+            "",
+            "total: 1000 KiB\nfree: 200 KiB\nbuffers: 100 KiB\ncached: 300 KiB\n",
+        );
+        assert_eq!((total, available), (1000, 600));
+    }
+}

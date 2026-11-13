@@ -113,7 +113,7 @@ pub async fn run_with_shutdown(
     crate::command::exec::set_demo(cli.demo);
     if !cli.demo {
         crate::ui::chrome::set_live(crate::ui::chrome::LiveChrome {
-            hostname: crate::backend::virsh::hostname(),
+            hostname: connection_hostname(&cli.connect),
             refresh_secs: config.general.refresh_interval_secs.max(1),
         });
     }
@@ -127,6 +127,7 @@ pub async fn run_with_shutdown(
     } else {
         let mut dashboard = ui::views::dashboard::DashboardState::from_summaries(&[]);
         dashboard.message = String::from("loading…");
+        dashboard.hostname = connection_hostname(&cli.connect);
         dashboard
     };
 
@@ -1652,11 +1653,11 @@ impl App {
                         self.dash.host_pools.clear();
                         self.dash.host_title.clear();
                         self.dash.metrics = Default::default();
-                        self.dash.hostname = if is_local_uri(&self.uri) {
-                            crate::backend::virsh::hostname()
-                        } else {
-                            remote_host_label(&self.uri)
-                        };
+                        self.dash.node = None;
+                        self.dash.hostname = connection_hostname(&self.uri);
+                        if !self.demo {
+                            crate::ui::chrome::set_hostname(&self.dash.hostname);
+                        }
                         self.events_state.events.clear();
                         self.events_state.selected = 0;
                         self.events_state.uri.clone_from(&self.uri);
@@ -2483,11 +2484,16 @@ impl App {
                 }
                 (_, A::NewDomain) => {
                     let remote = !self.demo && !is_local_uri(&self.uri);
-                    if remote && (self.host.uri != self.uri || self.host.threads_total == 0) {
-                        // Capacity comes from `virsh nodeinfo` (Host view load).
-                        self.request_view_load(View::Host);
+                    // Remote capacity comes from the poller's node sample
+                    // (`nodeinfo` + `nodememstats`), refreshed every tick.
+                    let node = self
+                        .dash
+                        .node
+                        .clone()
+                        .filter(|n| n.threads > 0 && n.mem_total_kib > 0);
+                    if remote && node.is_none() {
                         self.show_message(String::from(
-                            "loading the remote host's capacity… press ␣n again in a moment",
+                            "reading the remote host's capacity… press ␣n again in a moment",
                         ));
                         continue;
                     }
@@ -2499,9 +2505,9 @@ impl App {
                         &self.config.wizard.iso_dirs,
                         self.demo,
                     );
-                    if remote {
-                        facts.threads = self.host.threads_total.max(1);
-                        facts.free_gib = self.host.mem_free_gib;
+                    if let (true, Some(node)) = (remote, node) {
+                        facts.threads = node.threads;
+                        facts.free_gib = node.mem_available_kib as f64 / 1024.0 / 1024.0;
                         // /dev/kvm describes this machine, not the remote host.
                         facts.no_kvm = false;
                     }
@@ -2704,6 +2710,16 @@ fn is_block_resize(line: &str) -> bool {
         crate::input::ex::parse(line),
         Ok(crate::input::ex::ExCommand::Resize(..))
     )
+}
+
+/// Hostname to show for `uri` until libvirt reports one: this machine for
+/// local URIs, the URI's host part for remote ones.
+fn connection_hostname(uri: &str) -> String {
+    if is_local_uri(uri) {
+        crate::backend::virsh::hostname()
+    } else {
+        remote_host_label(uri)
+    }
 }
 
 /// Host part of a remote URI (`qemu+ssh://user@srv/system` → `srv`).

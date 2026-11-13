@@ -15,9 +15,12 @@ The running domains are sorted by CPU use, busiest first.
 | `gg` / `G` | first / last domain |
 | `Enter` | open that domain's detail |
 
-Per-thread CPU meters, temperatures and memory details are read from `/proc`
-and `/sys`, so they are only shown for local connections. For a remote URI
-the CPU model, thread count and memory come from `virsh nodeinfo` and
-`virsh nodememstats`; per-thread sampling is unavailable. The view also shows
-libvirt information, pools and networks. Per-thread sampling can be turned off with
+Per-thread CPU meters, frequency, temperature, load and the hugepages/KSM/swap
+details are read from `/proc` and `/sys`, so they are only shown for local
+connections. For a remote URI (`qemu+ssh://…`) libvirt reports the host
+instead: the CPU model and thread count come from `virsh nodeinfo`, and the
+CPU history and used memory are sampled every refresh with `virsh
+nodecpustats` and `virsh nodememstats` (one SSH session per refresh). The
+Domains view's Host panel shows the same CPU and RAM gauges. The view also
+shows libvirt information, pools and networks. Per-thread sampling can be turned off with
 `monitoring.thread_sampling = false`.

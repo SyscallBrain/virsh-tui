@@ -108,6 +108,8 @@ pub struct DashboardState {
     pub host_pools: Vec<(String, f64, String)>,
     /// Host panel right title (cpu model · threads · memory).
     pub host_title: String,
+    /// Latest remote hypervisor sample (remote URIs; `None` until it arrives).
+    pub node: Option<crate::model::NodeStats>,
     pub hostname: String,
     /// Graceful shutdowns being tracked until the guest powers off.
     pub shutdowns: Vec<PendingShutdown>,
@@ -174,6 +176,7 @@ impl DashboardState {
             host_gauges: Vec::new(),
             host_pools: Vec::new(),
             host_title: String::new(),
+            node: None,
             hostname: String::from("forge"),
             shutdowns: Vec::new(),
             visual_anchor: None,
@@ -218,6 +221,7 @@ impl DashboardState {
             host_gauges: Vec::new(),
             host_pools: Vec::new(),
             host_title: String::new(),
+            node: None,
             hostname: crate::backend::virsh::hostname(),
             shutdowns: Vec::new(),
             visual_anchor: None,

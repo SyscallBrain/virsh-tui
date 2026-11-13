@@ -1061,3 +1061,71 @@ async fn wizard_review_cannot_submit_and_compact_actions_are_not_overpainted() {
         assert!(app.wizard.as_ref().unwrap().command_review);
     }
 }
+
+fn remote_node(cpu: (u64, u64)) -> LiveMsg {
+    LiveMsg::Node {
+        cpu: Some(crate::backend::virsh::host_local::CpuTimes {
+            total: cpu.0,
+            idle: cpu.1,
+        }),
+        stats: crate::model::NodeStats {
+            cpu_model: String::from("AMD Ryzen 9 7950X 16-Core Processor"),
+            threads: 32,
+            mem_total_kib: 64 * 1024 * 1024,
+            mem_available_kib: 48 * 1024 * 1024,
+        },
+        hostname: Some(String::from("hypervisor-01")),
+    }
+}
+
+#[test]
+fn remote_node_sample_feeds_the_host_panel() {
+    let uri = "qemu+ssh://admin@srv/system";
+    let mut dash = ui::views::dashboard::DashboardState::from_summaries(&[]);
+    dash.host_pools = vec![("pool:default".into(), 0.5, "100/200G".into())];
+    apply_live_msg(uri, &mut dash, remote_node((1000, 900)));
+    // First sample: memory is known, CPU needs a second pair.
+    let labels: Vec<&str> = dash.host_gauges.iter().map(|g| g.0.as_str()).collect();
+    assert_eq!(labels, ["RAM", "pool:default"]);
+    assert_eq!(dash.hostname, "hypervisor-01");
+    apply_live_msg(uri, &mut dash, remote_node((2000, 1650)));
+    let labels: Vec<&str> = dash.host_gauges.iter().map(|g| g.0.as_str()).collect();
+    assert_eq!(labels, ["CPU", "pool:default", "RAM"]);
+    assert_eq!(dash.host_gauges[0].2, "25%");
+    assert_eq!(dash.host_gauges[2].2, "16.0/64G");
+    assert_eq!(dash.host_title, "AMD Ryzen 9 7950X 16-Core · 32t · 64 GiB");
+
+    let mut host = ui::views::host::HostState {
+        uri: uri.into(),
+        remote: true,
+        ..Default::default()
+    };
+    dash.uri = uri.into();
+    host.apply_live(&dash);
+    assert_eq!(host.threads_total, 32);
+    assert_eq!(
+        (host.mem_total_gib, host.mem_used_gib, host.mem_free_gib),
+        (64.0, 16.0, 48.0)
+    );
+    assert!((host.cpu_frac - 0.25).abs() < 0.01);
+}
+
+#[tokio::test]
+async fn remote_wizard_uses_the_node_sample() {
+    let mut app = fixture_app();
+    run_ex(&mut app, "connect qemu+ssh://admin@srv/system");
+    assert!(
+        app.dash.node.is_none(),
+        ":connect drops the previous host's sample"
+    );
+    app.handle_key_event(plain(' '));
+    app.handle_key_event(plain('n'));
+    assert!(app.wizard.is_none(), "no capacity yet: the wizard waits");
+    apply_live_msg(&app.uri.clone(), &mut app.dash, remote_node((1000, 900)));
+    app.handle_key_event(plain(' '));
+    app.handle_key_event(plain('n'));
+    let host = &app.wizard.as_ref().expect("wizard opens").host;
+    assert_eq!(host.threads, 32);
+    assert!((host.free_gib - 48.0).abs() < 0.01);
+    assert!(!host.local && !host.no_kvm);
+}

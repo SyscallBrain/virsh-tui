@@ -32,7 +32,12 @@ pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
             mem_total_gib: gib(total_kib),
             mem_free_gib: gib(available_kib),
             mem_used_gib: gib(total_kib.saturating_sub(available_kib)),
-            message: String::from("Remote host: per-thread CPU metrics are unavailable"),
+            message: String::from("-- sampling virsh nodecpustats + nodememstats --"),
+            remote: true,
+            // /proc/meminfo details of a remote host are not reported by libvirt.
+            hugepages: String::from("—"),
+            ksm: String::from("—"),
+            swap: String::from("—"),
             ..Default::default()
         }
     };
@@ -171,7 +176,20 @@ pub(super) fn apply_live_msg(uri: &str, dash: &mut ui::views::dashboard::Dashboa
             dash.connected = true;
             if is_local_uri(uri) {
                 update_host_gauges(dash);
+            } else {
+                update_remote_host_gauges(dash);
             }
+        }
+        LiveMsg::Node { cpu, stats, hostname } => {
+            if let Some(cpu) = cpu {
+                dash.metrics.ingest_node_cpu(cpu);
+            }
+            if let Some(name) = hostname {
+                crate::ui::chrome::set_hostname(&name);
+                dash.hostname = name;
+            }
+            dash.node = Some(stats);
+            update_remote_host_gauges(dash);
         }
         LiveMsg::Failed(e) => {
             dash.connected = false;
@@ -258,6 +276,45 @@ pub(super) fn update_host_gauges(dash: &mut ui::views::dashboard::DashboardState
     }
     if let Some(p) = it.next() {
         g.insert(3, p);
+    }
+    dash.host_gauges = g;
+}
+
+/// Host panel gauges of a remote hypervisor (libvirt node stats) plus the
+/// cached pool gauges, in the same row-major order as the local panel:
+/// CPU, Pool1, RAM, Pool2. Swap and hugepages are not reported by libvirt.
+pub(super) fn update_remote_host_gauges(dash: &mut ui::views::dashboard::DashboardState) {
+    let Some(node) = &dash.node else {
+        return;
+    };
+    let gib = |kib: u64| kib as f64 / 1024.0 / 1024.0;
+    let used = node.mem_total_kib.saturating_sub(node.mem_available_kib);
+    let mut g = vec![];
+    if let Some(cpu) = dash.metrics.host.cpu.last() {
+        let cpu = f64::from(cpu) / 100.0;
+        g.push((String::from("CPU"), cpu, format!("{:.0}%", cpu * 100.0)));
+    }
+    if node.mem_total_kib > 0 {
+        g.push((
+            String::from("RAM"),
+            used as f64 / node.mem_total_kib as f64,
+            format!("{:.1}/{:.0}G", gib(used), gib(node.mem_total_kib)),
+        ));
+    }
+    if node.threads > 0 && !node.cpu_model.is_empty() {
+        dash.host_title = format!(
+            "{} · {}t · {:.0} GiB",
+            ui::views::host::short_model(&node.cpu_model),
+            node.threads,
+            gib(node.mem_total_kib)
+        );
+    }
+    let mut it = dash.host_pools.clone().into_iter();
+    if let Some(p) = it.next() {
+        g.insert(g.len().min(1), p);
+    }
+    if let Some(p) = it.next() {
+        g.insert(g.len().min(3), p);
     }
     dash.host_gauges = g;
 }
