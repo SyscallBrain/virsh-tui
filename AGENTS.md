@@ -7,4 +7,4 @@ Rust + ratatui TUI for libvirt/virsh. Everything (UI, code, docs, commits) is in
 - Fidelity log: `docs/FIDELITY.md`. Deviations and assumptions: `docs/DECISIONS.md`.
 - Never mutate libvirt objects that you did not create (`vt-test-*` prefix only). Never use sudo.
 - Gates: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
-- User docs: `book/` (mdBook, published to GitHub Pages); keep it in sync with behaviour. Screenshots: `scripts/screenshots.py` (demo mode only).
+- User docs: `book/` (mdBook, published to GitHub Pages); keep it in sync with behaviour. Screenshots: `scripts/screenshots.py`; README presentation GIF: `scripts/presentation.py` (demo mode only).

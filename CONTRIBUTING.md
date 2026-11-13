@@ -31,7 +31,8 @@ cargo test
   `book/src/` (preview with `mdbook serve book --open`).
 - If a screen changes visibly, regenerate the screenshots with
   `python3 scripts/screenshots.py` (needs a release build, headless Chrome
-  and ImageMagick).
+  and ImageMagick), and the README presentation with
+  `uv run scripts/presentation.py` (also needs uv and ffmpeg).
 
 ## Integration tests
 

@@ -46,6 +46,7 @@ cargo test --features it
 | `src/theme/` | built-in themes, custom theme loading, the 256-colour fallback |
 | `book/` | this documentation (mdBook) |
 | `scripts/screenshots.py` | regenerates the screenshots from demo mode |
+| `scripts/presentation.py` | records the presentation GIF from demo mode |
 | `docs/` | the original design notes and mockups |
 
 ## Screenshots
@@ -59,6 +60,21 @@ python3 scripts/screenshots.py
 ```
 
 The script needs headless Chrome or Chromium and ImageMagick.
+
+The presentation GIF at the top of the README (`images/demo.gif`) is a real
+recording: the script runs `virsh-tui --demo` in a pseudo-terminal, types
+the keys of each scene and draws the frames with headless Chrome. It uses a
+temporary `HOME`, so your config and wizard draft are not touched. Edit the
+`SCENES` list in the script to change what it shows.
+
+```sh
+cargo build --release
+uv run scripts/presentation.py
+```
+
+It needs [uv](https://docs.astral.sh/uv/) (which installs the `pyte`
+terminal emulator), headless Chrome or Chromium, ffmpeg and, optionally,
+gifsicle.
 
 ## Documentation
 
