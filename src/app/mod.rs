@@ -739,6 +739,13 @@ impl App {
     /// Draw one frame (views, overlays, chrome).
     fn draw(&self, f: &mut ratatui::Frame) {
         self.viewport.set(Some(f.area()));
+        // Paint the whole frame first: views leave margins and gutters
+        // untouched, and a cell left at the terminal default shows the host
+        // terminal's own background instead of the theme's.
+        f.render_widget(
+            ratatui::widgets::Block::default().style(self.theme.base()),
+            f.area(),
+        );
         match self.view {
             View::Gallery => ui::views::gallery::render(f, &self.theme),
             View::Host => ui::views::host::render(f, &self.theme, &self.host),
@@ -6171,5 +6178,38 @@ mod review_fixes {
         assert_eq!(a.uri, "qemu:///review-new");
         assert!(a.detail.is_none());
         assert_eq!(a.view, View::Dashboard);
+    }
+
+    /// Every cell must carry the theme background: cells left at the
+    /// terminal default show the host terminal's own colour (herdr-app
+    /// paints them grey, Alacritty happens to match tokyo-night).
+    #[test]
+    fn every_view_paints_every_cell() {
+        for view in [
+            View::Dashboard,
+            View::Host,
+            View::Networks,
+            View::Storage,
+            View::Events,
+            View::Detail,
+        ] {
+            for (w, h) in [(174, 43), (160, 37), (120, 36), (80, 24)] {
+                let mut a = app(view);
+                a.detail = Some(ui::views::detail::DetailState::demo("arch-dev"));
+                let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+                terminal.draw(|f| a.draw(f)).unwrap();
+                let buf = terminal.backend().buffer();
+                let unpainted: Vec<(u16, u16)> = (0..h)
+                    .flat_map(|y| (0..w).map(move |x| (x, y)))
+                    .filter(|&p| buf[p].bg == ratatui::style::Color::Reset)
+                    .collect();
+                assert!(
+                    unpainted.is_empty(),
+                    "{view:?} {w}x{h}: {} unpainted cells, first {:?}",
+                    unpainted.len(),
+                    &unpainted[..unpainted.len().min(5)]
+                );
+            }
+        }
     }
 }
