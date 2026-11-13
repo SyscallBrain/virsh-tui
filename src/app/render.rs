@@ -67,6 +67,9 @@ pub(super) fn render_which_key(
         .borders(Borders::ALL)
         .border_type(theme.border)
         .border_style(Style::default().fg(t.gutter).bg(t.bg));
+    // Clear first: a Paragraph only paints its own text, so short rows would
+    // let the view behind show through.
+    f.render_widget(ratatui::widgets::Clear, rect);
     f.render_widget(Paragraph::new(lines).block(block).style(theme.base()), rect);
 }
 

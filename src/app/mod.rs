@@ -390,6 +390,10 @@ pub async fn run_with_shutdown(
             _ = tokio::time::sleep_until((app.last_key + Duration::from_millis(180)).into()), if app.engine.has_pending_digits() => {
                 app.on_digit_timeout();
             }
+            // Wake up to draw the which-key popup instead of waiting for the tick.
+            _ = tokio::time::sleep_until(
+                (app.which_key_since.unwrap_or(app.last_key) + WHICH_KEY_DELAY).into()
+            ), if app.which_key_since.is_some_and(|t| t.elapsed() < WHICH_KEY_DELAY) => {}
             _ = tokio::time::sleep_until((app.last_key + Z_TIMEOUT).into()), if app.pending_quit_z => {
                 app.on_z_timeout();
             }
@@ -778,7 +782,7 @@ impl App {
             if let Some(prefix) = self.engine.pending_prefix()
                 && self
                     .which_key_since
-                    .is_some_and(|t| t.elapsed().as_millis() >= 300)
+                    .is_some_and(|t| t.elapsed() >= WHICH_KEY_DELAY)
             {
                 render_which_key(f, &self.theme, &prefix, self.engine.map());
             }
@@ -1439,9 +1443,6 @@ impl App {
             return false;
         }
         self.last_key = std::time::Instant::now();
-        if self.engine.pending_prefix().is_some() && self.which_key_since.is_none() {
-            self.which_key_since = Some(std::time::Instant::now());
-        }
         // C-c quits; `q`/`ZZ` are checked only after the overlays that
         // take text input (ex line, palette, wizard, confirm, forms) had their turn.
         // A C-c meant to cancel a job that just finished must not quit: within
@@ -2598,8 +2599,12 @@ impl App {
             }
             if self.demo {}
         }
+        // The which-key popup counts from the key that opened the prefix
+        // (a lone `Space` must show it too, not only `Space s`).
         if self.engine.pending_prefix().is_none() {
             self.which_key_since = None;
+        } else if self.which_key_since.is_none() {
+            self.which_key_since = Some(std::time::Instant::now());
         }
         false
     }
@@ -2662,6 +2667,8 @@ use poller::{LiveMsg, is_local_uri};
 
 /// How long a lone `Z` waits for the second `Z` of `ZZ`.
 const Z_TIMEOUT: Duration = Duration::from_millis(600);
+/// Idle time after a prefix key (`Space`, `g`, …) before the which-key popup.
+const WHICH_KEY_DELAY: Duration = Duration::from_millis(300);
 
 fn handle_key(key: KeyEvent, in_detail: bool) -> bool {
     // q quits, C-c quits (ZZ is handled in `handle_key_event`).
@@ -2685,6 +2692,50 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         }
+    }
+
+    #[test]
+    fn which_key_timer_starts_with_the_first_prefix_key() {
+        let mut app = fixture_app();
+        app.handle_key_event(key(KeyCode::Char(' ')));
+        assert_eq!(app.engine.pending_prefix().as_deref(), Some("Space"));
+        assert!(
+            app.which_key_since.is_some(),
+            "a lone Space must start the which-key timer"
+        );
+        app.handle_key_event(key(KeyCode::Esc));
+        assert!(app.which_key_since.is_none());
+    }
+
+    #[test]
+    fn which_key_popup_hides_what_is_behind_it() {
+        let app = fixture_app();
+        let map = crate::input::keymap::default_map();
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(60, 30)).unwrap();
+        let frame = terminal
+            .draw(|f| {
+                let area = f.area();
+                f.render_widget(
+                    ratatui::widgets::Paragraph::new("X".repeat(60 * 30))
+                        .wrap(ratatui::widgets::Wrap { trim: false }),
+                    area,
+                );
+                render_which_key(f, &app.theme, "Space", &map);
+            })
+            .unwrap();
+        let buffer = frame.buffer;
+        // The popup sits bottom-right; its rows end in blank padding before the border.
+        let leaks: Vec<String> = (0..30)
+            .filter_map(|y| {
+                let row: String = (0..60).map(|x| buffer[(x, y)].symbol().to_string()).collect();
+                let inner = row
+                    .rsplit_once('│')
+                    .and_then(|(left, _)| left.rsplit_once('│'))
+                    .map(|(_, inner)| inner.to_string())?;
+                inner.contains('X').then_some(row)
+            })
+            .collect();
+        assert!(leaks.is_empty(), "background shows through the popup: {leaks:#?}");
     }
 
     #[test]
