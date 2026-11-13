@@ -119,7 +119,10 @@ elif command == 'domdisplay':
             triggers = {
                 "detail": b"\r", "snapshots": b" sc", "picker": b" mi", "viewer": b"v",
                 "palette": b"\x10", "completion": b":do\t", "refresh": b"\x12",
-                "network": b"j", "pool": b"j", "viewer-switch": b"v",
+                # Pool volumes are cached per view load, so moving the cursor
+                # reads nothing: an explicit refresh (C-r) reloads the view
+                # and runs the held `vol-list` of the second pool.
+                "network": b"j", "pool": b"\x12", "viewer-switch": b"v",
                 "description-prep": b":desc vt-test-a new description\r",
                 "hostdev-prep": b":attach-hostdev vt-test-a vt-test-device\r",
                 "export-prep": b" x",

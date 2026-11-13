@@ -32,7 +32,10 @@ if command == ('domstats' if os.environ['VT_MODE'] == 'read' else 'start'):
         time.sleep(1.2)
         Path(os.environ['VT_SURVIVOR']).write_text('survived')
         sys.exit(0)
-    Path(os.environ['VT_MARKER']).write_text(str(os.getpid()))
+    # Atomic: the test polls for the marker and must never read it half-written.
+    tmp = Path(f"{os.environ['VT_MARKER']}.{os.getpid()}")
+    tmp.write_text(str(os.getpid()))
+    os.replace(tmp, os.environ['VT_MARKER'])
     while True: time.sleep(0.05)
 if command == 'domstats':
     print("Domain: 'vt-test-a'\\n  state.state=5\\n  vcpu.current=1\\n  vcpu.maximum=1")
@@ -78,12 +81,25 @@ if command == 'domstats':
             pump()
         assert child.poll() == 128 + requested_signal, f"unexpected exit status: {child.poll()}"
         assert termios.tcgetattr(slave) == before, "terminal attributes were not restored"
-        try:
-            os.kill(held_pid, 0)
-        except ProcessLookupError:
-            pass
-        else:
-            raise AssertionError(f"held {mode} process survived shutdown")
+        # SIGKILL is asynchronous: under load the held process can still be
+        # runnable, or a zombie awaiting its new parent, when virsh-tui has
+        # already exited. Give it a moment; a zombie counts as gone.
+        def running(pid):
+            if sys.platform.startswith("linux"):
+                try:
+                    text = Path(f"/proc/{pid}/stat").read_text()
+                except FileNotFoundError:
+                    return False
+                return text[text.rfind(")") + 2] != "Z"
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return False
+            return True
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and running(held_pid):
+            time.sleep(0.02)
+        assert not running(held_pid), f"held {mode} process survived shutdown"
         if mode == "read":
             time.sleep(1.4)
             assert not (root / "survived").exists(), "held read descendant survived shutdown"
