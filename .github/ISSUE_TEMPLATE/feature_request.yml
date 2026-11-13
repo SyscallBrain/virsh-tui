@@ -1,16 +1,27 @@
 name: Feature request
-description: Suggest a new feature or a change
+description: An idea for virsh-tui
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search the [existing issues](https://github.com/SyscallBrain/virsh-tui/issues?q=is%3Aissue) first; if the idea is
+        already there, a 👍 on it tells us more than a new issue. Open-ended ideas can also go to
+        [Discussions](https://github.com/SyscallBrain/virsh-tui/discussions/categories/ideas).
   - type: textarea
     id: problem
     attributes:
-      label: What you want to do
-      description: The task you are trying to get done, and how you do it today (for example with a virsh command).
+      label: What would you like to do?
+      description: The task you are trying to get done, rather than the solution.
     validations:
       required: true
   - type: textarea
-    id: proposal
+    id: idea
     attributes:
-      label: How it could work in virsh-tui
-      description: Keys, screens or commands you have in mind. Optional.
+      label: How could virsh-tui help?
+      description: A key, a view, a command, an option … whatever you have in mind.
+  - type: textarea
+    id: today
+    attributes:
+      label: What do you do today instead?
+      description: The workaround you use now, if any, for example a `virsh` command.

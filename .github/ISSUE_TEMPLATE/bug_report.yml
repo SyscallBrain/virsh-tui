@@ -2,25 +2,59 @@ name: Bug report
 description: Something does not work as described
 labels: [bug]
 body:
-  - type: textarea
-    id: what
+  - type: markdown
     attributes:
-      label: What happened
-      description: What you did (keys pressed, command typed), what you expected, and what you saw instead.
-    validations:
-      required: true
+      value: |
+        Thanks for taking the time. A few things first:
+
+        - Remove host names, addresses and other private details from what you paste.
+        - For a security problem, use a [private advisory](https://github.com/SyscallBrain/virsh-tui/security/advisories/new) instead (see SECURITY.md).
+        - Most failures come from `virsh` itself: try the same thing with `virsh -c <uri> …` first.
+          [Troubleshooting](https://syscallbrain.github.io/virsh-tui/troubleshooting.html) covers connections, colours, fonts and the wizard.
   - type: input
     id: version
     attributes:
       label: virsh-tui version
-      description: Output of `virsh-tui -V`
+      description: The output of `virsh-tui -V`.
+      placeholder: virsh-tui 0.1.0
     validations:
       required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install virsh-tui?
+      options:
+        - AUR (virsh-tui or virsh-tui-bin)
+        - .deb package
+        - .rpm package
+        - Arch package from the release page
+        - Release tarball
+        - cargo install
+        - Built from a clone of the repository
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did (keys pressed, command typed), what you expected, and what happened instead. A screenshot helps with drawing problems.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If it also happens in demo mode (`virsh-tui --demo`), say so.
+      placeholder: |
+        1. Select a running domain
+        2. Press …
   - type: input
     id: virsh
     attributes:
       label: libvirt version
-      description: Output of `virsh --version`
+      description: The output of `virsh --version`.
+      placeholder: "11.9.0"
     validations:
       required: true
   - type: dropdown
@@ -34,14 +68,21 @@ body:
         - demo mode
     validations:
       required: true
-  - type: input
-    id: terminal
-    attributes:
-      label: Distribution, terminal and size
-      placeholder: Debian 13, kitty, 174x43
   - type: textarea
     id: log
     attributes:
-      label: Log
-      description: Relevant part of ~/.local/state/virsh-tui/virsh-tui.log (start with RUST_LOG=virsh_tui=debug for more detail). Remove anything private.
+      label: Last lines of the log
+      description: From `~/.local/state/virsh-tui/virsh-tui.log`. If it says too little, run `RUST_LOG=virsh_tui=debug virsh-tui`, repeat what failed and copy the new lines.
       render: text
+  - type: input
+    id: os
+    attributes:
+      label: Distribution
+      placeholder: Arch Linux, Debian 13, Fedora 43 …
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal emulator and size
+      placeholder: kitty 0.40, 174x43, inside tmux 3.5

@@ -1,5 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: User guide
     url: https://syscallbrain.github.io/virsh-tui/
     about: Installation, key bindings, configuration and troubleshooting.
+  - name: Ask a question
+    url: https://github.com/SyscallBrain/virsh-tui/discussions/categories/q-a
+    about: Questions about installing or using virsh-tui.
+  - name: Report a security vulnerability
+    url: https://github.com/SyscallBrain/virsh-tui/security/advisories/new
+    about: Please report security problems privately.
