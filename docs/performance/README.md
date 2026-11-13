@@ -98,18 +98,17 @@ Results that need care:
 - The empty metrics case is a couple of nanoseconds slower, because it now
   builds an empty `HashSet`. No domain work happens in that case.
 
-### Known functional issue found while validating (not caused by this work)
+### Functional issue found while validating (fixed separately)
 
 While the benchmark was being fixed, `fuzzy_rank` turned out to pass the raw
-query to `nucleo_matcher`, which expects the needle to be normalized and
-lowercased already. As a result, queries with accents (`dömäin`, `ö`) never
-match, even on items that contain them, and uppercase letters match
-case-sensitively (`Snap` finds `Snapshot` but not `snapshot`). The baseline
-behaves the same way, and
-`fuzzy_preserves_unicode_ranking_and_tie_order` uses the same raw-needle oracle,
-so the test preserves this behavior rather than checking for it. Fixing it
-(for example with `nucleo_matcher::pattern::Atom`/`Pattern`) changes behavior
-and belongs in a separate change.
+query to `nucleo_matcher`, which expects a prepared needle. Accented queries
+(`dömäin`, `ö`) never matched, and uppercase letters matched case-sensitively.
+The baseline had the same bug. It is now fixed: the query is prepared once as a
+`nucleo_matcher::pattern::Atom` (case ignored, smart normalization), and
+`tests/p12_palette.rs` covers the behavior. A pinned re-run on a quiet host
+showed the fuzzy cases unchanged within noise (`fuzzy snap 1000`: 126 µs; the
+no-match case: ~8 µs, because building the atom costs a little up front). The
+table above was measured before this fix.
 
 ## Implementation and correctness
 

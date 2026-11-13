@@ -1,6 +1,9 @@
 //! Command palette (PLAN.md section 9.7, P12): fuzzy actions + virsh reference.
 
-use nucleo_matcher::{Config, Matcher, Utf32Str};
+use nucleo_matcher::{
+    Config, Matcher, Utf32Str,
+    pattern::{Atom, AtomKind, CaseMatching, Normalization},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -25,13 +28,21 @@ fn ranked_indices(query: &str, items: &[&str]) -> Vec<usize> {
         return (0..items.len()).collect();
     }
     let mut matcher = Matcher::new(Config::DEFAULT);
+    // The matcher expects a prepared needle: an Atom case-folds and normalizes
+    // the query once, so "SNAP" finds "snapshot", "domain" finds "dömäin" and
+    // "dömäin" still finds itself. Whitespace stays literal, as before.
+    let needle = Atom::new(
+        query,
+        CaseMatching::Ignore,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+        false,
+    );
     let mut scored = Vec::with_capacity(items.len());
     let mut haystack_buf = Vec::new();
-    let mut needle_buf = Vec::new();
-    let needle = Utf32Str::new(query, &mut needle_buf);
     for (i, item) in items.iter().enumerate() {
         let haystack = Utf32Str::new(item, &mut haystack_buf);
-        if let Some(score) = matcher.fuzzy_match(haystack, needle) {
+        if let Some(score) = needle.score(haystack, &mut matcher) {
             scored.push((score, i));
         }
     }

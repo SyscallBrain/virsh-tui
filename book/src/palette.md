@@ -6,6 +6,9 @@
 binding and the domain it applies to. Type a few letters (`snap`, `iso`,
 `setmem`) and press `Enter` to run the highlighted entry.
 
+Matching ignores case, and plain letters also match accented ones: `domain`
+finds `dömäin`, while `dömäin` matches only the accented spelling.
+
 Entries with the same displayed title remain separate actions; moving the selection
 chooses the corresponding entry.
 

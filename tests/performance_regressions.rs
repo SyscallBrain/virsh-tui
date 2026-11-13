@@ -131,7 +131,10 @@ fn braille_matches_reference_for_all_modes_and_edges() {
 
 #[test]
 fn fuzzy_preserves_unicode_ranking_and_tie_order() {
-    use nucleo_matcher::{Config, Matcher, Utf32Str};
+    use nucleo_matcher::{
+        Config, Matcher, Utf32Str,
+        pattern::{Atom, AtomKind, CaseMatching, Normalization},
+    };
     let items = [
         "dömäin",
         "dömäin-snapshot",
@@ -142,18 +145,25 @@ fn fuzzy_preserves_unicode_ranking_and_tie_order() {
         "Snapshot",
         "σnapshot",
     ];
-    for query in ["", "snap", "ö", "東京", "ss", "no match", "σ"] {
+    for query in [
+        "", "snap", "SNAP", "ö", "domain", "東京", "ss", "no match", "σ", "Σ",
+    ] {
         let expected = if query.is_empty() {
             items.iter().map(|s| s.to_string()).collect::<Vec<_>>()
         } else {
-            let mut matcher = Matcher::new(Config::DEFAULT);
+            // Reference: a fresh matcher, atom and buffer for every item.
             let mut scored = Vec::new();
             for item in items {
+                let mut matcher = Matcher::new(Config::DEFAULT);
+                let atom = Atom::new(
+                    query,
+                    CaseMatching::Ignore,
+                    Normalization::Smart,
+                    AtomKind::Fuzzy,
+                    false,
+                );
                 let mut h = Vec::new();
-                let mut n = Vec::new();
-                if let Some(score) =
-                    matcher.fuzzy_match(Utf32Str::new(item, &mut h), Utf32Str::new(query, &mut n))
-                {
+                if let Some(score) = atom.score(Utf32Str::new(item, &mut h), &mut matcher) {
                     scored.push((score, item));
                 }
             }

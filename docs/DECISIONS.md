@@ -286,3 +286,12 @@ Google Chrome nor Chromium is available on the validation host. The optional
   avoid quadratic domain scans and copying per-device counters every tick. Derive
   aggregate totals from those same device counters rather than parsing them twice.
 - Methodology, raw measurements and remaining limits: `performance/README.md`.
+
+## Palette query matching (2026-11-13)
+
+- Prepare the palette query as a nucleo `Atom` with `CaseMatching::Ignore` and
+  `Normalization::Smart`. Passing the raw query to `Matcher::fuzzy_match` meant
+  accented queries never matched and uppercase letters were case-sensitive.
+  Case is ignored always (not fzf's "smart case"), so `Snap` and `snap` match the
+  same entries. Whitespace stays a literal character, so no fzf-style
+  `^`/`$`/`!` syntax is introduced.
