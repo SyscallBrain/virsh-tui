@@ -9,6 +9,27 @@ fn fuzzy_ranks_snapshot_first() {
 }
 
 #[test]
+fn fuzzy_matches_accents_and_ignores_case() {
+    use virsh_tui::ui::overlays::palette::fuzzy_rank;
+    let items = ["dömäin-snapshot", "Snapshot", "snapshot", "domain"];
+    let set = |query: &str| {
+        let mut v = fuzzy_rank(query, &items);
+        v.sort();
+        v
+    };
+    // An accented query matches the accented item only.
+    assert_eq!(set("dömäin"), ["dömäin-snapshot"]);
+    assert_eq!(set("ö"), ["dömäin-snapshot"]);
+    // An unaccented query also matches accented items.
+    assert_eq!(set("domain"), ["domain", "dömäin-snapshot"]);
+    // Case never changes which items match.
+    for query in ["snap", "Snap", "SNAP"] {
+        assert_eq!(set(query), ["Snapshot", "dömäin-snapshot", "snapshot"], "{query}");
+    }
+    assert_eq!(set("DÖMÄIN"), ["dömäin-snapshot"]);
+}
+
+#[test]
 fn help_index_parses_all_fixtures() {
     let text = std::fs::read_to_string("tests/fixtures/virsh/help_index.txt").unwrap();
     let entries = virsh_tui::backend::virsh::parse_help::parse_help_index(&text);
