@@ -12,7 +12,47 @@ homepage = "https://syscallbrain.github.io/virsh-tui/"
 documentation = "https://syscallbrain.github.io/virsh-tui/"
 keywords = ["libvirt", "virsh", "tui", "kvm", "qemu"]
 categories = ["command-line-utilities", "virtualization"]
-exclude = ["/book", "/docs", "/scripts", "/tests/snapshots", "/.github"]
+exclude = ["/book", "/docs", "/scripts", "/tests/snapshots", "/.github", "/packaging", "/.coderabbit.yaml"]
+
+# Linux packages built from the static release binary by scripts/dist.sh
+# (cargo-deb, cargo-generate-rpm); see docs/RELEASE.md.
+[package.metadata.deb]
+maintainer = "Tiago Correia"
+copyright = "2026, Tiago Correia"
+license-file = ["LICENSE", "0"]
+section = "admin"
+priority = "optional"
+# The release binary is static (musl), so libvirt's client is the only dependency.
+depends = "libvirt-clients"
+recommends = "virtinst, virt-viewer"
+suggests = "iproute2"
+extended-description = """\
+virsh-tui shows every virtual machine on a libvirt connection with live CPU, \
+memory, disk and network graphs, and lets you start, stop, snapshot, \
+reconfigure and create them from the keyboard. Every action is a virsh (or \
+virt-install) command, shown before and after it runs."""
+assets = [
+    ["target/release/virsh-tui", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/virsh-tui/", "644"],
+    ["CHANGELOG.md", "usr/share/doc/virsh-tui/", "644"],
+]
+
+[package.metadata.generate-rpm]
+auto-req = "no"
+summary = "Keyboard-driven terminal UI for libvirt/virsh"
+assets = [
+    { source = "target/release/virsh-tui", dest = "/usr/bin/virsh-tui", mode = "755" },
+    { source = "README.md", dest = "/usr/share/doc/virsh-tui/README.md", mode = "644", doc = true },
+    { source = "CHANGELOG.md", dest = "/usr/share/doc/virsh-tui/CHANGELOG.md", mode = "644", doc = true },
+    { source = "LICENSE", dest = "/usr/share/licenses/virsh-tui/LICENSE", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+libvirt-client = "*"
+
+[package.metadata.generate-rpm.recommends]
+virt-install = "*"
+virt-viewer = "*"
 
 [dependencies]
 arboard = "3.6.1"
@@ -42,6 +82,10 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 unicode-width = "0.2.2"
 xmltree = "0.12.0"
 
+# Faster allocator for the static musl release builds (see src/lib.rs).
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = "0.1.52"
+
 [dev-dependencies]
 insta = "1.49.0"
 pretty_assertions = "1.4.1"
@@ -53,3 +97,10 @@ it = []
 [[bench]]
 name = "performance"
 harness = false
+
+[profile.release]
+strip = true
+
+# Keep symbols for profiling the benchmarks (bench inherits from release).
+[profile.bench]
+strip = "none"

@@ -1,0 +1,24 @@
+# Maintainer: Tiago Correia
+# Template for the release packages: scripts/arch-package.sh fills in the
+# version, the archive and its checksum. packaging/aur/ has the AUR packages.
+pkgname=virsh-tui
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Keyboard-driven terminal UI for libvirt/virsh with vim keys and live graphs"
+arch=('x86_64' 'aarch64')
+url="https://github.com/SyscallBrain/virsh-tui"
+license=('MIT')
+depends=('libvirt')
+optdepends=('virt-install: the new domain wizard'
+            'virt-viewer: the graphical viewer')
+options=('!strip' '!debug')
+source=("@TARBALL@")
+sha256sums=('@SHA256@')
+
+package() {
+  cd "${source[0]%.tar.gz}"
+  install -Dm755 virsh-tui "$pkgdir/usr/bin/virsh-tui"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+}
