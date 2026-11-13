@@ -2054,8 +2054,12 @@ impl App {
         {
             return false;
         }
-        // Hardware tab keys bypass the engine (INSERT raw editing, J/K, Tab…).
+        // Hardware tab keys bypass the engine (INSERT raw editing, J/K, Tab…),
+        // except that in NORMAL mode an unfinished sequence (`␣m…`) keeps its
+        // final key: `i` of `␣mi` is not the local INSERT shortcut.
+        let hw_insert = self.detail.as_ref().is_some_and(|d| d.hw_insert);
         if self.view == View::Detail
+            && (hw_insert || !sequence_in_progress)
             && handle_hardware_key(
                 key,
                 &mut self.detail,
@@ -2470,6 +2474,10 @@ impl App {
                     continue;
                 }
                 (_, A::InsertMedia) => {
+                    // The picker lives in Storage: leaving Detail must not drop edits.
+                    if self.view == View::Detail && self.blocks_leaving_detail() {
+                        continue;
+                    }
                     self.request_picker();
                     continue;
                 }
@@ -4804,7 +4812,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wizard_define_submission_captures_both_phases() {
+    async fn wizard_define_submission_prints_one_phase_then_defines() {
         let mut app = fixture_app();
         let draft = ui::overlays::wizard::WizardState {
             step: 5,
@@ -4816,7 +4824,14 @@ mod tests {
         assert!(app.submit_wizard(draft));
         let plan = &app.active_job.as_ref().unwrap().plans[0].1;
         assert_eq!(plan.steps.len(), 2);
-        assert!(plan.steps[0].argv.contains(&"--print-xml=1".to_string()));
+        // One persistent phase (issue #5), not the install phase alone.
+        let argv = &plan.steps[0].argv;
+        assert_eq!(argv.last().map(String::as_str), Some("--print-xml"));
+        assert!(argv.contains(&"--install=no_install=yes".to_string()));
+        assert!(
+            argv.iter()
+                .any(|arg| arg.starts_with("--boot=") && arg.ends_with("hd,cdrom"))
+        );
         assert_eq!(plan.steps[1].argv[0], "define");
         app.cancel_job();
         let _ = (&mut app.active_job.as_mut().unwrap().task).await;
@@ -5821,6 +5836,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wizard_editor_refuses_url_installs() {
+        let mut app = fixture_app();
+        app.wizard = Some(ui::overlays::wizard::WizardState {
+            media: ui::overlays::wizard::MediaKind::Url,
+            url: "https://example.org/os/".into(),
+            ..Default::default()
+        });
+        app.request_wizard_editor();
+        assert!(!app.selection_task.contains_key(&ReadKind::Editor));
+        assert!(app.wizard.as_ref().unwrap().error.contains("URL install"));
+    }
+
+    #[tokio::test]
     async fn wizard_editor_source_does_not_open_for_a_changed_draft() {
         let mut app = fixture_app();
         app.wizard = Some(ui::overlays::wizard::WizardState::default());
@@ -6056,6 +6084,42 @@ mod review_fixes {
         a.on_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL))
             .await;
         assert!(a.palette.is_some());
+    }
+    fn hardware_app() -> App {
+        let mut a = app(View::Dashboard);
+        let mut detail = crate::ui::views::detail::DetailState::demo("arch-dev");
+        detail.tab = crate::ui::views::detail::DetailTab::Hardware;
+        a.detail = Some(detail);
+        a.view = View::Detail;
+        a
+    }
+    #[tokio::test]
+    async fn insert_media_sequence_from_hardware_opens_picker() {
+        let mut a = hardware_app();
+        for c in [' ', 'm', 'i'] {
+            a.on_key(key(c)).await;
+        }
+        assert!(a.store.picker.is_some(), "Space m i must open the media picker");
+        assert_eq!(a.view, View::Storage);
+    }
+    #[tokio::test]
+    async fn insert_media_from_hardware_keeps_unsaved_edits() {
+        let mut a = hardware_app();
+        a.detail.as_mut().unwrap().hw.set_field("memory", "current", "8G");
+        for c in [' ', 'm', 'i'] {
+            a.on_key(key(c)).await;
+        }
+        assert_eq!(a.view, View::Detail);
+        assert!(a.store.picker.is_none());
+        assert!(a.detail.as_ref().unwrap().hw.pending_count() > 0);
+        assert!(!a.detail.as_ref().unwrap().hw_insert);
+    }
+    #[tokio::test]
+    async fn lone_i_in_hardware_still_enters_insert() {
+        let mut a = hardware_app();
+        a.on_key(key('i')).await;
+        assert!(a.detail.as_ref().unwrap().hw_insert);
+        assert!(a.store.picker.is_none());
     }
     #[tokio::test]
     async fn insert_media_opens_visible_picker() {

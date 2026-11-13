@@ -833,6 +833,11 @@ impl WizardState {
             MediaKind::Url if self.url.trim().is_empty() => {
                 out.push((1, String::from("enter the installer URL")))
             }
+            // The installer kernel boots directly: nothing persistent to define.
+            MediaKind::Url if !self.start_after => out.push((
+                5,
+                String::from("a URL install runs at once: turn on \"start after creation\""),
+            )),
             MediaKind::Import if self.disk_new => out.push((
                 3,
                 String::from("import needs an existing disk image (turn off \"create new disk\")"),

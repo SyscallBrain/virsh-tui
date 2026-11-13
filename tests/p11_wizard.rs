@@ -124,10 +124,20 @@ fn stderr_summary_prefers_the_error_line() {
         stderr_summary(stderr),
         "unsupported configuration: CPU mode 'host-passthrough' is not supported"
     );
-    // virsh style: keep the first error line.
+    // virsh style: the first error line is generic, the next ones carry the
+    // cause (issue #5): keep them all, on one line.
     assert_eq!(
         stderr_summary("error: failed to get domain 'x'\nerror: Domain not found\n"),
-        "error: failed to get domain 'x'"
+        "error: failed to get domain 'x': Domain not found"
+    );
+    assert_eq!(
+        stderr_summary(
+            "error: Failed to define domain from /tmp/vt-q2.xml\n\
+             error: at line 59: Extra content at the end of the document\n\
+             <domain type=\"kvm\">\n\
+             ^\n"
+        ),
+        "error: Failed to define domain from /tmp/vt-q2.xml: at line 59: Extra content at the end of the document"
     );
     // No error marker: fall back to the first non-empty line.
     assert_eq!(stderr_summary("\nsomething broke\n"), "something broke");

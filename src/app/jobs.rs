@@ -493,7 +493,10 @@ impl App {
                 self.busy_feedback = Some(std::time::Instant::now());
                 return false;
             }
-            plan.steps[0].argv.push("--print-xml=1".into());
+            // One persistent phase, never the install phase alone (issue #5).
+            plan = crate::command::builders::install::define_xml(&draft);
+            plan.steps[0].argv.insert(0, self.uri.clone());
+            plan.steps[0].argv.insert(0, "--connect".into());
             plan.steps.push(crate::command::plan::CommandStep::new(
                 "virsh",
                 vec!["define", "<private-xml>", "--validate"],
