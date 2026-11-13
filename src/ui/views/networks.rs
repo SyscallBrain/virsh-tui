@@ -725,7 +725,7 @@ fn render_leases(frame: &mut Frame, theme: &Theme, state: &NetworksState, area: 
         Span::styled("●", Style::default().fg(t.green).bg(t.bg)),
         Span::styled(" dynamic", theme.dim()),
     ]));
-    lines.push(Line::from(vec![
+    let chips = Line::from(vec![
         Span::styled(" ␣l pin lease as static ", Style::default().fg(t.fg2).bg(t.hl)),
         Span::raw(" "),
         Span::styled(" ␣L remove static ", Style::default().fg(t.fg2).bg(t.hl)),
@@ -733,7 +733,10 @@ fn render_leases(frame: &mut Frame, theme: &Theme, state: &NetworksState, area: 
         Span::styled(" yi copy ip ", Style::default().fg(t.fg2).bg(t.hl)),
         Span::raw(" "),
         Span::styled(" ⏎ go to domain ", Style::default().fg(t.fg2).bg(t.hl)),
-    ]));
+    ]);
+    if crate::config::key_hints() {
+        lines.push(chips);
+    }
     let right = format!("{} leases · {statics} static", state.leases.len());
     let block = crate::ui::widgets::panel::block(
         theme,

@@ -589,8 +589,10 @@ pub fn render(
         None => {
             let list = picker.filtered(cands);
             if list.is_empty() {
-                let msg = if cands.is_empty() {
+                let msg = if cands.is_empty() && crate::config::key_hints() {
                     "  no ISOs found in the pools or the ISO folders · C-o browse the filesystem"
+                } else if cands.is_empty() {
+                    "  no ISOs found in the pools or the ISO folders"
                 } else {
                     "  no match"
                 };
@@ -666,7 +668,9 @@ pub fn render(
         Span::styled("⎋", theme.key()),
         Span::styled(" cancel", theme.dim()),
     ]);
-    lines.push(Line::from(keys));
+    if crate::config::key_hints() {
+        lines.push(Line::from(keys));
+    }
     frame.render_widget(Paragraph::new(lines).style(Style::default().bg(t.bg)), inner);
 }
 

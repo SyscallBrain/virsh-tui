@@ -243,7 +243,16 @@ pub fn compact_status(frame: &mut Frame, theme: &Theme, area: Rect, mode: &str, 
 /// Key hints (`"  j/k move  ⏎ open"` or `"j/k move · ⏎ open"`): each item's
 /// first word is the key, in the bold orange key style used by the top-bar
 /// tab numbers; the label and separators stay secondary text.
+/// Empty when key hints are off in the settings.
 pub fn hint_spans(theme: &Theme, hints: &str) -> Vec<Span<'static>> {
+    if !crate::config::key_hints() {
+        return Vec::new();
+    }
+    styled_hints(theme, hints)
+}
+
+/// [`hint_spans`] regardless of the setting.
+fn styled_hints(theme: &Theme, hints: &str) -> Vec<Span<'static>> {
     let body = hints.trim_start();
     let mut spans = Vec::new();
     if body.len() < hints.len() {
@@ -270,7 +279,7 @@ pub fn hint_spans(theme: &Theme, hints: &str) -> Vec<Span<'static>> {
 
 #[cfg(test)]
 mod tests {
-    use super::hint_spans;
+    use super::styled_hints as hint_spans;
     use crate::theme::builtin::by_name;
 
     #[test]

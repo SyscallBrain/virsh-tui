@@ -61,6 +61,7 @@ const SET_KEYS: &[&str] = &[
     "gradient=",
     "transparent=",
     "dim_modals=",
+    "key_hints=",
     "default_uri=",
     "start_view=",
     "viewer=",

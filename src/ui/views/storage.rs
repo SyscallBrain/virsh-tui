@@ -697,7 +697,9 @@ pub(crate) fn render_picker(frame: &mut Frame, theme: &Theme, state: &StorageSta
         cmd,
         Style::default().fg(t.yellow).bg(t.bg2),
     )]));
-    lines.push(Line::from(""));
+    if crate::config::key_hints() {
+        lines.push(Line::from(""));
+    }
     lines.push(Line::from(vec![
         Span::styled(" ⏎ insert ", theme.key()),
         Span::styled(" C-j/k move ", theme.dim()),
@@ -705,6 +707,9 @@ pub(crate) fn render_picker(frame: &mut Frame, theme: &Theme, state: &StorageSta
         Span::styled(" ⇥ pool ", theme.dim()),
         Span::styled(" ⎋ cancel", theme.dim()),
     ]));
+    if !crate::config::key_hints() {
+        lines.pop();
+    }
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), inner);
 }
 

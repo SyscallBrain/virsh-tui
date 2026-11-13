@@ -732,10 +732,15 @@ fn render_xml(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Rect)
         })
         .collect();
     let right = format!(
-        "{}–{} of {} · j/k scroll · e edit",
+        "{}–{} of {}{}",
         top + 1,
         (top + visible).min(count),
-        count
+        count,
+        if crate::config::key_hints() {
+            " · j/k scroll · e edit"
+        } else {
+            ""
+        }
     );
     let block = panel_block(theme, &format!("XML · {}", state.domain), Some(&right));
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);

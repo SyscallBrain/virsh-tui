@@ -89,7 +89,11 @@ pub fn render(
         frame.render_widget(Paragraph::new(Span::styled(" (empty)", theme.dim())), line(2));
     }
     frame.render_widget(
-        Paragraph::new(Span::styled(keys.to_string(), theme.secondary())).style(theme.topbar()),
+        Paragraph::new(Span::styled(
+            if crate::config::key_hints() { keys } else { "" }.to_string(),
+            theme.secondary(),
+        ))
+        .style(theme.topbar()),
         line(area.height - 2),
     );
     frame.render_widget(

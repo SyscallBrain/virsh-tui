@@ -198,7 +198,12 @@ pub fn render_scrolled(
     }
     let hint = if max_scroll > 0 {
         format!(
-            "↑↓/PgUp/Dn {}/{} · {} cmd",
+            "{}{}/{} · {} cmd",
+            if crate::config::key_hints() {
+                "↑↓/PgUp/Dn "
+            } else {
+                ""
+            },
             scroll + 1,
             max_scroll + 1,
             confirm.commands.len()

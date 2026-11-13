@@ -176,6 +176,7 @@ History windows: `t` cycles 60 s → 5 min → 1 h (ring buffers per domain per 
 
 ### 10 · Settings (`,`)
 - Categories: General, Appearance, Keybindings, Connections, Monitoring, Confirmations, Console & viewer.
+- General › Help › "key hints" (`[x]` by default, `general.key_hints`): off drops every key hint — status bars, domain action rows, the not-running start hint, panel footers, palette/ISO picker/wizard/hardware key lines. Mode pill, breadcrumb, counters, dialog buttons and the which-key popup stay; `?` still lists the keys.
 - Theme list with 8-colour swatch strip; `j/k` previews **live** (whole app re-themes), `⏎` applies, `⎋` reverts.
 - Appearance options: borders (rounded/plain/double/thick), icons (unicode/nerd/ascii), graphs (braille/block/tty + gradient), transparent background, dim behind modals.
 - Preview panel: 16-token palette + sample rows + gauge + chart.

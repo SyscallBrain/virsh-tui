@@ -1082,7 +1082,12 @@ fn render_compact(frame: &mut Frame, theme: &Theme, hw: &HardwareState, insert: 
         editor,
     );
     frame.render_widget(
-        Paragraph::new("F6 review · Tab field · i edit · j/k device").style(theme.secondary()),
+        Paragraph::new(if crate::config::key_hints() {
+            "F6 review · Tab field · i edit · j/k device"
+        } else {
+            ""
+        })
+        .style(theme.secondary()),
         rows[1],
     );
 }
@@ -1150,7 +1155,9 @@ fn render_review(frame: &mut Frame, theme: &Theme, hw: &HardwareState, domain: &
             .style(theme.base()),
         rows[0],
     );
-    let hint = if area.width < 60 {
+    let hint = if !crate::config::key_hints() {
+        ""
+    } else if area.width < 60 {
         "Esc/F6 editor · ↑↓ scroll · ←→ pan"
     } else {
         "Esc/F6 editor · ↑↓/PgUp/PgDn scroll · ←→ pan · y copy"

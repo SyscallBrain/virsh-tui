@@ -279,17 +279,18 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &EventsState) {
     );
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), body);
     // Status + message.
-    let status = Line::from(vec![
+    let mut status = vec![
         Span::styled(
             " NORMAL ",
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
         ),
         Span::styled(" events ", Style::default().fg(t.fg2).bg(t.hl)),
-        Span::styled(
-            "  j/k move  f/F filter  / search  ⏎ jump to object",
-            theme.secondary(),
-        ),
-    ]);
+    ];
+    status.extend(crate::ui::chrome::hint_spans(
+        theme,
+        "  j/k move  f/F filter  / search  ⏎ jump to object",
+    ));
+    let status = Line::from(status);
     frame.render_widget(Paragraph::new(status).style(theme.topbar()), rows[2]);
     crate::ui::chrome::message_line(frame, theme, rows[3], "");
 }

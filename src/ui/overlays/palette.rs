@@ -576,7 +576,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         ref_area,
     );
     // Footer on bg2.
-    let footer_left = vec![
+    let mut footer_left = vec![
         Span::styled("  ⏎", theme.key()),
         Span::styled(" open in :  ", theme.secondary()),
         Span::styled("C-j/k", theme.key()),
@@ -590,6 +590,9 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         Span::styled("⎋", theme.key()),
         Span::styled(" close", theme.secondary()),
     ];
+    if !crate::config::key_hints() {
+        footer_left.clear();
+    }
     let footer_right = vec![
         Span::styled("❯", Style::default().fg(t.magenta).bg(t.bg2)),
         Span::styled(" actions  ", Style::default().fg(t.comment).bg(t.bg2)),
@@ -631,10 +634,11 @@ fn render_compact(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         rows[0],
     );
     frame.render_widget(
-        Paragraph::new(if st.pane_focused {
-            "Reference · C-l results"
-        } else {
-            "Results · C-l reference"
+        Paragraph::new(match (st.pane_focused, crate::config::key_hints()) {
+            (true, true) => "Reference · C-l results",
+            (true, false) => "Reference",
+            (false, true) => "Results · C-l reference",
+            (false, false) => "Results",
         })
         .style(theme.secondary()),
         rows[1],
@@ -723,8 +727,12 @@ fn render_compact(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
         frame.render_widget(Paragraph::new(lines).style(theme.base()), body);
     }
     frame.render_widget(
-        Paragraph::new("C-l pane · ↑/↓ move · Esc close\nEnter : · Tab flag · PgUp/PgDn")
-            .style(theme.secondary()),
+        Paragraph::new(if crate::config::key_hints() {
+            "C-l pane · ↑/↓ move · Esc close\nEnter : · Tab flag · PgUp/PgDn"
+        } else {
+            ""
+        })
+        .style(theme.secondary()),
         rows[3],
     );
 }

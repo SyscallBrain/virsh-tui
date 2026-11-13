@@ -115,6 +115,7 @@ pub(super) fn change_option(cat: ui::views::settings::Category, idx: usize, conf
             let views = ["dashboard", "host", "networks", "storage", "events"].map(String::from);
             g.start_view = next(&g.start_view, &views);
         }
+        (C::General, 3) => g.key_hints = !g.key_hints,
         (C::Connections, i) => {
             if let Some(u) = config.connections.uris.get(i) {
                 g.default_uri = u.clone();
@@ -247,6 +248,7 @@ pub(super) fn apply_setting(
             "graphs" => next.appearance.graphs = one_of(&["braille", "block", "tty"])?,
             "gradient" => next.appearance.gradient = boolean()?,
             "dim_modals" => next.appearance.dim_modals = boolean()?,
+            "key_hints" => next.general.key_hints = boolean()?,
             "default_uri" if !v.is_empty() => next.general.default_uri = v.to_string(),
             "editor" if !v.is_empty() => next.general.editor = v.to_string(),
             "start_view" => {

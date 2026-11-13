@@ -531,13 +531,17 @@ impl WizardState {
                 {
                     crate::ui::overlays::iso_picker::permission_warning(&dir)
                 } else {
-                    match self.host.isos.len() {
+                    let hint = match self.host.isos.len() {
                         0 if self.host.local => {
                             String::from("⏎ browse for an ISO · or type an absolute path")
                         }
                         0 => String::from("absolute path on the remote host"),
                         1 => String::from("⏎ choose from 1 ISO · or type an absolute path"),
                         n => format!("⏎ choose from {n} ISOs · or type an absolute path"),
+                    };
+                    match hint.strip_prefix("⏎ ") {
+                        Some(rest) if !crate::config::key_hints() => rest.to_string(),
+                        _ => hint,
                     }
                 }
             }
@@ -1087,7 +1091,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
                 .join(" ")
         )
     };
-    let left = vec![
+    let mut left = vec![
         Span::styled("⇥/↑↓", theme.key()),
         Span::styled(" field  ", theme.secondary()),
         Span::styled("h/l ←→ ␣", theme.key()),
@@ -1105,6 +1109,9 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &WizardState) {
         Span::styled("⎋", theme.key()),
         Span::styled(" close", theme.secondary()),
     ];
+    if !crate::config::key_hints() {
+        left.clear();
+    }
     let right = vec![Span::styled(
         next,
         Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
@@ -1189,7 +1196,11 @@ fn render_compact_form(frame: &mut Frame, theme: &Theme, st: &WizardState, area:
         lines.push(Line::styled(format!("   {tail}"), style));
     }
     frame.render_widget(Paragraph::new(lines).style(theme.base()), rows[1]);
-    let hint = "⇥/↑↓ field · ←→ edit · C-v command";
+    let hint = if crate::config::key_hints() {
+        "⇥/↑↓ field · ←→ edit · C-v command"
+    } else {
+        ""
+    };
     frame.render_widget(Paragraph::new(hint).style(theme.secondary()), rows[2]);
     let action = if st.focused() == WField::Iso && st.media == MediaKind::Iso {
         "choose ISO"
@@ -1199,7 +1210,12 @@ fn render_compact_form(frame: &mut Frame, theme: &Theme, st: &WizardState, area:
         "next"
     };
     frame.render_widget(
-        Paragraph::new(format!("⏎ {action} · ⎋ cancel · C-n/p step")).style(theme.secondary()),
+        Paragraph::new(if crate::config::key_hints() {
+            format!("⏎ {action} · ⎋ cancel · C-n/p step")
+        } else {
+            format!("⏎ {action}")
+        })
+        .style(theme.secondary()),
         rows[3],
     );
 }
@@ -1225,7 +1241,12 @@ fn render_command_review(frame: &mut Frame, theme: &Theme, st: &WizardState, are
         rows[1],
     );
     frame.render_widget(
-        Paragraph::new("↑↓/PgUp/PgDn scroll · ⎋/C-v back").style(theme.secondary()),
+        Paragraph::new(if crate::config::key_hints() {
+            "↑↓/PgUp/PgDn scroll · ⎋/C-v back"
+        } else {
+            ""
+        })
+        .style(theme.secondary()),
         rows[2],
     );
 }
@@ -1454,10 +1475,8 @@ fn render_command(frame: &mut Frame, theme: &Theme, st: &WizardState, area: Rect
         theme,
         false,
         "Equivalent command",
-        Some(Line::from(Span::styled(
-            "C-v review · C-y copy · C-e XML",
-            theme.secondary(),
-        ))),
+        crate::config::key_hints()
+            .then(|| Line::from(Span::styled("C-v review · C-y copy · C-e XML", theme.secondary()))),
         None,
         None,
     );

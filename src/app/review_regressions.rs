@@ -828,6 +828,27 @@ async fn p1_28_set_validates_and_updates_runtime() {
     crate::config::set_runtime(&Config::default());
 }
 
+#[tokio::test]
+async fn key_hints_setting_hides_status_hints() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = fixture_app();
+    app.config.source = Some(dir.path().join("config.toml"));
+    let theme = crate::theme::builtin::by_name("tokyonight");
+    run_ex(&mut app, "set key_hints=maybe");
+    assert!(app.dash.message.starts_with('✗'));
+    assert!(app.config.general.key_hints);
+    run_ex(&mut app, "set key_hints=off");
+    assert!(!app.config.general.key_hints);
+    assert!(crate::ui::chrome::hint_spans(&theme, "  j/k move").is_empty());
+    let saved = std::fs::read_to_string(dir.path().join("config.toml")).unwrap();
+    assert!(saved.contains("key_hints = false"), "{saved}");
+    // Settings › General, fourth option: Enter toggles it back on.
+    super::settings::change_option(ui::views::settings::Category::General, 3, &mut app.config);
+    assert!(app.config.general.key_hints);
+    assert!(!crate::ui::chrome::hint_spans(&theme, "  j/k move").is_empty());
+    crate::config::set_runtime(&Config::default());
+}
+
 #[test]
 fn p1_30_destructive_list_covers_data_loss_commands() {
     use crate::ui::overlays::confirm::Confirm;

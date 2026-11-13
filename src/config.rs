@@ -32,6 +32,9 @@ pub struct General {
     pub refresh_interval_secs: u64,
     pub editor: String,
     pub start_view: String,
+    /// Key hints in status bars, panels and dialogs. Off once the keys are
+    /// known; `?` still lists them and dialog buttons stay.
+    pub key_hints: bool,
 }
 
 impl Default for General {
@@ -41,6 +44,7 @@ impl Default for General {
             refresh_interval_secs: 1,
             editor: String::from("vi"),
             start_view: String::from("domains"),
+            key_hints: true,
         }
     }
 }
@@ -125,6 +129,14 @@ static RUNTIME: std::sync::RwLock<Option<Config>> = std::sync::RwLock::new(None)
 /// Refresh interval of the runtime config (read every frame: no clone).
 static REFRESH_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+/// Status-bar key hints on (read every frame: no clone).
+static KEY_HINTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Whether the status bars show key hints.
+pub fn key_hints() -> bool {
+    KEY_HINTS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// The active refresh interval in seconds (≥ 1).
 pub fn refresh_interval_secs() -> u64 {
     REFRESH_SECS.load(std::sync::atomic::Ordering::Relaxed).max(1)
@@ -137,6 +149,7 @@ pub fn set_runtime(c: &Config) {
         c.general.refresh_interval_secs.max(1),
         std::sync::atomic::Ordering::Relaxed,
     );
+    KEY_HINTS.store(c.general.key_hints, std::sync::atomic::Ordering::Relaxed);
     if let Ok(mut g) = RUNTIME.write() {
         *g = Some(c.clone());
     }

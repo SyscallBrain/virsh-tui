@@ -133,6 +133,7 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
                 true,
             ),
             row("Start", "start view", g.start_view.clone(), true),
+            row("Help", "key hints", on_off(g.key_hints), true),
             row(
                 "Editor",
                 "editor",
@@ -159,8 +160,10 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
             .map(|u| {
                 let mark = if *u == g.default_uri {
                     "● default"
-                } else {
+                } else if crate::config::key_hints() {
                     "⏎ make default"
+                } else {
+                    "make default"
                 };
                 row("Saved URIs", u, mark, true)
             })
@@ -215,6 +218,9 @@ fn option_hint(cat: Category, idx: usize) -> &'static str {
         }
         (Category::General, 0) => "Used when virsh-tui starts without -c.",
         (Category::General, 1) => "How often domstats is sampled (charts use 60 samples).",
+        (Category::General, 3) => {
+            "Off hides the key hints in status bars, panels and dialogs; `?` still lists every key."
+        }
         _ => "",
     }
 }
@@ -321,8 +327,13 @@ fn render_body(frame: &mut Frame, theme: &Theme, config: &Config, state: &Settin
         };
         frame.render_widget(
             Paragraph::new(format!(
-                "{} › {pane} · h/l pane",
-                Category::ALL[state.cat.min(6)].2
+                "{} › {pane}{}",
+                Category::ALL[state.cat.min(6)].2,
+                if crate::config::key_hints() {
+                    " · h/l pane"
+                } else {
+                    ""
+                }
             ))
             .style(theme.secondary()),
             rows[0],
@@ -480,7 +491,7 @@ fn render_category(
         let bg = if cur { t.sel } else { t.bg };
         let value_style = match r.value.as_str() {
             "[x]" | "● default" => Style::default().fg(t.green),
-            "[ ]" | "⏎ make default" => theme.secondary(),
+            "[ ]" | "⏎ make default" | "make default" => theme.secondary(),
             _ if r.editable => Style::default().fg(t.fg).bg(if cur { t.sel } else { t.hl }),
             _ => theme.secondary(),
         };
@@ -506,7 +517,7 @@ fn render_category(
         lines.push(Line::from(Span::styled(hint, theme.secondary())));
     }
     let name = Category::ALL[state.cat].2;
-    let footer = if rows.iter().any(|r| r.editable) {
+    let footer = if crate::config::key_hints() && rows.iter().any(|r| r.editable) {
         Some("⏎ change · saved immediately")
     } else {
         None
@@ -702,7 +713,14 @@ fn render_appearance(frame: &mut Frame, theme: &Theme, config: &Config, state: &
                 names[state.opt_idx.min(5)],
                 theme.text().add_modifier(Modifier::BOLD),
             ),
-            Span::styled("  ⏎ change · j/k option", theme.secondary()),
+            Span::styled(
+                if crate::config::key_hints() {
+                    "  ⏎ change · j/k option"
+                } else {
+                    ""
+                },
+                theme.secondary(),
+            ),
         ]));
     }
     let block = panel_block(theme, state.pane == SettingsPane::Options, "Appearance", None);

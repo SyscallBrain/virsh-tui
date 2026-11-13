@@ -16,6 +16,7 @@ default_uri = "qemu:///system"   # used when -c/--connect is not given
 refresh_interval_secs = 1        # how often stats are sampled
 editor = "vi"                    # used when $VISUAL and $EDITOR are unset
 start_view = "domains"           # domains, host, networks, storage, events
+key_hints = true                 # key hints in bars, panels and dialogs
 
 [appearance]
 theme = "tokyo-night"            # built-in name or a file in themes/
@@ -90,6 +91,12 @@ Keybindings, Connections, Monitoring, Confirmations, and Console & viewer.
 theme live. `Enter` applies and saves, `h` and `l` switch panes, `Esc`
 reverts unsaved previews and closes.
 
+General › **key hints** turns off the key hints once you know the keys
+(`:set key_hints=false` does the same): the status bars, the actions under the
+selected domain, panel footers and the key lines of the palette, ISO picker,
+wizard and hardware editor. The mode pill, breadcrumb and dialog buttons
+(`y confirm`, `⏎ create`, …) stay, and `?` still lists every key.
+
 ## `:set`
 
 `:set` changes one setting and saves the file:
@@ -102,7 +109,7 @@ reverts unsaved previews and closes.
 ```
 
 Supported keys: `theme`, `transparent`, `borders`, `icons`, `graphs`,
-`gradient`, `dim_modals`, `default_uri`, `editor`, `start_view`, `viewer`,
+`gradient`, `dim_modals`, `key_hints`, `default_uri`, `editor`, `start_view`, `viewer`,
 `escape`, `refresh_interval_secs`. `Tab` completes them. Values are checked
 (booleans take `true`/`false`, `refresh_interval_secs` 1-60, `viewer`
 `virt-viewer` or `remote-viewer`, …); a rejected value changes nothing. A new

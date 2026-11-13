@@ -47,7 +47,15 @@ pub fn render(frame: &mut Frame, theme: &Theme, lines: &[String], scroll: usize)
             Style::default().fg(t.fg2),
         ))
         .title_bottom(
-            Line::from(Span::styled(" j/k C-d/C-u scroll · ⎋ close ", theme.dim())).right_aligned(),
+            Line::from(Span::styled(
+                if crate::config::key_hints() {
+                    " j/k C-d/C-u scroll · ⎋ close "
+                } else {
+                    ""
+                },
+                theme.dim(),
+            ))
+            .right_aligned(),
         );
     frame.render_widget(Paragraph::new(body).block(block), modal);
 }

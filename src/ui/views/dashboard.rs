@@ -1033,7 +1033,8 @@ fn render_right(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: 
         area.width.saturating_sub(4) as usize,
     )
     .len();
-    let overview_h = (2 + 5 + 1 + chip_rows) as u16;
+    let gap = usize::from(chip_rows > 0);
+    let overview_h = (2 + 5 + gap + chip_rows) as u16;
     let cpu_h = area.height.saturating_sub(overview_h + 8 + 9).clamp(7, 11);
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -1067,7 +1068,11 @@ fn render_right(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: 
 }
 
 /// Action chips for the selected domain, wrapped to `width` cells.
+/// Empty when key hints are off.
 fn action_chips(theme: &Theme, state: DomainState, width: usize) -> Vec<Line<'static>> {
+    if !crate::config::key_hints() {
+        return Vec::new();
+    }
     let chips: &[(&str, &str)] = match state {
         DomainState::Running => &[
             ("S", "shutdown"),
@@ -1244,7 +1249,7 @@ fn render_overview(frame: &mut Frame, theme: &Theme, state: &DashboardState, are
     }
     let chips = action_chips(theme, sel.state, area.width.saturating_sub(4) as usize);
     // A blank line separates the info rows from the actions when it fits.
-    if (area.height as usize).saturating_sub(2 + lines.len()) > chips.len() {
+    if !chips.is_empty() && (area.height as usize).saturating_sub(2 + lines.len()) > chips.len() {
         lines.push(Line::from(""));
     }
     lines.extend(chips);
@@ -1268,17 +1273,19 @@ fn render_not_running(frame: &mut Frame, theme: &Theme, state: &DashboardState, 
             Span::styled("Memory   ", theme.secondary()),
             Span::raw(sel.mem_label.clone()),
         ]),
-        Line::from(""),
     ];
-    let hint = match sel.state {
-        DomainState::Paused => ("p", "  resume"),
-        DomainState::PmSuspended => ("s", "  wake up"),
-        _ => ("s", "  start"),
-    };
-    lines.push(Line::from(vec![
-        Span::styled(hint.0, theme.key()),
-        Span::styled(hint.1, theme.text()),
-    ]));
+    if crate::config::key_hints() {
+        let hint = match sel.state {
+            DomainState::Paused => ("p", "  resume"),
+            DomainState::PmSuspended => ("s", "  wake up"),
+            _ => ("s", "  start"),
+        };
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled(hint.0, theme.key()),
+            Span::styled(hint.1, theme.text()),
+        ]));
+    }
     let title = if sel.state == DomainState::Paused {
         "Paused"
     } else {
