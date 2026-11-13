@@ -295,3 +295,11 @@ Google Chrome nor Chromium is available on the validation host. The optional
   Case is ignored always (not fzf's "smart case"), so `Snap` and `snap` match the
   same entries. Whitespace stays a literal character, so no fzf-style
   `^`/`$`/`!` syntax is introduced.
+
+## Packaging and release automation (2026-11-13)
+- Release binaries are static musl builds for x86_64 and aarch64 (as in lazybw), so one binary runs on every distribution regardless of glibc (the previous build was linked against glibc 2.35 on `ubuntu-22.04`, so it could need up to that version). The archive name changes from `virsh-tui-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` to `virsh-tui-X.Y.Z-TARGET.tar.gz`.
+- musl's own allocator made the release binary 1.4–2× slower on `cargo bench --bench performance`, so musl builds use mimalloc as the global allocator (`src/lib.rs`, `cfg(target_env = "musl")`, so the benchmarks use it too). One run each, the musl one in a Debian container: charts, fuzzy matching, palette and XML are on par with glibc; views are 9–23% slower (dashboard 174x43: 0.34 ms glibc, 0.48 ms plain musl, 0.42 ms with mimalloc); metrics ingest stays 1.3–1.65× slower (1000 domains: 2.2 / 4.2 / 2.8 ms), probably not allocation. All far below a frame budget. glibc builds (CI, `cargo install`, the AUR `virsh-tui` package) keep the system allocator. mimalloc is C, so building the musl target needs `musl-gcc` (`musl-tools` in CI).
+- `.deb`/`.rpm` depend only on the libvirt client (`libvirt-clients` / `libvirt-client`) because the static binary has no shared-library dependencies (`auto-req = "no"` for the RPM); `virt-install` and `virt-viewer` are recommends. Arch depends on `libvirt` (the package that ships `virsh`); `namcap` warns it "may not be needed" because `virsh` is run, not linked.
+- `[profile.release] strip = true` so the packages need no strip step (cross-architecture packaging cannot strip with the host `strip`); `[profile.bench]` keeps symbols for profiling.
+- AUR publishing stays manual (`scripts/aur.sh`, `docs/RELEASE.md`), like lazybw: no AUR SSH key in GitHub secrets.
+- GitHub Actions are pinned by commit SHA and updated by Dependabot; `dtolnay/rust-toolchain` was replaced by plain `rustup` commands.

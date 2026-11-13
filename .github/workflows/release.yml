@@ -1,48 +1,169 @@
 name: Release
 
+# A version tag builds, tests and publishes the release. A manual run builds
+# and tests the same files (uploaded as the `dist` artifact) without
+# publishing anything.
 on:
   push:
-    tags: ["v*"]
+    tags: ['v*']
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.99.1
+  CARGO_DEB_VERSION: 3.8.0
+  CARGO_GENERATE_RPM_VERSION: 0.21.1
 
 jobs:
-  release:
-    # An older Ubuntu keeps the glibc requirement low, so the binary runs on
-    # most distributions.
-    runs-on: ubuntu-22.04
+  # A static (musl) binary per architecture, each built natively, so it runs
+  # on any Linux distribution whatever its glibc.
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      TARGET: ${{ matrix.arch }}-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build
-        run: cargo build --release --locked
-      - name: Package
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Rust toolchain
         run: |
-          name="virsh-tui-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu"
-          mkdir "$name"
-          cp target/release/virsh-tui README.md LICENSE CHANGELOG.md "$name/"
-          tar -czf "$name.tar.gz" "$name"
-          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target "$TARGET"
+          rustup default "$RUST_VERSION"
+          sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+      - name: Check the tag matches Cargo.toml
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 |
+            python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "virsh-tui"))')
+          if [ "$TAG" != "v$version" ]; then
+            echo "Release tag $TAG does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+      - name: Build the static binary
+        run: cargo build --release --locked --target "$TARGET"
+      - name: Smoke-test the binary
+        run: |
+          binary="target/$TARGET/release/virsh-tui"
+          "$binary" --version
+          if ldd "$binary" 2>/dev/null | grep -q '=>'; then
+            echo "$binary is dynamically linked" >&2
+            exit 1
+          fi
+      - name: Upload the binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-${{ env.TARGET }}
+          path: target/${{ env.TARGET }}/release/virsh-tui
+          if-no-files-found: error
+
+  # Archives and .deb, .rpm and Arch packages for both architectures.
+  package:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Rust toolchain and packaging tools
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          cargo install cargo-deb --version "$CARGO_DEB_VERSION" --locked
+          cargo install cargo-generate-rpm --version "$CARGO_GENERATE_RPM_VERSION" --locked
+      - name: Download the binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: binary-*
+          path: binaries
+      - name: Build the packages
+        run: |
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            install -Dm755 "binaries/binary-$target/virsh-tui" "target/$target/release/virsh-tui"
+            scripts/dist.sh "$target" --package-only
+          done
+          (cd dist && sha256sum -- *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS && cat SHA256SUMS)
+      # Each package must install with its distribution's libvirt client and
+      # run. Debian and Ubuntu on the runner, the rest in containers.
+      - name: Smoke-test the x86_64 packages
+        run: |
+          tar -xzf dist/virsh-tui-*-x86_64-unknown-linux-musl.tar.gz -C "$RUNNER_TEMP"
+          extracted=$(find "$RUNNER_TEMP" -path '*-x86_64-unknown-linux-musl/virsh-tui' -type f)
+          "$extracted" --version
+          sudo apt-get update -qq
+          sudo apt-get install -y ./dist/virsh-tui_*_amd64.deb
+          virsh-tui --version && virsh --version
+          sudo apt-get remove -y virsh-tui
+          docker run --rm -v "$PWD/dist:/dist:ro" debian:stable bash -euc '
+            apt-get update -qq && apt-get install -y -qq /dist/virsh-tui_*_amd64.deb >/dev/null
+            virsh-tui --version && virsh --version'
+          docker run --rm -v "$PWD/dist:/dist:ro" fedora:latest bash -euc '
+            dnf install -y -q /dist/virsh-tui-*.x86_64.rpm
+            virsh-tui --version && virsh --version'
+          docker run --rm -v "$PWD/dist:/dist:ro" opensuse/tumbleweed bash -euc '
+            zypper --non-interactive --quiet install --allow-unsigned-rpm /dist/virsh-tui-*.x86_64.rpm
+            virsh-tui --version && virsh --version'
+          docker run --rm -v "$PWD/dist:/dist:ro" archlinux:base-devel bash -euc '
+            pacman -Syu --noconfirm --needed namcap >/dev/null
+            namcap /dist/virsh-tui-*-x86_64.pkg.tar.zst
+            pacman -U --noconfirm /dist/virsh-tui-*-x86_64.pkg.tar.zst >/dev/null
+            virsh-tui --version && virsh --version'
+      - name: Upload the release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # Needed only to publish the GitHub release for a version tag.
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
       - name: Release notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '
+          awk -v v="${TAG#v}" '
             index($0, "## [" v "]") == 1 { found = 1; next }
             found && /^## \[/ { exit }
             found && /^\[[^]]+\]: / { next }
             found { print }
-          ' CHANGELOG.md > notes.md
-          test -s notes.md
-      - name: Publish
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          test -s "$RUNNER_TEMP/notes.md"
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "virsh-tui $GITHUB_REF_NAME" \
-            --notes-file notes.md \
-            virsh-tui-*.tar.gz virsh-tui-*.tar.gz.sha256
+          gh release create "$TAG" dist/*.tar.gz dist/*.deb dist/*.rpm dist/*.pkg.tar.zst dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "virsh-tui $TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md"
