@@ -54,9 +54,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|i| format!("vt-test-domain-{i:04}-snapshot"))
         .collect();
     let refs: Vec<_> = names.iter().map(String::as_str).collect();
-    for query in ["snap", "dömäin"] {
-        measure(&format!("fuzzy {query} 1000"), || {
-            black_box(palette::fuzzy_rank(black_box(query), black_box(&refs)));
+    let unicode_names: Vec<_> = (0..1000)
+        .map(|i| format!("vt-test-dömäin-{i:04}-snapshot"))
+        .collect();
+    let unicode_refs: Vec<_> = unicode_names.iter().map(String::as_str).collect();
+    // (label, query, haystacks, expected matches). Asserting the match count
+    // keeps a workload from silently measuring an empty early-exit path.
+    let fuzzy_cases = [
+        ("fuzzy snap 1000", "snap", &refs, 1000),
+        ("fuzzy snap 1000 unicode haystacks", "snap", &unicode_refs, 1000),
+        ("fuzzy dömäin 1000 no match", "dömäin", &refs, 0),
+    ];
+    for (label, query, items, expected) in fuzzy_cases {
+        assert_eq!(palette::fuzzy_rank(query, items).len(), expected, "{label}");
+        measure(label, || {
+            black_box(palette::fuzzy_rank(black_box(query), black_box(items)));
         });
     }
     let mut palette = palette::PaletteState::demo();
@@ -71,6 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     palette.query = "snap".into();
+    assert_eq!(palette.visible().len(), 1000);
     measure("palette visible 1000", || {
         black_box(palette.visible());
     });
@@ -83,6 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut metrics = virsh_tui::metrics::store::MetricsStore::default();
         let mut now = Instant::now();
         metrics.ingest_domains(&stats, now);
+        assert!((0..count).all(|i| metrics.domain(&format!("vt-test-{i}")).is_some()));
         measure(&format!("ingest metrics {count} domains"), || {
             now += Duration::from_secs(1);
             metrics.ingest_domains(black_box(&stats), now);
