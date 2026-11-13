@@ -7,6 +7,7 @@ pub enum ExCommand {
     Shutdown(String),
     Destroy(String),
     Rename(String, String),
+    Clone(String, String),
     Desc(String, String),
     AttachDisk(String, String, String),
     DetachDisk(String, String),
@@ -42,26 +43,30 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
     let mut parts = line.splitn(2, char::is_whitespace);
     let word = parts.next().unwrap_or("");
     let args = parts.next().unwrap_or("").trim();
+    // Shell-style words: `"/isos/My Distro.iso"` stays one argument.
+    let Some(words) = shlex::split(args) else {
+        return Err(String::from("unbalanced quotes"));
+    };
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
     match word {
         "q" => Ok(ExCommand::Quit),
         "q!" => Ok(ExCommand::Discard),
         "qa" | "qall" => Ok(ExCommand::QuitAll),
         "w" => Ok(ExCommand::Write),
         "messages" => Ok(ExCommand::Messages),
-        "start" => req_arg(word, args, ExCommand::Start),
+        "start" => req_arg(word, &words, ExCommand::Start),
         // With extra flags (`--mode agent`) these go straight to virsh.
-        "shutdown" | "destroy" if args.split_whitespace().count() > 1 => {
-            Ok(ExCommand::RawVirsh(line.to_string()))
-        }
-        "shutdown" => req_arg(word, args, ExCommand::Shutdown),
-        "destroy" => req_arg(word, args, ExCommand::Destroy),
-        "rename" => {
-            let mut parts = args.split_whitespace();
-            match (parts.next(), parts.next()) {
-                (Some(a), Some(b)) => Ok(ExCommand::Rename(a.to_string(), b.to_string())),
-                _ => Err(String::from(":rename needs <domain> <new-name>")),
-            }
-        }
+        "shutdown" | "destroy" if words.len() > 1 => Ok(ExCommand::RawVirsh(line.to_string())),
+        "shutdown" => req_arg(word, &words, ExCommand::Shutdown),
+        "destroy" => req_arg(word, &words, ExCommand::Destroy),
+        "clone" => match words.as_slice() {
+            [a, b] => Ok(ExCommand::Clone(a.to_string(), b.to_string())),
+            _ => Err(String::from(":clone needs <domain> <new-name>")),
+        },
+        "rename" => match words.as_slice() {
+            [a, b] => Ok(ExCommand::Rename(a.to_string(), b.to_string())),
+            _ => Err(String::from(":rename needs <domain> <new-name>")),
+        },
         "desc" => {
             let mut parts = args.splitn(2, char::is_whitespace);
             match (parts.next(), parts.next()) {
@@ -72,7 +77,7 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
             }
         }
         "attach-disk" => {
-            let p: Vec<&str> = args.split_whitespace().collect();
+            let p = &words;
             match p.as_slice() {
                 [d, src, target] => Ok(ExCommand::AttachDisk(
                     d.to_string(),
@@ -84,14 +89,14 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
             }
         }
         "detach-disk" => {
-            let p: Vec<&str> = args.split_whitespace().collect();
+            let p = &words;
             match p.as_slice() {
                 [d, target] => Ok(ExCommand::DetachDisk(d.to_string(), target.to_string())),
                 _ => Ok(ExCommand::RawVirsh(line.to_string())),
             }
         }
         "attach-nic" => {
-            let p: Vec<&str> = args.split_whitespace().collect();
+            let p = &words;
             match p.as_slice() {
                 [d, source, model] => Ok(ExCommand::AttachNic(
                     d.to_string(),
@@ -102,7 +107,7 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
             }
         }
         "block-resize" => {
-            let p: Vec<&str> = args.split_whitespace().collect();
+            let p = &words;
             match p.as_slice() {
                 [d, target, size] => Ok(ExCommand::Resize(
                     d.to_string(),
@@ -113,7 +118,7 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
             }
         }
         "attach-iso" | "media" => {
-            let p: Vec<&str> = args.split_whitespace().collect();
+            let p = &words;
             match p.as_slice() {
                 [d, iso] => Ok(ExCommand::Media(
                     d.to_string(),
@@ -129,15 +134,15 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
             }
         }
         "attach-hostdev" => {
-            let p: Vec<&str> = args.split_whitespace().collect();
+            let p = &words;
             match p.as_slice() {
                 [d, node] => Ok(ExCommand::AttachHostdev(d.to_string(), node.to_string())),
                 _ => Err(String::from(":attach-hostdev needs <domain> <nodedev>")),
             }
         }
-        "connect" => req_arg(word, args, ExCommand::Connect),
-        "theme" => req_arg(word, args, ExCommand::Theme),
-        "sort" => req_arg(word, args, ExCommand::Sort),
+        "connect" => req_arg(word, &words, ExCommand::Connect),
+        "theme" => req_arg(word, &words, ExCommand::Theme),
+        "sort" => req_arg(word, &words, ExCommand::Sort),
         "help" => Ok(ExCommand::Help(args.to_string())),
         "set" => {
             let (k, v) = args.split_once('=').unwrap_or((args, ""));
@@ -155,11 +160,12 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
     }
 }
 
-fn req_arg(word: &str, args: &str, f: impl Fn(String) -> ExCommand) -> Result<ExCommand, String> {
-    if args.is_empty() {
-        Err(format!(":{word} needs an argument"))
-    } else {
-        Ok(f(args.split_whitespace().next().unwrap_or("").to_string()))
+/// Exactly one argument (extra words are an error, not silently dropped).
+fn req_arg(word: &str, words: &[&str], f: impl Fn(String) -> ExCommand) -> Result<ExCommand, String> {
+    match words {
+        [] => Err(format!(":{word} needs an argument")),
+        [one] => Ok(f(one.to_string())),
+        _ => Err(format!(":{word} takes one argument (got {})", words.len())),
     }
 }
 

@@ -67,7 +67,7 @@ renders `bg` as `Color::Reset` (inherit terminal).
 - **Tabs**: inactive `comment`, number in `orange` bold; active = bg `bg`, fg `blue`, bold.
 - **Mode pill colours**: NORMAL=blue, INSERT=green, VISUAL=magenta, COMMAND=yellow, PALETTE/PICKER=magenta, CONFIRM=red. Text `bg2`, bold.
 - **Message line**: success `green ✓`, error `red ✗`, info `comment`. Always append `── <command>` in `comment` when a virsh call ran.
-- Minimum terminal size: 100×30. Below that, show a centered "terminal too small (WxH, need 100×30)" panel.
+- Full layout from 100×30. Between 40×12 and 100×30: a degraded single-column list per view (review 2026-11-12, P1-40). Below 40×12, show a centered "terminal too small (WxH, need 40×12)" panel.
   Layout breakpoints: ≥160 cols → two-column dashboard (as mock); 100–159 → right column moves under the list as tabs (Overview | CPU | Mem | Disk | Net).
 
 ### Panel (the basic container)

@@ -55,7 +55,7 @@
 - Integration needs max vCPU/memory headroom in the test XML (hot-plug within maxima).
 
 ## P8
-- Revert plan is multi-step: `[snapshot-create-as auto-before-revert-HHMM --atomic]` + `[snapshot-revert …]`; safety name uses live HHMM (frozen 1438 in demo/snapshot fixtures).
+- Revert plan is multi-step: `[snapshot-create-as auto-before-revert-HHMM --atomic]` + `[snapshot-revert …]`; safety name uses the live date and time `YYYYMMDD-HHMMSS` (review RB-7: HHMM collided; frozen 1438 in demo/snapshot fixtures).
 - Snap modal keys bypass the generic confirm: `1/2/3` after-state, `f` force, `s` safety, `c/o/m` delete flags, `y` run, `n/Esc` close.
 - `e` on the snapshots tab suspends into `virsh snapshot-edit --snapshotname`.
 - Live snapshots build the tree from parent links (dates empty until per-snapshot dumpxml).
@@ -177,3 +177,60 @@ The responsive message-line states have text snapshots, and existing idle
 snapshots remain unchanged. Screenshot regeneration was not run: neither
 Google Chrome nor Chromium is available on the validation host. The optional
 `aha` converter is also unavailable; mdBook and ImageMagick are available.
+
+## Review fixes (2026-11-12 review, `docs/REVIEW-2026-11-12.md`)
+
+- `Z` (P0-1): the app holds the first `Z` back. A second `Z` within 0.6 s
+  quits (`ZZ`); a lone `Z` resolves through the keymap after the timeout and
+  managed-save always confirms; `Z` + another key does nothing (vim). This
+  replaces the P4 note above ("`Z` alone is managed-save").
+- Confirmations are keyed on an explicit `ConfirmKind`, never on title or
+  label text (P0-7). Pool/network destroy, detach, clone, managed-save,
+  `:block-resize` and raw destructive commands always confirm.
+- Sizes (P0-4) require a binary unit (`K`/`M`/`G`/`T`, optional `iB`); bare
+  numbers and decimal units are rejected. Sizes reach virsh with an explicit
+  unit (`kib_arg`). Disk shrink is refused (capacity from `domblkinfo`).
+- The hardware form keeps the mockup's live `setvcpus N --live` step when
+  only the maximum changes (harmless, fidelity); it is dropped when the value
+  exceeds the running maximum (config-only + restart note, P1-12).
+- `:attach-disk` (P0-5) infers the format from the extension (`qcow2`,
+  `raw`/`iso`, `vmdk`, `vdi`, `vhdx`, `qed`) or the local image header
+  (`QFI\xfb`, `KDMV`); otherwise the short form is refused with the full
+  virsh command to type. No `qemu-img`/`vol-dumpxml` round trip.
+- Orphan labels (P0-6) read inactive and live XML with `roxmltree`, resolve
+  `<source pool= volume=>`, count backing references across all pools, and
+  show `⚠ no domain` / `? unknown` (when a read failed) instead of `⚠ orphan`.
+  The demo fixture keeps the mockup's `⚠ orphan`.
+- Bulk jobs (P1-1) run every target; the single-target failure message keeps
+  its `✗ step i/n failed: …` form (PTY tests match it), bulk adds
+  `✗ n ok / m failed: names` and one `:messages` line per failure.
+- Undefine (P1-4) always passes `--keep-nvram --snapshots-metadata
+  --managed-save`: disks and UEFI vars stay, the metadata that blocks
+  undefine goes. `has_managed_save` stays unused.
+- Leaving Detail with pending hardware edits (`q`, `⌫`, view keys, opening
+  another domain) is refused like `:q` (P1-9). `self.detail` is only a target
+  while the Detail view is shown (`current_detail`, P0-3).
+- Background reads have one slot and serial per kind (`ReadKind`, P1-49).
+  Storage reads every active pool's volumes in the view load; pool switches
+  are local (PF-1, P1-50). Networks read `domiflist` once per load.
+- `virsh` table output is split at the header's column offsets
+  (`table_rows`), with a whitespace fallback for unpadded output (P1-18/19).
+- Small terminals (P1-40): from 40×12 to 100×30 every view renders a
+  single list (`ui/views/minimal.rs`); below 40×12 the "too small" panel,
+  and no overlay is drawn.
+- `--osinfo` (P1-34) is `detect=on,require=off` unless the user typed an id;
+  the ISO-name guess is only a hint. Wizard XML uses `--print-xml=1` (P1-35).
+- `:messages` (P1-27) opens a scrollable overlay; the log keeps 2000 lines.
+- Structured listings (`domstats`, `list`, `vol-list`, `pool-list`,
+  `net-list`, `net-dhcp-leases`) may read 64 MiB of output (P1-51); raw
+  commands keep the 1 MiB cap.
+- Help (UX-7): `Tab` shows a second page of fixed per-view keys; its title
+  gained ` ⇥ view keys`, the only change to the help snapshots. The
+  which-key popup is generated from the live keymap.
+- Not done: UX-5 (several jobs at once) would need a redesign of the single
+  `active_job` slot that every view relies on; the one-job rule stays and is
+  documented. UX-8: view-specific raw keys stay fixed (not remappable); they
+  are listed on the second help page, and invalid key names in
+  `keymap.toml` are now reported. PF-3: the autostart list is re-read every
+  10 ticks (and after jobs) instead of every tick; a persistent virsh session
+  was not attempted.

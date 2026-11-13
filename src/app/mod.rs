@@ -18,6 +18,9 @@ mod settings;
 mod storage;
 mod wizard;
 
+#[cfg(test)]
+mod review_regressions;
+
 use color_eyre::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
@@ -39,6 +42,7 @@ use palette::*;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use render::*;
+use requests::ReadKind;
 use requests::*;
 use settings::*;
 use storage::*;
@@ -65,6 +69,35 @@ pub async fn run(cli: &Cli, config: &Config) -> Result<()> {
 }
 
 /// Run the TUI with a channel for coordinated OS shutdown requests.
+/// Owns the ratatui terminal. ratatui's `Drop` shows the cursor and, when
+/// that fails, `eprintln!`s; after a hangup (`SIGHUP`) stderr is gone too,
+/// so that print panics inside the drop and the process aborts. The guard
+/// shows the cursor itself and skips ratatui's drop when the tty is dead.
+struct TerminalGuard<B: ratatui::backend::Backend>(Option<Terminal<B>>);
+
+impl<B: ratatui::backend::Backend> std::ops::Deref for TerminalGuard<B> {
+    type Target = Terminal<B>;
+    fn deref(&self) -> &Terminal<B> {
+        self.0.as_ref().expect("terminal present until drop")
+    }
+}
+
+impl<B: ratatui::backend::Backend> std::ops::DerefMut for TerminalGuard<B> {
+    fn deref_mut(&mut self) -> &mut Terminal<B> {
+        self.0.as_mut().expect("terminal present until drop")
+    }
+}
+
+impl<B: ratatui::backend::Backend> Drop for TerminalGuard<B> {
+    fn drop(&mut self) {
+        if let Some(mut terminal) = self.0.take()
+            && terminal.show_cursor().is_err()
+        {
+            std::mem::forget(terminal);
+        }
+    }
+}
+
 pub async fn run_with_shutdown(
     cli: &Cli,
     config: &Config,
@@ -182,7 +215,7 @@ pub async fn run_with_shutdown(
     }
 
     let backend = CrosstermBackend::new(std::io::stdout());
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = TerminalGuard(Some(Terminal::new(backend)?));
     terminal.clear()?;
 
     let mut ticker = interval(Duration::from_secs(1));
@@ -201,6 +234,10 @@ pub async fn run_with_shutdown(
     if let Some(w) = keymap_warnings.first() {
         dash.message = format!("✗ {w}");
         messages.extend(keymap_warnings.iter().cloned());
+    }
+    if let Some(error) = &config.load_error {
+        dash.message = format!("✗ invalid config, using defaults (changes are not saved): {error}");
+        messages.push(dash.message.clone());
     }
     let last_key = std::time::Instant::now();
     let which_key_since: Option<std::time::Instant> = None;
@@ -224,9 +261,16 @@ pub async fn run_with_shutdown(
         settings,
         palette,
         help_filter,
+        messages_view: None,
+        job_finished_at: None,
+        help_page: 0,
+        help_scroll: 0,
+        ex_history: Vec::new(),
+        ex_history_pos: None,
         events_rx,
         view,
         pending_quit_z,
+        replaying_z: false,
         engine,
         history,
         uri,
@@ -252,7 +296,8 @@ pub async fn run_with_shutdown(
         next_job_id: 1,
         busy_feedback: None,
         read_serial: 0,
-        selection_task: None,
+        selection_task: std::collections::HashMap::new(),
+        read_serials: std::collections::HashMap::new(),
         connection_epoch: 0,
         epoch_uri: cli.connect.clone(),
         view_load_serial: std::collections::HashMap::new(),
@@ -314,19 +359,22 @@ pub async fn run_with_shutdown(
                     None => std::future::pending().await,
                 }
             } => app.apply_help_result(help),
-            loaded = async {
-                match app.selection_task.as_mut() {
-                    Some(task) => (&mut task.0).await,
-                    None => std::future::pending().await,
+            (kind, loaded) = std::future::poll_fn(|cx| {
+                use std::future::Future;
+                for (kind, task) in app.selection_task.iter_mut() {
+                    if let std::task::Poll::Ready(result) = std::pin::Pin::new(&mut task.0).poll(cx) {
+                        return std::task::Poll::Ready((*kind, result));
+                    }
                 }
-            } => {
-                app.selection_task.take();
+                std::task::Poll::Pending
+            }) => {
+                app.selection_task.remove(&kind);
                 if let Ok(result) = loaded { app.apply_selection_result(result); }
-                else if app.detail_loading {
+                else if kind == ReadKind::Detail && app.detail_loading {
                     app.detail_loading = false;
                     app.pending_snapshot_modal = None;
                     if let Some(detail) = app.detail.as_mut() { detail.message = "Failed to load domain details".into(); }
-                } else if app.picker_loading {
+                } else if kind == ReadKind::Picker && app.picker_loading {
                     app.picker_loading = false;
                     app.store.message = "Failed to detect the CD-ROM drive".into();
                 }
@@ -342,6 +390,9 @@ pub async fn run_with_shutdown(
             _ = tokio::time::sleep_until((app.last_key + Duration::from_millis(180)).into()), if app.engine.has_pending_digits() => {
                 app.on_digit_timeout();
             }
+            _ = tokio::time::sleep_until((app.last_key + Z_TIMEOUT).into()), if app.pending_quit_z => {
+                app.on_z_timeout();
+            }
             maybe = events.recv() => {
                 match maybe {
                     Some(Event::Key(key)) => {
@@ -354,6 +405,8 @@ pub async fn run_with_shutdown(
                     }
                     // Terminal resized: repaint everything at the new size.
                     Some(Event::Resize(..)) => terminal.clear()?,
+                    // Bracketed paste: text, never keys (a pasted `D` must not destroy).
+                    Some(Event::Paste(text)) => app.on_paste(&text),
                     Some(_) => {}
                     None => break,
                 }
@@ -369,7 +422,22 @@ struct MessageLog {
     actions: Vec<(String, String, bool)>,
 }
 
+/// History kept for `:messages` (older lines are dropped).
+const MESSAGE_HISTORY: usize = 2000;
+
 impl MessageLog {
+    /// Drop the oldest lines beyond [`MESSAGE_HISTORY`].
+    fn trim(&mut self) {
+        if self.lines.len() > MESSAGE_HISTORY {
+            let excess = self.lines.len() - MESSAGE_HISTORY;
+            self.lines.drain(..excess);
+        }
+        if self.actions.len() > MESSAGE_HISTORY {
+            let excess = self.actions.len() - MESSAGE_HISTORY;
+            self.actions.drain(..excess);
+        }
+    }
+
     fn push_action(&mut self, message: String, target: &str, success: bool) {
         self.lines.push(message.clone());
         self.actions.push((message, target.to_string(), success));
@@ -402,9 +470,21 @@ struct App {
     settings: Option<ui::views::settings::SettingsState>,
     palette: Option<ui::overlays::palette::PaletteState>,
     help_filter: Option<String>,
+    /// `:messages` overlay: lines scrolled up from the newest.
+    messages_view: Option<usize>,
+    /// Help overlay page (0 global keys, 1 view keys) and scroll.
+    help_page: u8,
+    help_scroll: usize,
+    /// When the last job finished (a late C-c must not quit).
+    job_finished_at: Option<std::time::Instant>,
+    /// `:` lines entered this session (Up/Down recall) and the recall position.
+    ex_history: Vec<String>,
+    ex_history_pos: Option<usize>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
+    /// True while a timed-out lone `Z` is replayed through the engine.
+    replaying_z: bool,
     engine: crate::input::engine::KeyEngine,
     history: crate::command::history::History,
     uri: String,
@@ -433,7 +513,9 @@ struct App {
     next_job_id: u64,
     busy_feedback: Option<std::time::Instant>,
     read_serial: u64,
-    selection_task: Option<SelectionTask>,
+    selection_task: std::collections::HashMap<requests::ReadKind, SelectionTask>,
+    /// Current serial per read kind (see [`requests::ReadKind`]).
+    read_serials: std::collections::HashMap<requests::ReadKind, u64>,
     connection_epoch: u64,
     epoch_uri: String,
     view_load_serial: std::collections::HashMap<View, u64>,
@@ -603,17 +685,17 @@ impl App {
             return;
         };
         let cfg = crate::config::confirmations();
-        let verb = c.confirm_label.trim_start_matches("y ").to_string();
-        if verb == "undefine" && !cfg.type_name_for_undefine {
+        use crate::ui::overlays::confirm::ConfirmKind as K;
+        if c.kind == K::DomainUndefine && !cfg.type_name_for_undefine {
             c.type_name = None;
         }
-        let ask = match verb.as_str() {
-            "destroy" => cfg.destroy,
-            "reset" => cfg.reset,
-            "undefine" => cfg.undefine,
-            "delete" => cfg.delete_volume,
-            "wipe" => cfg.wipe,
-            _ => true,
+        let ask = match c.kind {
+            K::DomainDestroy => cfg.destroy,
+            K::DomainReset => cfg.reset,
+            K::DomainUndefine => cfg.undefine,
+            K::VolumeDelete => cfg.delete_volume,
+            K::VolumeWipe => cfg.wipe,
+            K::Always => true,
         };
         if !ask {
             self.run_confirmed();
@@ -671,11 +753,16 @@ impl App {
             crate::ui::widgets::modal::dim_background(f, &self.theme);
             ui::views::storage::render_picker(f, &self.theme, &self.store, picker);
         }
-        if !matches!(self.view, View::Gallery) {
+        // Below the smallest layout only the "too small" panel is drawn:
+        // overlays would not fit (and their geometry would underflow).
+        let too_small = crate::ui::layout::breakpoint(f.area().width, f.area().height)
+            == crate::ui::layout::Breakpoint::TooSmall;
+        if !matches!(self.view, View::Gallery) && !too_small {
             if self.confirm.is_some()
                 || self.wizard.is_some()
                 || self.palette.is_some()
                 || self.help_filter.is_some()
+                || self.messages_view.is_some()
             {
                 crate::ui::widgets::modal::dim_background(f, &self.theme);
             }
@@ -693,7 +780,7 @@ impl App {
                     .which_key_since
                     .is_some_and(|t| t.elapsed().as_millis() >= 300)
             {
-                render_which_key(f, &self.theme, &prefix);
+                render_which_key(f, &self.theme, &prefix, self.engine.map());
             }
             if let Some(wz) = &self.wizard {
                 crate::ui::overlays::wizard::render(f, &self.theme, wz);
@@ -706,7 +793,17 @@ impl App {
                 crate::ui::views::settings::render(f, &self.theme, &self.config, st);
             }
             if let Some(filter) = &self.help_filter {
-                crate::ui::overlays::help::render(f, &self.theme, filter, self.engine.map());
+                crate::ui::overlays::help::render_page(
+                    f,
+                    &self.theme,
+                    filter,
+                    self.engine.map(),
+                    self.help_page,
+                    self.help_scroll,
+                );
+            }
+            if let Some(scroll) = self.messages_view {
+                crate::ui::overlays::messages::render(f, &self.theme, &self.messages, scroll);
             }
         }
         if let Some(job) = &self.active_job
@@ -774,8 +871,7 @@ impl App {
             }
         }
         if !self.demo && self.poller_uri != self.uri {
-            self.read_serial = self.read_serial.wrapping_add(1);
-            self.selection_task.take();
+            self.cancel_all_reads();
             self.poller = Some(poller::spawn(
                 &self.uri,
                 self.config.general.refresh_interval_secs.max(1),
@@ -788,8 +884,7 @@ impl App {
         // Tell the poller which domain is selected (config + IP are fetched for it).
         if let Some(p) = &self.poller {
             let sel = self
-                .detail
-                .as_ref()
+                .current_detail()
                 .map(|d| (d.domain.clone(), d.state == crate::model::DomainState::Running))
                 .unwrap_or_else(|| {
                     let r = self.dash.selected();
@@ -851,6 +946,15 @@ impl App {
 
     /// One-second housekeeping: events, first-enter refreshes.
     fn on_tick(&mut self) {
+        self.messages.trim();
+        // Flush a throttled wizard draft.
+        if let Some(wizard) = &self.wizard {
+            wizard.autosave();
+        }
+        for notice in external::take_notices() {
+            self.messages.push(notice.clone());
+            self.show_message(notice);
+        }
         if let Some(rx) = self.events_rx.as_mut() {
             for _ in 0..512 {
                 let Ok(ev) = rx.try_recv() else { break };
@@ -861,8 +965,13 @@ impl App {
                 self.events_state.push(ev);
             }
         }
-        // Refresh Host/Networks/Storage every time they are entered (they are
-        // not polled every second like the domain list).
+        self.enter_view_if_changed();
+    }
+
+    /// Refresh Host/Networks/Storage every time they are entered (they are
+    /// not polled every second like the domain list). Called right after a
+    /// key, so entering a view does not wait for the next tick.
+    fn enter_view_if_changed(&mut self) {
         if self.view != self.prev_view {
             self.prev_view = self.view;
             if !self.demo {
@@ -947,22 +1056,17 @@ impl App {
             {
                 self.view_load_tasks.remove(&View::Storage);
                 let selected = self.store.selected_pool().to_string();
+                // Keep the cursor on the same volume across refreshes and jobs:
+                // the next X/W/R must not silently target the first row.
+                let selected_volume = self.store.selected_vol().map(|v| v.name.clone());
                 keep(&mut self.store.message, &mut fresh.message);
                 fresh.focus_pools = self.store.focus_pools;
                 fresh.picker = self.store.picker.take();
-                let previous_loaded = fresh.selected_pool().to_string();
                 if let Some(index) = fresh.pools.iter().position(|pool| pool.name == selected) {
                     fresh.pool_selected = index;
                 }
-                let needs_selection = fresh.selected_pool() != previous_loaded;
-                if needs_selection {
-                    fresh.volumes.clear();
-                    fresh.vol_selected = 0;
-                }
+                fresh.show_pool_volumes(selected_volume.as_deref());
                 self.store = *fresh;
-                if needs_selection && self.view == View::Storage {
-                    self.request_selection_after_load();
-                }
             }
             _ => {} // stale: the connection changed meanwhile
         }
@@ -974,14 +1078,119 @@ impl App {
         }
     }
 
+    /// Pasted text goes into the line being edited; elsewhere it is ignored.
+    fn on_paste(&mut self, text: &str) {
+        let text: String = text.chars().filter(|c| !c.is_control()).collect();
+        if let Some(ex) = self.ex_line.as_mut() {
+            for c in text.chars() {
+                ex.insert(c);
+            }
+            self.input_revision = self.input_revision.wrapping_add(1);
+        } else if let Some(filter) = self.help_filter.as_mut() {
+            filter.push_str(&text);
+        } else if let Some(palette) = self.palette.as_mut() {
+            palette.query.push_str(&text);
+        } else if let Some(picker) = self.store.picker.as_mut() {
+            picker.query.push_str(&text);
+            picker.selected = 0;
+        } else {
+            self.show_message(String::from(
+                "paste ignored: open the : line (or a text field) first",
+            ));
+        }
+    }
+
+    /// The domain is running or paused (so `--live` applies).
+    pub(super) fn domain_is_active(&self, name: &str) -> bool {
+        self.dash.rows.iter().any(|row| {
+            row.name == name
+                && matches!(
+                    row.state,
+                    crate::model::DomainState::Running | crate::model::DomainState::Paused
+                )
+        })
+    }
+
+    /// Stage an always-asked confirmation for ready-made plans.
+    pub(super) fn confirm_plans(
+        &mut self,
+        title: &str,
+        verb: &str,
+        plans: Vec<(String, crate::command::plan::CommandPlan)>,
+    ) {
+        let commands = plans
+            .iter()
+            .flat_map(|(_, plan)| plan.steps.iter().map(crate::command::display::display))
+            .collect();
+        let targets: Vec<String> = plans.iter().map(|(target, _)| target.clone()).collect();
+        let by_target: std::collections::HashMap<String, crate::command::plan::CommandPlan> =
+            plans.into_iter().collect();
+        let build: crate::command::plan::PlanBuilder =
+            std::sync::Arc::new(move |target: &str| by_target.get(target).cloned().unwrap_or_default());
+        self.confirm = Some((
+            crate::ui::overlays::confirm::Confirm {
+                kind: crate::ui::overlays::confirm::ConfirmKind::Always,
+                title: title.to_string(),
+                question: format!("{} {}?", capitalize(verb), targets.join(", ")),
+                commands,
+                confirm_label: format!("y {verb}"),
+                type_name: None,
+                typed: String::new(),
+            },
+            build,
+            targets,
+        ));
+    }
+
+    /// The detail state, only while the Detail view is shown. Outside it
+    /// `self.detail` may hold a domain the user has left: never a target.
+    pub(super) fn current_detail(&self) -> Option<&ui::views::detail::DetailState> {
+        self.detail.as_ref().filter(|_| self.view == View::Detail)
+    }
+
+    /// Domain the user is acting on: the Detail domain, else the dashboard cursor.
+    pub(super) fn current_domain_name(&self) -> String {
+        self.current_detail()
+            .map(|detail| detail.domain.clone())
+            .unwrap_or_else(|| self.dash.selected().name.clone())
+    }
+
+    /// True (and says so) when leaving Detail would drop unsaved hardware edits.
+    fn blocks_leaving_detail(&mut self) -> bool {
+        let pending = self
+            .current_detail()
+            .map_or(0, |detail| detail.hw.pending_count());
+        if pending == 0 {
+            return false;
+        }
+        self.show_message(String::from("unsaved changes (:w apply, :q! discard)"));
+        true
+    }
+
+    /// A lone `Z` (no second `Z` within [`Z_TIMEOUT`]) resolves through the
+    /// keymap (managed-save by default, behind a confirmation).
+    fn on_z_timeout(&mut self) {
+        if !self.pending_quit_z || self.last_key.elapsed() < Z_TIMEOUT {
+            return;
+        }
+        self.pending_quit_z = false;
+        self.replaying_z = true;
+        self.handle_key_event(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::SHIFT));
+        self.replaying_z = false;
+    }
+
     /// Resolve pending count digits after a short idle timeout.
     fn on_digit_timeout(&mut self) {
         if self.last_key.elapsed() >= Duration::from_millis(180) {
             let previous_view = self.view;
             for resolved in self.engine.flush() {
+                if is_view_switch(resolved.action) && self.blocks_leaving_detail() {
+                    continue;
+                }
                 switch_view(resolved.action, &mut self.view);
             }
             self.cancel_detail_load_if_left(previous_view);
+            self.enter_view_if_changed();
         }
     }
 
@@ -989,8 +1198,7 @@ impl App {
         if previous_view == View::Detail && self.view != View::Detail && self.detail_loading {
             self.detail_loading = false;
             self.pending_snapshot_modal = None;
-            self.read_serial = self.read_serial.wrapping_add(1);
-            self.selection_task.take();
+            self.cancel_read(ReadKind::Detail);
         }
     }
 
@@ -1033,10 +1241,7 @@ impl App {
                 self.ex_line = None;
                 self.input_revision = self.input_revision.wrapping_add(1);
                 match crate::input::ex::parse(&line) {
-                    Ok(crate::input::ex::ExCommand::Messages) => {
-                        let message = self.messages.last().cloned().unwrap_or_default();
-                        self.show_message(message);
-                    }
+                    Ok(crate::input::ex::ExCommand::Messages) => self.messages_view = Some(0),
                     Ok(crate::input::ex::ExCommand::Help(topic)) => self.help_filter = Some(topic),
                     Ok(crate::input::ex::ExCommand::Quit | crate::input::ex::ExCommand::QuitAll) => self
                         .show_message(format!(
@@ -1163,26 +1368,34 @@ impl App {
         }
         let previous_view = self.view;
         let had_picker = self.store.picker.is_some();
-        let previous_wizard = self
-            .wizard
-            .as_ref()
-            .and_then(|wizard| toml::to_string(wizard).ok());
+        let previous_wizard = self.wizard.as_ref().map(|wizard| wizard.content_snapshot());
         let previous_input = self
             .ex_line
             .as_ref()
             .map(|input| (input.value().to_string(), input.cursor(), input.filter));
         let had_confirm = self.confirm.is_some();
+        let snap_modal = |app: &Self| {
+            app.current_detail()
+                .map(|detail| detail.snap_modal)
+                .unwrap_or(ui::views::detail::SnapModal::None)
+        };
+        let modal_before = snap_modal(self);
         let quit = self.on_key_inner(key);
+        self.enter_view_if_changed();
+        // Settings › Confirmations › snapshot revert off: run the revert with
+        // the modal's defaults instead of asking.
+        if modal_before != ui::views::detail::SnapModal::Revert
+            && snap_modal(self) == ui::views::detail::SnapModal::Revert
+            && !crate::config::confirmations().revert
+        {
+            self.on_key_inner(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        }
         if had_picker && self.store.picker.is_none() && self.picker_loading {
             self.picker_loading = false;
-            self.read_serial = self.read_serial.wrapping_add(1);
-            self.selection_task.take();
+            self.cancel_read(ReadKind::Picker);
         }
         self.cancel_detail_load_if_left(previous_view);
-        let current_wizard = self
-            .wizard
-            .as_ref()
-            .and_then(|wizard| toml::to_string(wizard).ok());
+        let current_wizard = self.wizard.as_ref().map(|wizard| wizard.content_snapshot());
         if previous_wizard != current_wizard {
             self.wizard_revision = self.wizard_revision.wrapping_add(1);
         }
@@ -1229,9 +1442,19 @@ impl App {
         if self.engine.pending_prefix().is_some() && self.which_key_since.is_none() {
             self.which_key_since = Some(std::time::Instant::now());
         }
-        // C-c always quits; `q`/`ZZ` are checked only after the overlays that
+        // C-c quits; `q`/`ZZ` are checked only after the overlays that
         // take text input (ex line, palette, wizard, confirm, forms) had their turn.
+        // A C-c meant to cancel a job that just finished must not quit: within
+        // a short grace it only warns (a second C-c quits).
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            if self
+                .job_finished_at
+                .take()
+                .is_some_and(|at| at.elapsed() < Duration::from_millis(1500))
+            {
+                self.show_message(String::from("job already finished; press C-c again to quit"));
+                return false;
+            }
             return true;
         }
         // Confirm modal captures y/n/Esc.
@@ -1308,6 +1531,20 @@ impl App {
                 KeyCode::Enter => {
                     let line = ex.value().to_string();
                     self.ex_line = None;
+                    self.ex_history_pos = None;
+                    if !line.trim().is_empty() && self.ex_history.last() != Some(&line) {
+                        self.ex_history.push(line.clone());
+                        if self.ex_history.len() > 200 {
+                            self.ex_history.remove(0);
+                        }
+                    }
+                    if matches!(
+                        crate::input::ex::parse(&line),
+                        Ok(crate::input::ex::ExCommand::Messages)
+                    ) {
+                        self.messages_view = Some(0);
+                        return false;
+                    }
                     if let Ok(crate::input::ex::ExCommand::Connect(uri)) = crate::input::ex::parse(&line) {
                         if self.uri == uri {
                             self.request_refresh();
@@ -1341,7 +1578,28 @@ impl App {
                         self.dash.shutdowns.clear();
                         self.dash.visual_anchor = None;
                         self.dash.recent_events.clear();
+                        // Nothing of the previous host may survive the switch:
+                        // gauges, title, pools, metrics, the Events top bar.
+                        self.dash.host_gauges.clear();
+                        self.dash.host_pools.clear();
+                        self.dash.host_title.clear();
+                        self.dash.metrics = Default::default();
+                        self.dash.hostname = if is_local_uri(&self.uri) {
+                            crate::backend::virsh::hostname()
+                        } else {
+                            remote_host_label(&self.uri)
+                        };
                         self.events_state.events.clear();
+                        self.events_state.selected = 0;
+                        self.events_state.uri.clone_from(&self.uri);
+                        self.events_state.connected = true;
+                        self.host = ui::views::host::HostState {
+                            uri: self.uri.clone(),
+                            connected: true,
+                            ..Default::default()
+                        };
+                        self.nets.uri.clone_from(&self.uri);
+                        self.store.uri.clone_from(&self.uri);
                         self.nets.networks.clear();
                         self.nets.leases.clear();
                         self.nets.attached.clear();
@@ -1391,12 +1649,7 @@ impl App {
                         && let Ok(crate::input::ex::ExCommand::Shutdown(domain)) =
                             crate::input::ex::parse(&line)
                     {
-                        match self
-                            .dash
-                            .visible_rows()
-                            .into_iter()
-                            .find(|row| row.name == domain)
-                        {
+                        match self.dash.rows.iter().find(|row| row.name == domain) {
                             Some(row) if row.state == crate::model::DomainState::Running => {
                                 let plan = crate::command::builders::lifecycle::shutdown(&domain);
                                 self.submit_plans(vec![(domain, plan)]);
@@ -1420,14 +1673,38 @@ impl App {
                             crate::input::ex::parse(&line)
                         && target.is_empty()
                     {
-                        self.submit_media_change(domain, iso, true);
+                        let active = self.domain_is_active(&domain);
+                        self.submit_media_change(domain, iso, active);
                         return false;
                     }
                     if !self.demo
                         && !self.dry_run
-                        && let Some(plans) = ex_job_plans(&line)
+                        && let Ok(crate::input::ex::ExCommand::Clone(domain, name)) =
+                            crate::input::ex::parse(&line)
                     {
-                        self.submit_plans(plans);
+                        match clone_problem(&self.dash, &domain, &name) {
+                            Some(problem) => self.show_message(problem),
+                            None => {
+                                let plan =
+                                    crate::command::builders::lifecycle::clone_on(&self.uri, &domain, &name);
+                                self.submit_plans(vec![(domain, plan)]);
+                            }
+                        }
+                        return false;
+                    }
+                    if !self.demo
+                        && !self.dry_run
+                        && let Some(plans) = ex_job_plans(&line, |d| self.domain_is_active(d))
+                    {
+                        match plans {
+                            Ok(plans) if is_block_resize(&line) => {
+                                self.confirm_plans("⚠ Resize block device", "resize", plans)
+                            }
+                            Ok(plans) => {
+                                self.submit_plans(plans);
+                            }
+                            Err(message) => self.show_message(message),
+                        }
                         return false;
                     }
                     if !self.demo
@@ -1442,6 +1719,7 @@ impl App {
                         }
                         return false;
                     }
+                    let interval_before = self.config.general.refresh_interval_secs;
                     let quit = if self.view == View::Detail {
                         run_detail_ex(
                             &line,
@@ -1475,6 +1753,10 @@ impl App {
                     if quit {
                         return true;
                     }
+                    if self.config.general.refresh_interval_secs != interval_before {
+                        // Restart the poller with the new interval.
+                        self.poller_uri.clear();
+                    }
                     // Results land in dash.message: show them in the current view too.
                     if self.view != View::Detail
                         || !matches!(
@@ -1489,9 +1771,36 @@ impl App {
                     }
                 }
                 KeyCode::Backspace => ex.backspace(),
+                KeyCode::Delete => ex.delete(),
+                KeyCode::Home => ex.home(),
+                KeyCode::End => ex.end(),
+                KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => ex.home(),
+                KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => ex.end(),
+                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => ex.kill_to_start(),
+                KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => ex.kill_word(),
                 KeyCode::Left => ex.move_left(),
                 KeyCode::Right => ex.move_right(),
-                KeyCode::Char(c) if typing => ex.insert(c),
+                KeyCode::Char(c) if typing => {
+                    ex.insert(c);
+                    self.ex_history_pos = None;
+                }
+                // History recall (newest first), like vim's command line.
+                KeyCode::Up | KeyCode::Down => {
+                    let lines = &self.ex_history;
+                    if !lines.is_empty() {
+                        let next = match (self.ex_history_pos, key.code) {
+                            (None, KeyCode::Up) => Some(lines.len() - 1),
+                            (Some(p), KeyCode::Up) => Some(p.saturating_sub(1)),
+                            (Some(p), KeyCode::Down) if p + 1 < lines.len() => Some(p + 1),
+                            _ => None,
+                        };
+                        self.ex_history_pos = next;
+                        let text = next.map_or_else(String::new, |p| lines[p].clone());
+                        if let Some(ex) = self.ex_line.as_mut() {
+                            ex.set(&text);
+                        }
+                    }
+                }
                 _ => {}
             }
             return false;
@@ -1550,25 +1859,65 @@ impl App {
             self.request_palette_snapshot(command);
             return false;
         }
-        if self.palette.is_some() && handle_palette_key(key, &mut self.palette, &mut self.ex_line) {
-            if !self.demo {
+        // Modal overlays own the keyboard: an unhandled key is dropped, never
+        // passed to the view underneath (only C-c still quits).
+        let ctrl_c = key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c');
+        if let Some(scroll) = self.messages_view.as_mut() {
+            let max = self.messages.len().saturating_sub(1);
+            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => self.messages_view = None,
+                KeyCode::Char('k') | KeyCode::Up if !ctrl => *scroll = (*scroll + 1).min(max),
+                KeyCode::Char('j') | KeyCode::Down if !ctrl => *scroll = scroll.saturating_sub(1),
+                KeyCode::Char('u') if ctrl => *scroll = (*scroll + 10).min(max),
+                KeyCode::Char('d') if ctrl => *scroll = scroll.saturating_sub(10),
+                KeyCode::Char('g') => *scroll = max,
+                KeyCode::Char('G') => *scroll = 0,
+                _ => {}
+            }
+            if !ctrl_c {
+                return false;
+            }
+        }
+        if self.palette.is_some() {
+            if handle_palette_key(key, &mut self.palette, &mut self.ex_line) && !self.demo {
                 self.schedule_palette_doc();
             }
-            return false;
+            if !ctrl_c {
+                return false;
+            }
         }
-        if self.help_filter.is_some() && handle_help_key(key, &mut self.help_filter) {
-            return false;
+        if self.help_filter.is_some() {
+            match key.code {
+                KeyCode::Tab | KeyCode::BackTab => {
+                    self.help_page = 1 - self.help_page.min(1);
+                    self.help_scroll = 0;
+                }
+                KeyCode::Down | KeyCode::PageDown => self.help_scroll = self.help_scroll.saturating_add(1),
+                KeyCode::Up | KeyCode::PageUp => self.help_scroll = self.help_scroll.saturating_sub(1),
+                _ => {
+                    handle_help_key(key, &mut self.help_filter);
+                }
+            }
+            if self.help_filter.is_none() {
+                self.help_page = 0;
+                self.help_scroll = 0;
+            }
+            if !ctrl_c {
+                return false;
+            }
         }
         // Settings captures navigation while open.
         if self.settings.is_some() {
             let before = self.config.clone();
-            if handle_settings_key(key, &mut self.settings, &mut self.config, &mut self.theme) {
-                if self.config.general.refresh_interval_secs != before.general.refresh_interval_secs
-                    || self.config.monitoring != before.monitoring
-                {
-                    // Restart the poller with the new interval / memory-stats option.
-                    self.poller_uri.clear();
-                }
+            if handle_settings_key(key, &mut self.settings, &mut self.config, &mut self.theme)
+                && (self.config.general.refresh_interval_secs != before.general.refresh_interval_secs
+                    || self.config.monitoring != before.monitoring)
+            {
+                // Restart the poller with the new interval / memory-stats option.
+                self.poller_uri.clear();
+            }
+            if !ctrl_c {
                 return false;
             }
         }
@@ -1656,12 +2005,26 @@ impl App {
         let text_input = (self.view == View::Networks && self.nets.new_form.is_some())
             || self.store.picker.is_some()
             || self.detail.as_ref().is_some_and(|d| d.hw_insert);
-        if !text_input && handle_key(key, &mut self.pending_quit_z, in_detail) {
+        if !text_input && handle_key(key, in_detail) {
             return true;
         }
-        // Any non-Z key clears the pending Z for ZZ.
-        if key.code != crossterm::event::KeyCode::Char('Z') {
-            self.pending_quit_z = false;
+        // `ZZ` quits. The first `Z` never reaches the engine: it waits for a
+        // second `Z` and only resolves as a lone `Z` (managed-save) after
+        // [`Z_TIMEOUT`]; any other key cancels it (vim behaviour).
+        let is_z = key.code == KeyCode::Char('Z')
+            && !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if !text_input && is_z && !self.replaying_z && self.engine.pending_prefix().is_none() {
+            if std::mem::take(&mut self.pending_quit_z) {
+                return true;
+            }
+            self.pending_quit_z = true;
+            return false;
+        }
+        if std::mem::take(&mut self.pending_quit_z) {
+            // `Z` followed by another key: drop both, like vim.
+            return false;
         }
         // Normal dispatch through the key engine.
         let seq = crate::input::key::KeySeq::from_event(&key);
@@ -1769,6 +2132,9 @@ impl App {
         }
         // ":" opens the ex line directly (also in the map).
         for resolved in self.engine.feed(&seq) {
+            if is_view_switch(resolved.action) && self.blocks_leaving_detail() {
+                continue;
+            }
             if switch_view(resolved.action, &mut self.view) {
                 continue;
             }
@@ -1921,7 +2287,8 @@ impl App {
                     before.saturating_sub(1)
                 };
                 if self.store.pool_selected != before {
-                    self.request_selection();
+                    // Volumes are cached per view load: no read, no reload restart.
+                    self.store.show_pool_volumes(None);
                 }
                 continue;
             }
@@ -2013,18 +2380,22 @@ impl App {
                 }
                 (
                     View::Dashboard,
-                    action @ (A::Start
-                    | A::Shutdown
-                    | A::Reboot
-                    | A::Pause
-                    | A::ManagedSave
-                    | A::Autostart
-                    | A::SendKey),
+                    action @ (A::Start | A::Shutdown | A::Reboot | A::Pause | A::Autostart | A::SendKey),
                 ) if !self.demo && !self.dry_run => {
                     if let Some(plans) = self.lifecycle_plans(action)
                         && !plans.is_empty()
                     {
-                        self.submit_plans(plans);
+                        if plans.len() > 1 {
+                            // Bulk actions always show what will run first.
+                            let verb = action.name().replace('_', " ");
+                            self.confirm_plans(
+                                &format!("{} {} domains", capitalize(&verb), plans.len()),
+                                &verb,
+                                plans,
+                            );
+                        } else {
+                            self.submit_plans(plans);
+                        }
                     }
                     continue;
                 }
@@ -2033,13 +2404,22 @@ impl App {
                     continue;
                 }
                 (_, A::NewDomain) => {
-                    if !self.demo && !is_local_uri(&self.uri) {
+                    let remote = !self.demo && !is_local_uri(&self.uri);
+                    if remote && (self.host.uri != self.uri || self.host.threads_total == 0) {
+                        // Capacity comes from `virsh nodeinfo` (Host view load).
+                        self.request_view_load(View::Host);
                         self.show_message(String::from(
-                            "✗ wizard unavailable: remote host capacity is unknown",
+                            "loading the remote host's capacity… press ␣n again in a moment",
                         ));
                         continue;
                     }
-                    let facts = wizard_host_facts(&self.dash, &self.nets, &self.store, self.demo);
+                    let mut facts = wizard_host_facts(&self.dash, &self.nets, &self.store, self.demo);
+                    if remote {
+                        facts.threads = self.host.threads_total.max(1);
+                        facts.free_gib = self.host.mem_free_gib;
+                        // /dev/kvm describes this machine, not the remote host.
+                        facts.no_kvm = false;
+                    }
                     open_wizard(&mut self.wizard, facts);
                     continue;
                 }
@@ -2145,6 +2525,9 @@ impl App {
                     continue;
                 }
                 (_, A::Back) if self.view == View::Detail => {
+                    if self.blocks_leaving_detail() {
+                        continue;
+                    }
                     // The domain may have been edited: re-read its config.
                     if let Some(d) = &self.detail {
                         self.dash.configs.remove(&d.domain);
@@ -2174,6 +2557,19 @@ impl App {
                 ) {
                     return true;
                 }
+                continue;
+            }
+            // Motions move by `delta × count` in one step (no per-row loop).
+            let motion: Option<i32> = match resolved.action {
+                A::MoveDown => Some(1),
+                A::MoveUp => Some(-1),
+                A::HalfDown => Some(10),
+                A::HalfUp => Some(-10),
+                _ => None,
+            };
+            if let Some(delta) = motion {
+                self.dash
+                    .move_selection(delta.saturating_mul(resolved.count as i32));
                 continue;
             }
             for _ in 0..resolved.count {
@@ -2213,6 +2609,33 @@ enum View {
     Detail,
 }
 
+/// `:block-resize …` (shrinking destroys data: always confirmed).
+fn is_block_resize(line: &str) -> bool {
+    matches!(
+        crate::input::ex::parse(line),
+        Ok(crate::input::ex::ExCommand::Resize(..))
+    )
+}
+
+/// Host part of a remote URI (`qemu+ssh://user@srv/system` → `srv`).
+fn remote_host_label(uri: &str) -> String {
+    uri.split_once("://")
+        .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
+        .map(|authority| authority.rsplit('@').next().unwrap_or(authority))
+        .map(|host| host.split(':').next().unwrap_or(host).to_string())
+        .filter(|host| !host.is_empty())
+        .unwrap_or_else(|| uri.to_string())
+}
+
+/// True for the `1`-`5` view switches.
+fn is_view_switch(action: crate::input::engine::KeyAction) -> bool {
+    use crate::input::engine::KeyAction as A;
+    matches!(
+        action,
+        A::ViewDomains | A::ViewHost | A::ViewNetworks | A::ViewStorage | A::ViewEvents
+    )
+}
+
 /// Switch views for View* actions. Returns true when handled.
 fn switch_view(action: crate::input::engine::KeyAction, view: &mut View) -> bool {
     use crate::input::engine::KeyAction as A;
@@ -2229,22 +2652,15 @@ fn switch_view(action: crate::input::engine::KeyAction, view: &mut View) -> bool
 
 use poller::{LiveMsg, is_local_uri};
 
-fn handle_key(key: KeyEvent, pending_quit_z: &mut bool, in_detail: bool) -> bool {
-    // q quits, ZZ quits, C-c quits.
+/// How long a lone `Z` waits for the second `Z` of `ZZ`.
+const Z_TIMEOUT: Duration = Duration::from_millis(600);
+
+fn handle_key(key: KeyEvent, in_detail: bool) -> bool {
+    // q quits, C-c quits (ZZ is handled in `handle_key_event`).
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return true;
     }
-    match key.code {
-        KeyCode::Char('q') if key.modifiers.is_empty() => !in_detail,
-        KeyCode::Char('Z') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            if *pending_quit_z {
-                return true;
-            }
-            *pending_quit_z = true;
-            false
-        }
-        _ => false,
-    }
+    matches!(key.code, KeyCode::Char('q') if key.modifiers.is_empty()) && !in_detail
 }
 
 use external::{detached_run, suspend_run};
@@ -2265,22 +2681,8 @@ mod tests {
 
     #[test]
     fn q_quits() {
-        let mut pending = false;
-        assert!(handle_key(key(KeyCode::Char('q')), &mut pending, false));
-        assert!(!handle_key(key(KeyCode::Char('q')), &mut pending, true));
-    }
-
-    #[test]
-    fn zz_quits() {
-        let mut pending = false;
-        let z = KeyEvent {
-            code: KeyCode::Char('Z'),
-            modifiers: KeyModifiers::SHIFT,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::empty(),
-        };
-        assert!(!handle_key(z, &mut pending, false));
-        assert!(handle_key(z, &mut pending, false));
+        assert!(handle_key(key(KeyCode::Char('q')), false));
+        assert!(!handle_key(key(KeyCode::Char('q')), true));
     }
 
     pub(super) fn fixture_app() -> App {
@@ -2297,9 +2699,16 @@ mod tests {
             settings: None,
             palette: None,
             help_filter: None,
+            messages_view: None,
+            job_finished_at: None,
+            help_page: 0,
+            help_scroll: 0,
+            ex_history: Vec::new(),
+            ex_history_pos: None,
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,
+            replaying_z: false,
             engine: crate::input::engine::KeyEngine::new(),
             history: crate::command::history::History::new(200),
             uri: "test:///default".to_string(),
@@ -2325,7 +2734,8 @@ mod tests {
             next_job_id: 1,
             busy_feedback: None,
             read_serial: 0,
-            selection_task: None,
+            selection_task: std::collections::HashMap::new(),
+            read_serials: std::collections::HashMap::new(),
             connection_epoch: 0,
             epoch_uri: "test:///default".into(),
             view_load_serial: std::collections::HashMap::new(),
@@ -2372,6 +2782,7 @@ mod tests {
         });
         app.confirm = Some((
             crate::ui::overlays::confirm::Confirm {
+                kind: crate::ui::overlays::confirm::ConfirmKind::Always,
                 title: "Test".into(),
                 question: "Test".into(),
                 commands: vec![],
@@ -2495,6 +2906,7 @@ mod tests {
 
         fn outcome(result: BatchResult, completed_targets: Vec<String>) -> BatchOutcome {
             BatchOutcome {
+                failures: Vec::new(),
                 started_steps: vec![],
                 completed_steps: vec![],
                 outputs: vec![],
@@ -2877,18 +3289,30 @@ mod tests {
         app.submit_plans(vec![("A".into(), ok), ("B".into(), fail), ("C".into(), later)]);
         let result = (&mut app.active_job.as_mut().unwrap().task).await;
         app.finish_job(result);
-        assert!(!forbidden.exists(), "the batch started C after B failed");
-        assert_eq!(app.events_state.events.len(), before + 2);
-        assert_eq!(app.events_state.events[before].object, "A");
-        assert_eq!(app.events_state.events[before].event, "done");
-        assert_eq!(app.events_state.events[before + 1].object, "B");
-        assert_eq!(app.events_state.events[before + 1].event, "failed");
-        assert_eq!(app.history.all().len(), 2);
+        // Review P1-1: one failing target does not stop the others.
+        assert!(forbidden.exists(), "the batch must still run C after B failed");
+        let tail: Vec<(String, String)> = app.events_state.events[before..]
+            .iter()
+            .map(|e| (e.object.clone(), e.event.clone()))
+            .collect();
+        assert!(tail.contains(&("A".into(), "done".into())), "{tail:?}");
+        assert!(tail.contains(&("C".into(), "done".into())), "{tail:?}");
+        assert!(tail.contains(&("B".into(), "failed".into())), "{tail:?}");
+        assert!(
+            app.dash.message.contains("2 ok / 1 failed: B"),
+            "{}",
+            app.dash.message
+        );
+        assert_eq!(app.history.all().len(), 3);
         assert!(app.history.all()[0].contains("exit 0"));
         assert!(app.history.all()[1].contains("exit 5"));
         assert!(matches!(requests.try_recv(), Ok(poller::Request::Now)));
         assert!(app.messages.iter().any(|m| m.contains("Finished A")));
-        assert!(app.messages.iter().any(|m| m.starts_with("✗ step 1/1 failed:")));
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.starts_with("✗ B: step 1/1 failed:"))
+        );
     }
 
     #[tokio::test]
@@ -2901,6 +3325,7 @@ mod tests {
         assert!(app.submit_plans(vec![("vt-test-a".into(), plan)]));
         app.active_job.as_ref().unwrap().task.abort();
         app.finish_job(Ok(BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![CommandEvent {
                 target: "vt-test-a".into(),
                 step: 1,
@@ -2980,6 +3405,7 @@ mod tests {
                 started_steps.push(event("B"));
             }
             app.finish_job(Ok(BatchOutcome {
+                failures: Vec::new(),
                 started_steps,
                 completed_steps: vec![event("A")],
                 outputs: vec![],
@@ -3095,6 +3521,7 @@ mod tests {
         app.submit_plans(vec![("vt-test-a".into(), a), ("vt-test-b".into(), b)]);
         app.active_job.as_ref().unwrap().task.abort();
         let outcome = crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![],
             completed_steps: vec![],
             outputs: vec![],
@@ -3125,6 +3552,11 @@ mod tests {
     async fn lifecycle_actions_capture_expected_commands_for_sorted_bulk_targets() {
         use crate::input::engine::KeyAction as A;
         let mut app = fixture_app();
+        for name in ["vt-test-a", "vt-test-b"] {
+            let mut row = app.dash.rows[0].clone();
+            row.name = name.into();
+            app.dash.rows.push(row);
+        }
         app.dash.marks.clear();
         app.dash.marks.insert("vt-test-b".into());
         app.dash.marks.insert("vt-test-a".into());
@@ -3214,14 +3646,16 @@ mod tests {
 
     #[test]
     fn ex_job_plans_capture_explicit_target_and_arguments() {
-        let plans = ex_job_plans("rename vt-test-a vt-test-b").unwrap();
+        let plans = ex_job_plans("rename vt-test-a vt-test-b", |_| true)
+            .unwrap()
+            .unwrap();
         assert_eq!(plans[0].0, "vt-test-a");
         assert_eq!(
             plans[0].1.steps[0].argv,
             vec!["domrename", "vt-test-a", "vt-test-b"]
         );
-        assert!(ex_job_plans("destroy vt-test-a").is_none());
-        assert!(ex_job_plans("attach-iso vt-test-a /tmp/test.iso").is_none());
+        assert!(ex_job_plans("destroy vt-test-a", |_| true).is_none());
+        assert!(ex_job_plans("attach-iso vt-test-a /tmp/test.iso", |_| true).is_none());
     }
 
     #[test]
@@ -3229,14 +3663,16 @@ mod tests {
         let cases = [
             ("start vt-test-a", "start"),
             ("rename vt-test-a vt-test-b", "domrename"),
-            ("attach-disk vt-test-a /tmp/disk vdb", "attach-disk"),
+            ("attach-disk vt-test-a /tmp/disk.qcow2 vdb", "attach-disk"),
             ("detach-disk vt-test-a vdb", "detach-disk"),
             ("attach-nic vt-test-a default virtio", "attach-interface"),
             ("block-resize vt-test-a vda 2G", "blockresize"),
             ("media vt-test-a hdb /tmp/test.iso", "change-media"),
         ];
         for (line, verb) in cases {
-            let plans = ex_job_plans(line).unwrap_or_else(|| panic!("missing route: {line}"));
+            let plans = ex_job_plans(line, |_| true)
+                .unwrap_or_else(|| panic!("missing route: {line}"))
+                .unwrap_or_else(|e| panic!("{line}: {e}"));
             assert_eq!(plans[0].0, "vt-test-a", "{line}");
             assert_eq!(plans[0].1.steps[0].argv[0], verb, "{line}");
         }
@@ -3495,7 +3931,11 @@ mod tests {
             app.on_key(key(KeyCode::Char(ch))).await;
         }
         app.on_key(key(KeyCode::Enter)).await;
-        assert_eq!(app.dash.message, "previous result");
+        // Review P1-27: the full history opens in the :messages overlay.
+        assert_eq!(app.messages_view, Some(0));
+        assert_eq!(app.messages.last().map(String::as_str), Some("previous result"));
+        app.on_key(key(KeyCode::Esc)).await;
+        assert!(app.messages_view.is_none());
         assert!(app.active_job.is_some());
         app.on_key(key(KeyCode::Char(':'))).await;
         for ch in "start vt-test-a".chars() {
@@ -3681,7 +4121,9 @@ mod tests {
             }
             assert!(!app.view_load_tasks.contains_key(&view));
             assert!(!app.view_load_refreshing.contains(&view));
-            assert!(app.selection_task.is_some());
+            // Networks read the leases of the kept selection; Storage shows the
+            // volumes cached by the load (no read).
+            assert_eq!(!app.selection_task.is_empty(), view == View::Networks);
         }
     }
 
@@ -3743,26 +4185,21 @@ mod tests {
         app.submit_plans(vec![("guest".into(), command)]);
         assert!(!app.on_key(key(KeyCode::Char('j'))).await);
         assert_eq!(app.nets.selected, 1);
-        assert!(app.selection_task.is_some());
-        app.selection_task.take();
+        assert!(!app.selection_task.is_empty());
+        app.selection_task.clear();
         app.cancel_job();
     }
 
     #[test]
-    fn stale_selection_load_does_not_replace_current_pool_volumes() {
+    fn pool_switch_shows_cached_volumes_without_a_read() {
         let mut app = fixture_app();
-        app.read_serial = 4;
-        let before = app.store.volumes.len();
-        let mut stale = app.store.clone();
-        stale.volumes.clear();
-        let result = requests::SelectionResult::Storage {
-            uri: app.uri.clone(),
-            serial: 3,
-            selected: app.store.selected_pool().to_string(),
-            state: Box::new(stale),
-        };
-        app.apply_selection_result(result);
-        assert_eq!(app.store.volumes.len(), before);
+        let pool = app.store.selected_pool().to_string();
+        let volumes = app.store.volumes.clone();
+        app.store.pool_volumes.insert(pool.clone(), volumes.clone());
+        app.store.volumes.clear();
+        app.store.show_pool_volumes(None);
+        assert_eq!(app.store.volumes.len(), volumes.len());
+        assert!(app.selection_task.is_empty());
     }
 
     #[tokio::test]
@@ -3792,12 +4229,12 @@ mod tests {
         app.ex_line = Some(crate::input::textinput::TextInput::with("dom"));
         app.tab_complete(false);
         app.ex_line.as_mut().unwrap().set("changed");
-        app.apply_help_result(Ok(requests::HelpData::Index(vec![
+        app.apply_help_result(Ok(requests::HelpData::Index(Some(vec![
             crate::backend::virsh::parse_help::HelpEntry {
                 name: "dominfo".into(),
                 summary: "info".into(),
             },
-        ])));
+        ]))));
         assert_eq!(app.ex_line.as_ref().unwrap().value(), "changed");
     }
 
@@ -3859,6 +4296,7 @@ mod tests {
         });
         app.confirm = Some((
             crate::ui::overlays::confirm::Confirm {
+                kind: crate::ui::overlays::confirm::ConfirmKind::Always,
                 title: "Test".into(),
                 question: "Test".into(),
                 commands: vec![],
@@ -4011,6 +4449,7 @@ mod tests {
             ],
         };
         let outcome = crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![completed.clone()],
             completed_steps: vec![completed],
             outputs: vec![],
@@ -4037,12 +4476,12 @@ mod tests {
         app.tab_complete(false);
         app.ex_line.as_mut().unwrap().move_left();
         let cursor = app.ex_line.as_ref().unwrap().cursor();
-        app.apply_help_result(Ok(requests::HelpData::Index(vec![
+        app.apply_help_result(Ok(requests::HelpData::Index(Some(vec![
             crate::backend::virsh::parse_help::HelpEntry {
                 name: "dominfo".into(),
                 summary: "info".into(),
             },
-        ])));
+        ]))));
         assert_eq!(app.ex_line.as_ref().unwrap().value(), "dom");
         assert_eq!(app.ex_line.as_ref().unwrap().cursor(), cursor);
     }
@@ -4057,12 +4496,12 @@ mod tests {
         for ch in "dom".chars() {
             app.on_key(key(KeyCode::Char(ch))).await;
         }
-        app.apply_help_result(Ok(requests::HelpData::Index(vec![
+        app.apply_help_result(Ok(requests::HelpData::Index(Some(vec![
             crate::backend::virsh::parse_help::HelpEntry {
                 name: "dominfo".into(),
                 summary: "info".into(),
             },
-        ])));
+        ]))));
         assert_eq!(app.ex_line.as_ref().unwrap().value(), "dom");
     }
 
@@ -4107,6 +4546,7 @@ mod tests {
         newer.name = "vt-test-newer".into();
         app.active_job.as_ref().unwrap().task.abort();
         app.finish_job(Ok(crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![],
             completed_steps: vec![],
             outputs: vec![],
@@ -4247,7 +4687,7 @@ mod tests {
         assert!(app.submit_wizard(draft));
         let plan = &app.active_job.as_ref().unwrap().plans[0].1;
         assert_eq!(plan.steps.len(), 2);
-        assert!(plan.steps[0].argv.contains(&"--print-xml".to_string()));
+        assert!(plan.steps[0].argv.contains(&"--print-xml=1".to_string()));
         assert_eq!(plan.steps[1].argv[0], "define");
         app.cancel_job();
         let _ = (&mut app.active_job.as_mut().unwrap().task).await;
@@ -4286,6 +4726,7 @@ mod tests {
         app.cancel_job();
         let _ = (&mut app.active_job.as_mut().unwrap().task).await;
         app.finish_job(Ok(crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![],
             completed_steps: vec![],
             outputs: vec![],
@@ -4348,13 +4789,16 @@ mod tests {
         app.view_load_tasks.clear();
     }
 
-    #[test]
-    fn lone_view_digit_resolves_within_responsiveness_budget() {
+    #[tokio::test]
+    async fn lone_view_digit_resolves_within_responsiveness_budget() {
         let mut app = fixture_app();
         app.engine.feed(&crate::input::key::KeySeq::parse("2"));
         app.last_key = std::time::Instant::now() - Duration::from_millis(200);
         app.on_digit_timeout();
         assert_eq!(app.view, View::Host);
+        // Review PF-9: the view load starts at once, not on the next tick.
+        assert!(app.view_load_tasks.contains_key(&View::Host));
+        app.view_load_tasks.clear();
     }
 
     #[tokio::test]
@@ -4366,17 +4810,20 @@ mod tests {
         app.on_digit_timeout();
         assert_eq!(app.view, View::Host);
         assert!(!app.detail_loading);
-        assert!(app.selection_task.is_none());
+        assert!(app.selection_task.is_empty());
     }
 
     #[tokio::test]
     async fn refresh_invalidates_an_older_selection_read() {
         let mut app = fixture_app();
         app.view = View::Networks;
-        app.selection_task = Some(SelectionTask(tokio::spawn(std::future::pending())));
+        app.selection_task.insert(
+            ReadKind::Networks,
+            SelectionTask(tokio::spawn(std::future::pending())),
+        );
         let serial = app.read_serial;
         app.request_refresh();
-        assert!(app.selection_task.is_none());
+        assert!(app.selection_task.is_empty());
         assert_ne!(app.read_serial, serial);
         app.view_load_tasks.clear();
     }
@@ -4388,11 +4835,11 @@ mod tests {
         app.request_detail();
         assert_eq!(app.view, View::Detail);
         assert_eq!(app.detail.as_ref().unwrap().domain, name);
-        assert!(app.selection_task.is_some());
+        assert!(!app.selection_task.is_empty());
         let serial = app.read_serial;
         let mut old = app.detail.as_ref().unwrap().clone();
         old.xml = "stale".into();
-        app.read_serial += 1;
+        app.begin_read(ReadKind::Detail);
         app.apply_selection_result(SelectionResult::Detail {
             uri: app.uri.clone(),
             serial,
@@ -4401,7 +4848,7 @@ mod tests {
             state: Box::new(old),
         });
         assert_ne!(app.detail.as_ref().unwrap().xml, "stale");
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4426,7 +4873,7 @@ mod tests {
         assert_eq!(detail.tab, ui::views::detail::DetailTab::Hardware);
         assert_eq!(detail.xml, "<domain/>");
         assert!(!app.detail_loading);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4437,7 +4884,7 @@ mod tests {
         app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
             .await;
         assert_eq!(app.view, View::Dashboard);
-        assert!(app.selection_task.is_none());
+        assert!(app.selection_task.is_empty());
         assert!(!app.detail_loading);
         assert_ne!(app.read_serial, serial);
     }
@@ -4468,7 +4915,7 @@ mod tests {
             cdrom: Some(("stale".into(), "ide".into(), String::new())),
         });
         assert_eq!(app.store.picker.as_ref().unwrap().target, "hdb");
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4480,8 +4927,8 @@ mod tests {
         assert!(app.request_storage_picker());
         assert_eq!(app.store.picker.as_ref().unwrap().domain, domain);
         assert!(app.picker_loading);
-        assert!(app.selection_task.is_some());
-        app.selection_task.take();
+        assert!(!app.selection_task.is_empty());
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4493,7 +4940,7 @@ mod tests {
             .await;
         assert!(app.store.picker.is_some());
         assert!(app.picker_loading);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4505,7 +4952,7 @@ mod tests {
             .await;
         assert_eq!(app.store.picker.as_ref().unwrap().query, "ab");
         assert_eq!(app.view, View::Storage);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4518,7 +4965,7 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let screen: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
         assert!(screen.contains("Insert media"));
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4532,10 +4979,10 @@ mod tests {
         let serial = app.read_serial;
         app.finish_job(finished);
         assert!(app.picker_loading);
-        assert!(app.selection_task.is_some());
+        assert!(!app.selection_task.is_empty());
         assert_ne!(app.read_serial, serial);
         assert_eq!(app.store.picker.as_ref().unwrap().query, "edited");
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4555,7 +5002,7 @@ mod tests {
         let detail = app.detail.as_ref().unwrap();
         assert_eq!(detail.tab, ui::views::detail::DetailTab::Hardware);
         assert_eq!(detail.hw.selected_device().id, "boot");
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4574,7 +5021,7 @@ mod tests {
             state: Box::new(loaded),
         });
         assert_eq!(app.detail.as_ref().unwrap().snap_modal, SnapModal::Create);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4592,7 +5039,7 @@ mod tests {
             state: Box::new(loaded),
         });
         assert_eq!(app.detail.as_ref().unwrap().snap_modal, SnapModal::None);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4608,8 +5055,8 @@ mod tests {
         assert!(app.palette.is_none());
         assert!(app.detail_loading);
         assert!(app.detail.as_ref().unwrap().xml.is_empty());
-        assert!(app.selection_task.is_some());
-        app.selection_task.take();
+        assert!(!app.selection_task.is_empty());
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4627,7 +5074,7 @@ mod tests {
             state: Box::new(loaded),
         });
         assert_eq!(app.detail.as_ref().unwrap().snap_modal, SnapModal::None);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4723,6 +5170,7 @@ mod tests {
         app.cancel_job();
         let _ = (&mut app.active_job.as_mut().unwrap().task).await;
         app.finish_job(Ok(crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![],
             completed_steps: vec![],
             outputs: vec![],
@@ -4733,8 +5181,8 @@ mod tests {
                 message: "failed".into(),
             },
         }));
-        assert!(app.selection_task.is_some());
-        app.selection_task.take();
+        assert!(!app.selection_task.is_empty());
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -4795,7 +5243,7 @@ mod tests {
             .await;
         assert!(app.store.picker.is_some());
         assert!(app.active_job.is_none());
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -5059,6 +5507,7 @@ mod tests {
             argv: vec!["define".into()],
         };
         app.finish_job(Ok(crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![step.clone()],
             completed_steps: vec![step],
             outputs: vec![],
@@ -5073,7 +5522,7 @@ mod tests {
         assert!(app.submit_hardware());
         assert!(app.active_job.is_none());
         assert!(app.detail.as_ref().unwrap().hw.pending_count() > 0);
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -5116,6 +5565,7 @@ mod tests {
         app.cancel_job();
         let _ = (&mut app.active_job.as_mut().unwrap().task).await;
         app.finish_job(Ok(crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![],
             completed_steps: vec![],
             outputs: vec![],
@@ -5136,7 +5586,7 @@ mod tests {
             state: Some(Box::new((config, xml))),
         });
         assert!(app.hardware_reload_required.is_none());
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -5150,12 +5600,14 @@ mod tests {
             network: false,
             wizard: None,
             generation: 1,
+            base: String::new(),
         };
         assert!(app.submit_xml_editor(draft));
         app.cancel_job();
         let _ = (&mut app.active_job.as_mut().unwrap().task).await;
         app.view = View::Host;
         app.finish_job(Ok(crate::command::job::BatchOutcome {
+            failures: Vec::new(),
             started_steps: vec![],
             completed_steps: vec![],
             outputs: vec![],
@@ -5179,7 +5631,7 @@ mod tests {
         app.request_network_editor();
         let target = app.nets.selected_name().to_string();
         let serial = app.read_serial;
-        assert!(app.selection_task.is_some());
+        assert!(!app.selection_task.is_empty());
         app.nets.selected = (app.nets.selected + 1).min(app.nets.networks.len() - 1);
         app.apply_selection_result(SelectionResult::EditorSource {
             uri: app.uri.clone(),
@@ -5190,7 +5642,7 @@ mod tests {
             result: Ok("<network/>".into()),
         });
         assert!(app.editor_retries.is_empty());
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -5199,7 +5651,7 @@ mod tests {
         app.view = View::Detail;
         app.detail = Some(ui::views::detail::DetailState::demo("vt-test-vm"));
         app.request_domain_editor("vt-test-vm".into());
-        app.selection_task.take();
+        app.selection_task.clear();
         app.apply_selection_result(SelectionResult::DomainEditorSource {
             uri: app.uri.clone(),
             epoch: app.connection_epoch,
@@ -5236,14 +5688,14 @@ mod tests {
         });
         assert_eq!(app.editor_retries.len(), 1);
         assert!(app.ex_line.is_some());
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
     async fn wizard_editor_source_does_not_open_for_a_changed_draft() {
         let mut app = fixture_app();
         app.wizard = Some(ui::overlays::wizard::WizardState::default());
-        let snapshot = toml::to_string(app.wizard.as_ref().unwrap()).unwrap();
+        let snapshot = app.wizard.as_ref().unwrap().content_snapshot();
         app.request_wizard_editor();
         let serial = app.read_serial;
         let revision = app.wizard_revision;
@@ -5259,7 +5711,7 @@ mod tests {
             result: Ok("<domain/>".into()),
         });
         assert!(app.editor_retries.is_empty());
-        app.selection_task.take();
+        app.selection_task.clear();
     }
 
     #[tokio::test]
@@ -5338,7 +5790,7 @@ mod tests {
         app.request_media_preview("vt-test-vm".into(), Some("/tmp/test.iso".into()));
         assert!(app.dash.message.contains("are not loaded"));
         assert!(app.active_job.is_none());
-        assert!(app.selection_task.is_none());
+        assert!(app.selection_task.is_empty());
     }
 
     #[test]
@@ -5352,12 +5804,13 @@ mod tests {
             source: String::new(),
             device: "cdrom".into(),
             bus: "ide".into(),
+            ..Default::default()
         }];
         app.detail = Some(detail);
         app.request_media_preview("vt-test-vm".into(), Some("/tmp/test.iso".into()));
         assert!(app.dash.message.contains("[dry-run]"));
         assert!(app.dash.message.contains("hdb"));
-        assert!(app.selection_task.is_none());
+        assert!(app.selection_task.is_empty());
         assert!(app.active_job.is_none());
     }
 
@@ -5399,7 +5852,7 @@ mod tests {
                     "{command} scheduled a job in preview mode"
                 );
                 assert!(
-                    app.selection_task.is_none(),
+                    app.selection_task.is_empty(),
                     "{command} scheduled preparation in preview mode"
                 );
             }

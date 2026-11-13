@@ -4,42 +4,68 @@
 
 use super::*;
 
+/// Which-key rows for a pending prefix, from the live keymap (so
+/// `keymap.toml` remaps show up): next key and what it does.
+pub(super) fn which_key_rows(
+    map: &std::collections::HashMap<Vec<String>, crate::input::engine::KeyAction>,
+    prefix: &str,
+) -> Vec<(String, String)> {
+    let prefix: Vec<&str> = prefix.split(' ').filter(|t| !t.is_empty()).collect();
+    let mut rows: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for (seq, action) in map {
+        if seq.len() <= prefix.len() || seq.iter().zip(&prefix).any(|(a, b)| a != b) {
+            continue;
+        }
+        let next = seq[prefix.len()].clone();
+        if seq.len() == prefix.len() + 1 {
+            rows.insert(next, action.name().replace('_', " "));
+        } else {
+            rows.entry(format!("{next} …"))
+                .or_insert_with(|| String::from("more"));
+        }
+    }
+    rows.into_iter().collect()
+}
+
 /// Render the which-key popup bottom-right for a pending prefix.
-pub(super) fn render_which_key(f: &mut ratatui::Frame, theme: &Theme, prefix: &str) {
+pub(super) fn render_which_key(
+    f: &mut ratatui::Frame,
+    theme: &Theme,
+    prefix: &str,
+    map: &std::collections::HashMap<Vec<String>, crate::input::engine::KeyAction>,
+) {
     use ratatui::text::{Line, Span};
-    use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+    use ratatui::widgets::{Block, Borders, Paragraph};
     let t = &theme.tokens;
-    let rows: &[(&str, &str)] = match prefix {
-        "Space" => &[
-            ("n", "new domain"),
-            ("c", "clone"),
-            ("r", "rename"),
-            ("s …", "snapshot"),
-            ("m …", "media"),
-            ("x", "export XML"),
-        ],
-        "Space s" => &[("c", "snapshot new"), ("r", "revert"), ("d", "delete")],
-        "Space m" => &[("i", "insert ISO"), ("e", "eject")],
-        "g" => &[("g", "top"), ("1-5", "views")],
-        "y" => &[("y", "name"), ("u", "uuid"), ("i", "ip"), ("c", "command")],
-        _ => &[("…", "…")],
-    };
+    let rows = which_key_rows(map, prefix);
+    let w = rows
+        .iter()
+        .map(|(k, d)| (k.chars().count() + d.chars().count() + 4) as u16)
+        .max()
+        .unwrap_or(10)
+        .max(22);
     let lines: Vec<Line> = rows
         .iter()
         .map(|(k, d)| {
             Line::from(vec![
-                Span::styled(*k, theme.key()),
+                Span::styled(k.clone(), theme.key()),
                 Span::styled(format!("  {d}"), theme.dim()),
             ])
         })
         .collect();
-    let w = 22u16;
     let h = (lines.len() as u16 + 2).min(f.area().height);
     let area = f.area();
-    let rect = ratatui::layout::Rect::new(area.x + area.width - w - 1, area.y + area.height - h - 2, w, h);
+    let w = w.min(area.width);
+    let h = h.min(area.height.saturating_sub(2));
+    let rect = ratatui::layout::Rect::new(
+        area.x + area.width.saturating_sub(w + 1),
+        area.y + area.height.saturating_sub(h + 2),
+        w,
+        h,
+    );
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(theme.border)
         .border_style(Style::default().fg(t.gutter).bg(t.bg));
     f.render_widget(Paragraph::new(lines).block(block).style(theme.base()), rect);
 }
@@ -99,6 +125,9 @@ pub(super) fn render_wizard_status(
     let t = &theme.tokens;
     let area = f.area();
     let step_name = ui::overlays::wizard::STEP_NAMES[wz.step.min(5)].to_lowercase();
+    if area.height < 2 {
+        return;
+    }
     let status = Rect::new(area.x, area.y + area.height - 2, area.width, 1);
     let msg_line = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
     let line = Line::from(vec![

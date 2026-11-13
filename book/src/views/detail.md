@@ -40,18 +40,28 @@ In NORMAL mode:
 | `j` / `k` | move between devices |
 | `Tab` / `Shift-Tab` | next / previous field of the form |
 | `i` | edit the focused field (INSERT mode) |
-| `a` | add a device of the selected kind: prefills `:attach-disk`, `:attach-nic` or `:attach-hostdev` |
-| `d` | detach the selected device, confirms |
-| `J` / `K` | move the selected device down / up in the boot order |
+| `a` | add a device of the selected kind: prefills `:attach-disk`, `:attach-interface` or `:attach-hostdev` with the domain |
+| `d` | detach the selected device, confirms (`--live` only on a running domain) |
+| `h` / `l`, `J` / `K` | on Boot options: select a boot entry, move it down / up |
 | `u` | undo the changes to the focused field |
 | `:w` | apply the pending changes |
 | `:q!` | discard them |
 | `gx` | jump to the XML tab |
 
-In INSERT mode, typing edits the field and `Backspace` deletes. On number and
-size fields, `Ctrl-a` / `Ctrl-x` or `l` / `h` add or subtract 1, and `L` /
+In INSERT mode, typing edits the field (upper-case letters included) and
+`Backspace` deletes; INSERT keeps every key until `Esc`. Number fields take
+digits only, size fields digits and a binary unit (`512M`, `8G`, `1.5T`). On
+number fields, `Ctrl-a` / `Ctrl-x` or `l` / `h` add or subtract 1, and `L` /
 `H` add or subtract 10. `Space` toggles check boxes and radio options.
 `Enter` or `Tab` moves to the next field, `Esc` goes back to NORMAL mode.
+
+`:w` refuses invalid values with the reason (missing unit, empty field,
+current above maximum, a disk size smaller than the disk). A disk "new size"
+runs `blockresize` on a running domain and `vol-resize` on its image when it
+is shut off. Raising vCPUs or memory past what the running guest booted
+with is saved to the configuration and noted in `:messages` as needing a
+restart. `q` and the view keys refuse to leave the domain while edits are
+pending.
 
 Changes are applied to the persistent configuration (`--config`), to the
 running domain (`--live`), or both, depending on the "Apply to" boxes at the
@@ -64,7 +74,11 @@ anything changes.
 
 ![Snapshots tab](../images/snapshots.png)
 
-The snapshot tree, with the current snapshot marked. In the creation form, use Tab to select the name, description, atomic option or quiesce option; Space toggles an option. Snapshot XML editing is disabled in demo and dry-run modes.
+The snapshot tree, with the current snapshot marked, each snapshot's date
+and kind (`disk`, `mem+disk`), and the details and description of the
+selected one (from `virsh snapshot-dumpxml`). Snapshots whose parent no
+longer exists are shown as roots. Revert and delete are refused when there
+is no snapshot. In the creation form, use Tab to select the name, description, atomic option or quiesce option; Space toggles an option. Snapshot XML editing is disabled in demo and dry-run modes.
 
 | Key | Action |
 |-----|--------|

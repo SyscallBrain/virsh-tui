@@ -27,7 +27,7 @@ fn edited_xml_preserves_escaped_values() {
 
 #[test]
 fn live_only_memory_plan_does_not_change_maximum() {
-    let plans = hardware::set_memory("vm", "1G", "2G", true, false);
+    let plans = hardware::set_memory("vm", "1G", None, true, false);
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].steps[0].argv[0], "setmem");
 }

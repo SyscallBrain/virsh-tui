@@ -71,6 +71,12 @@ pub struct HardwareState {
     pub running: bool,
     /// Fields changed explicitly (for undo scope).
     explicit: HashSet<(String, String)>,
+    /// The XML has a `<cpu><topology>`; without one, topology is left alone.
+    pub has_topology: bool,
+    /// Current disk capacity in KiB by target (`domblkinfo`), for the shrink guard.
+    pub disk_capacity_kib: HashMap<String, u64>,
+    /// Boot entry moved by `J`/`K` (index into the boot order).
+    pub boot_cursor: usize,
 }
 
 fn kib_to_size(kib: u64) -> String {
@@ -81,18 +87,37 @@ fn kib_to_size(kib: u64) -> String {
     }
 }
 
-/// Parse `16G`, `512M`, `1.5T`, `2048` (MiB) into KiB.
+/// Parse `16G`, `512M`, `1.5T`, `2048K`, `8GiB` into KiB (binary units).
+///
+/// A unit is required: virsh reads a bare number as KiB, other tools as MiB
+/// or bytes, so an unqualified number is rejected rather than guessed.
+/// Decimal units (`MB`, `GB`) are rejected for the same reason.
 pub fn size_to_kib(s: &str) -> Option<u64> {
     let s = s.trim();
-    let (num, mult) = match s.chars().last()? {
-        'K' | 'k' => (&s[..s.len() - 1], 1.0),
-        'M' | 'm' => (&s[..s.len() - 1], 1024.0),
-        'G' | 'g' => (&s[..s.len() - 1], 1024.0 * 1024.0),
-        'T' | 't' => (&s[..s.len() - 1], 1024.0 * 1024.0 * 1024.0),
-        _ => (s, 1024.0),
+    let split = s.find(|c: char| !(c.is_ascii_digit() || c == '.'))?;
+    let (num, unit) = s.split_at(split);
+    let mult = match unit.trim().to_ascii_lowercase().as_str() {
+        "k" | "kib" => 1.0,
+        "m" | "mib" => 1024.0,
+        "g" | "gib" => 1024.0 * 1024.0,
+        "t" | "tib" => 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
     };
-    let v: f64 = num.trim().parse().ok()?;
-    (v > 0.0).then_some((v * mult) as u64)
+    let v: f64 = num.parse().ok()?;
+    (v.is_finite() && v > 0.0)
+        .then(|| (v * mult).round() as u64)
+        .filter(|&kib| kib > 0)
+}
+
+/// A KiB amount as a virsh scaled integer with an explicit binary unit.
+pub fn kib_arg(kib: u64) -> String {
+    if kib.is_multiple_of(1024 * 1024) {
+        format!("{}G", kib / 1024 / 1024)
+    } else if kib.is_multiple_of(1024) {
+        format!("{}M", kib / 1024)
+    } else {
+        format!("{kib}K")
+    }
 }
 
 fn basename(path: &str) -> String {
@@ -246,6 +271,9 @@ impl HardwareState {
             base_xml,
             running: true,
             explicit: HashSet::new(),
+            has_topology: true,
+            disk_capacity_kib: HashMap::from([(String::from("vda"), 120 * 1024 * 1024)]),
+            boot_cursor: 0,
         }
     }
 
@@ -400,7 +428,12 @@ impl HardwareState {
                 Form::new(vec![
                     Field::new("source", "source (read-only)", FieldKind::Text, &n.source),
                     Field::new("mac", "MAC (read-only)", FieldKind::Text, &n.mac),
-                    Field::new("link", "link up", FieldKind::Checkbox, "x"),
+                    Field::new(
+                        "link",
+                        "link up",
+                        FieldKind::Checkbox,
+                        if n.link_down { "" } else { "x" },
+                    ),
                 ]),
             );
         }
@@ -422,6 +455,9 @@ impl HardwareState {
             base_xml: xml.to_string(),
             running,
             explicit: HashSet::new(),
+            has_topology: cfg.topology.is_some(),
+            disk_capacity_kib: HashMap::new(),
+            boot_cursor: 0,
         }
     }
 
@@ -474,22 +510,8 @@ impl HardwareState {
             f.current = value.to_string();
         }
         self.explicit.insert((device.to_string(), field.to_string()));
-        if device == "cpus"
-            && field == "max"
-            && let Some(max) = self.field_value("cpus", "max").parse::<u32>().ok()
-        {
-            let (s, c, t) = crate::xml::edit::auto_topology(max);
-            for (id, v) in [
-                ("sockets", s.to_string()),
-                ("cores", c.to_string()),
-                ("threads", t.to_string()),
-            ] {
-                if let Some(form) = self.forms.get_mut("cpus")
-                    && let Some(f) = form.fields.iter_mut().find(|f| f.id == id)
-                {
-                    f.current = v;
-                }
-            }
+        if device == "cpus" && field == "max" {
+            self.auto_topology();
         }
     }
 
@@ -539,9 +561,28 @@ impl HardwareState {
     }
 
     /// Recompute topology from max (INSERT side effects).
+    /// Keep `<topology>` consistent with a new maximum: a domain without one is
+    /// left alone; otherwise sockets and threads are preserved and only cores
+    /// scale (falling back to the default shape when that does not divide).
     pub fn auto_topology(&mut self) {
+        if !self.has_topology {
+            return;
+        }
+        let original = |id: &str| {
+            self.forms
+                .get("cpus")
+                .and_then(|f| f.fields.iter().find(|x| x.id == id))
+                .and_then(|f| f.original.parse::<u32>().ok())
+                .unwrap_or(1)
+                .max(1)
+        };
+        let (sockets, threads) = (original("sockets"), original("threads"));
         if let Ok(max) = self.field_value("cpus", "max").parse::<u32>() {
-            let (s, c, t) = crate::xml::edit::auto_topology(max);
+            let (s, c, t) = if max.is_multiple_of(sockets * threads) && max >= sockets * threads {
+                (sockets, max / (sockets * threads), threads)
+            } else {
+                crate::xml::edit::auto_topology(max)
+            };
             for (id, v) in [
                 ("sockets", s.to_string()),
                 ("cores", c.to_string()),
@@ -685,15 +726,150 @@ impl HardwareState {
         crate::xml::diff::diff_lines(&self.base_xml, &self.edited_xml())
     }
 
+    fn original_value(&self, dev: &str, id: &str) -> String {
+        self.forms
+            .get(dev)
+            .and_then(|f| f.fields.iter().find(|x| x.id == id))
+            .map(|f| f.original.clone())
+            .unwrap_or_default()
+    }
+
+    /// Current capacity of a disk (KiB), from `domblkinfo` or the demo form.
+    fn disk_capacity(&self, target: &str) -> Option<u64> {
+        self.disk_capacity_kib
+            .get(target)
+            .copied()
+            .or_else(|| size_to_kib(&self.original_value(&format!("disk-{target}"), "size")))
+    }
+
+    /// Reasons the pending edits cannot be applied (shown on `:w`; nothing runs).
+    pub fn problems(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut names: Vec<&String> = self.forms.keys().collect();
+        names.sort();
+        for dev in names {
+            for f in self.forms[dev].fields.iter().filter(|f| f.dirty()) {
+                if f.kind == FieldKind::Size && f.current.trim().is_empty() && dev.starts_with("disk-") {
+                    continue;
+                }
+                if !f.valid() {
+                    let hint = match f.kind {
+                        FieldKind::Size => " (use a unit: 512M, 8G, 1.5T)",
+                        FieldKind::Number { .. } => " (out of range or not a number)",
+                        _ => "",
+                    };
+                    out.push(format!("{dev}.{}: invalid value `{}`{hint}", f.id, f.current));
+                }
+            }
+        }
+        if !out.is_empty() {
+            return out;
+        }
+        let live = self.apply_live && self.running;
+        if !live && !self.apply_config && self.pending_count() > 0 {
+            out.push(String::from("Apply to: select live and/or persistent config"));
+        }
+        let num = |dev: &str, id: &str| self.field_value(dev, id).trim().parse::<u64>().ok();
+        if let (Some(cur), Some(max)) = (num("cpus", "current"), num("cpus", "max"))
+            && cur > max
+        {
+            out.push(format!("vCPUs: current {cur} exceeds maximum {max}"));
+        }
+        if self.is_dirty("cpus", "max") && !self.apply_config {
+            out.push(String::from(
+                "vCPUs: the maximum can only change in the persistent config",
+            ));
+        }
+        let kib = |id: &str| size_to_kib(&self.field_value("memory", id));
+        if let (Some(cur), Some(max)) = (kib("current"), kib("max"))
+            && cur > max
+        {
+            out.push(String::from("memory: current exceeds maximum"));
+        }
+        if self.is_dirty("memory", "max") && !self.apply_config {
+            out.push(String::from(
+                "memory: the maximum can only change in the persistent config",
+            ));
+        }
+        for dev in &self.devices {
+            let Some(target) = dev.id.strip_prefix("disk-") else {
+                continue;
+            };
+            let value = self.field_value(&dev.id, "size");
+            if !self.is_dirty(&dev.id, "size") || value.trim().is_empty() {
+                continue;
+            }
+            let Some(new) = size_to_kib(&value) else { continue };
+            match self.disk_capacity(target) {
+                Some(cur) if new < cur => out.push(format!(
+                    "disk {target}: {} is smaller than the current {} (shrinking destroys data; use :!virsh vol-resize --shrink)",
+                    kib_arg(new),
+                    kib_arg(cur)
+                )),
+                Some(cur) if new == cur => out.push(format!("disk {target}: already {}", kib_arg(cur))),
+                Some(_) => {}
+                None => out.push(format!(
+                    "disk {target}: current size unknown, cannot check for shrinking"
+                )),
+            }
+            if !self.running && self.disk_source(target).is_none() {
+                out.push(format!("disk {target}: no file source to resize while shut off"));
+            }
+        }
+        out
+    }
+
+    fn disk_source(&self, target: &str) -> Option<String> {
+        let source = self.field_value(&format!("disk-{target}"), "source");
+        (!source.is_empty()).then_some(source)
+    }
+
+    /// Changes that only take effect after the next boot (shown after `:w`).
+    pub fn restart_notes(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if !(self.running && self.apply_live) {
+            return out;
+        }
+        let cur: Option<u64> = self.field_value("cpus", "current").parse().ok();
+        let live_max: Option<u64> = self.original_value("cpus", "max").parse().ok();
+        if self.is_dirty("cpus", "current")
+            && let (Some(cur), Some(live_max)) = (cur, live_max)
+            && cur > live_max
+        {
+            out.push(format!("vCPUs {cur} exceed the running maximum {live_max}"));
+        }
+        let cur = size_to_kib(&self.field_value("memory", "current"));
+        let live_max = size_to_kib(&self.original_value("memory", "max"));
+        if self.is_dirty("memory", "current")
+            && let (Some(cur), Some(live_max)) = (cur, live_max)
+            && cur > live_max
+        {
+            out.push(format!(
+                "memory {} exceeds the running maximum {}",
+                kib_arg(cur),
+                kib_arg(live_max)
+            ));
+        }
+        if self.needs_define() {
+            out.push(String::from("CPU topology/model"));
+        }
+        out
+    }
+
     /// Command plans for the Will-run panel.
     ///
     /// Without topology/model changes, native commands do everything. With them,
     /// the persistent config goes through ONE `virsh define` of the fully edited
     /// XML (so native `--config` steps cannot be reverted by a stale define), and
     /// only `--live` native steps follow for a running domain.
+    ///
+    /// Invalid edits (see [`HardwareState::problems`]) produce no plan.
     pub fn will_run(&self, domain: &str) -> Vec<crate::command::plan::CommandPlan> {
         use crate::command::builders::hardware;
         let mut out = Vec::new();
+        if !self.problems().is_empty() {
+            return out;
+        }
         let live = self.apply_live && self.running;
         let define = self.needs_define();
         let config = self.apply_config && !define;
@@ -701,25 +877,35 @@ impl HardwareState {
             out.push(hardware::define(domain));
         }
         let vcpus_dirty = self.is_dirty("cpus", "max") || self.is_dirty("cpus", "current");
-        if vcpus_dirty && (live || config) {
-            let cur: u32 = self.field_value("cpus", "current").parse().unwrap_or(1);
-            let max: u32 = self.field_value("cpus", "max").parse().unwrap_or(cur);
+        if vcpus_dirty
+            && let (Ok(cur), Ok(max)) = (
+                self.field_value("cpus", "current").trim().parse::<u32>(),
+                self.field_value("cpus", "max").trim().parse::<u32>(),
+            )
+        {
+            // A running guest cannot go past the maximum it booted with: that
+            // part is config-only and applies after a restart.
+            let live_max: u32 = self.original_value("cpus", "max").parse().unwrap_or(max);
+            let live = live && cur <= live_max;
             let max_changed = self.is_dirty("cpus", "max") && config;
-            out.extend(hardware::set_vcpus(
-                domain,
-                cur.min(max),
-                max,
-                max_changed,
-                live,
-                config,
-            ));
+            if live || config || max_changed {
+                out.extend(hardware::set_vcpus(domain, cur, max, max_changed, live, config));
+            }
         }
         let mem_dirty = self.is_dirty("memory", "current") || self.is_dirty("memory", "max");
-        if mem_dirty && (live || config) {
+        if mem_dirty
+            && let (Some(cur), Some(max)) = (
+                size_to_kib(&self.field_value("memory", "current")),
+                size_to_kib(&self.field_value("memory", "max")),
+            )
+        {
+            let live_max = size_to_kib(&self.original_value("memory", "max")).unwrap_or(max);
+            let live = live && cur <= live_max;
+            let max_changed = self.is_dirty("memory", "max") && config;
             out.extend(hardware::set_memory(
                 domain,
-                &self.field_value("memory", "current"),
-                &self.field_value("memory", "max"),
+                &kib_arg(cur),
+                max_changed.then(|| kib_arg(max)).as_deref(),
                 live,
                 config,
             ));
@@ -727,22 +913,32 @@ impl HardwareState {
         for dev in &self.devices {
             if let Some(target) = dev.id.strip_prefix("disk-")
                 && self.is_dirty(&dev.id, "size")
-                && !self.field_value(&dev.id, "size").is_empty()
+                && let Some(kib) = size_to_kib(&self.field_value(&dev.id, "size"))
             {
-                out.push(hardware::block_resize(
-                    domain,
-                    target,
-                    &self.field_value(&dev.id, "size"),
-                ));
+                if self.running {
+                    out.push(hardware::block_resize(domain, target, &kib_arg(kib)));
+                } else if let Some(source) = self.disk_source(target) {
+                    // blockresize needs a running domain; the image is resized offline.
+                    out.push(crate::command::builders::storage::vol_resize_path(
+                        &source,
+                        &kib_arg(kib),
+                    ));
+                }
             }
-            if let Some(iface) = dev.id.strip_prefix("nic-")
-                && self.is_dirty(&dev.id, "link")
-            {
-                out.push(hardware::set_link(
-                    domain,
-                    iface,
-                    self.field_value(&dev.id, "link") == "x",
-                ));
+            if dev.id.starts_with("nic-") && self.is_dirty(&dev.id, "link") {
+                let mac = self.field_value(&dev.id, "mac");
+                let iface = if mac.is_empty() {
+                    dev.id.trim_start_matches("nic-").to_string()
+                } else {
+                    mac
+                };
+                let up = self.field_value(&dev.id, "link") == "x";
+                if live {
+                    out.push(hardware::set_link(domain, &iface, up, false));
+                }
+                if self.apply_config || !self.running {
+                    out.push(hardware::set_link(domain, &iface, up, true));
+                }
             }
         }
         out

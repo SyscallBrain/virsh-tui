@@ -87,7 +87,11 @@ pub(super) fn handle_help_key(key: KeyEvent, help_filter: &mut Option<String>) -
             filter.pop();
             return true;
         }
-        KeyCode::Char(c) if key.modifiers.is_empty() => {
+        KeyCode::Char(c)
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+        {
             filter.push(c);
             return true;
         }

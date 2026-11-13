@@ -25,3 +25,13 @@ MAC address, followed by the interfaces attached to the network.
 Pinning a lease runs `virsh net-update … add ip-dhcp-host` on both the live
 network and its persistent definition, so the guest keeps its address after a
 restart.
+
+## Creating a network
+
+`n` opens the form. The host's address on the network is the address you
+type when it is a host address (`192.168.100.254/24`), otherwise the first
+host of the subnet (`192.168.100.128/25` gives `192.168.100.129`). Prefixes
+from /8 to /30 are accepted. A DHCP range must lie inside the subnet and
+must not include that address; left empty, it covers the rest of the subnet.
+Bridge names take 1-15 letters, digits, `-`, `_` or `.`. In bridge mode the
+network attaches to an existing host bridge and needs no address.

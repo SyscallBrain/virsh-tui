@@ -56,14 +56,18 @@ pub fn set_vcpus(
     out
 }
 
-/// Memory changes: `[setmaxmem SIZE --config]` + `[setmem SIZE --live --config]`.
-pub fn set_memory(domain: &str, current: &str, max: &str, live: bool, config: bool) -> Vec<CommandPlan> {
+/// Memory changes: `[setmaxmem SIZE --config]` (only when the maximum
+/// changed) + `[setmem SIZE --live --config]`. Sizes carry an explicit unit.
+pub fn set_memory(
+    domain: &str,
+    current: &str,
+    max: Option<&str>,
+    live: bool,
+    config: bool,
+) -> Vec<CommandPlan> {
     let mut out = Vec::new();
-    let mut max_flags = Vec::new();
-    if config {
-        max_flags.push(String::from("--config"));
-    }
-    if config || !live {
+    let max_flags = vec![String::from("--config")];
+    if let Some(max) = max {
         out.push(CommandPlan {
             steps: vec![step(domain, "setmaxmem", {
                 let mut a = vec![max.to_string()];
@@ -72,6 +76,9 @@ pub fn set_memory(domain: &str, current: &str, max: &str, live: bool, config: bo
             })],
             summary: format!("Set max memory {max} on {domain}"),
         });
+    }
+    if !live && !config {
+        return out;
     }
     let mut flags = Vec::new();
     if live {
@@ -86,7 +93,11 @@ pub fn set_memory(domain: &str, current: &str, max: &str, live: bool, config: bo
             a.extend(flags);
             a
         })],
-        summary: format!("Set memory {current} on {domain}"),
+        summary: if live || !config {
+            format!("Set memory {current} on {domain}")
+        } else {
+            format!("Set memory {current} on {domain} (config)")
+        },
     });
     out
 }
@@ -103,22 +114,79 @@ pub fn vcpupin(domain: &str, vcpu: u32, cpulist: &str, live: bool) -> CommandPla
     }
 }
 
-/// `virsh emulatorpin d cpulist`.
-pub fn emulatorpin(domain: &str, cpulist: &str) -> CommandPlan {
-    CommandPlan::single(
-        "virsh",
-        vec!["emulatorpin", domain, cpulist],
-        &format!("Pinned emulator on {domain}"),
-    )
+/// `--live`/`--config` flags (at least one; `--live` only for a running domain).
+fn scope_flags(live: bool, config: bool) -> Vec<&'static str> {
+    let mut flags = Vec::new();
+    if live {
+        flags.push("--live");
+    }
+    if config || !live {
+        flags.push("--config");
+    }
+    flags
 }
 
-/// `virsh iothreadadd d id`.
-pub fn iothread_add(domain: &str, id: u32) -> CommandPlan {
-    CommandPlan::single(
-        "virsh",
-        vec!["iothreadadd", domain, &id.to_string()],
-        &format!("Added iothread {id} on {domain}"),
-    )
+/// `virsh emulatorpin d cpulist [--live] [--config]`.
+pub fn emulatorpin(domain: &str, cpulist: &str, live: bool, config: bool) -> CommandPlan {
+    let mut argv = vec!["emulatorpin", domain, cpulist];
+    argv.extend(scope_flags(live, config));
+    CommandPlan::single("virsh", argv, &format!("Pinned emulator on {domain}"))
+}
+
+/// `virsh iothreadadd d id [--live] [--config]`.
+pub fn iothread_add(domain: &str, id: u32, live: bool, config: bool) -> CommandPlan {
+    let id = id.to_string();
+    let mut argv = vec!["iothreadadd", domain, id.as_str()];
+    argv.extend(scope_flags(live, config));
+    CommandPlan::single("virsh", argv, &format!("Added iothread {id} on {domain}"))
+}
+
+/// Image format for `attach-disk --subdriver`: libvirt assumes raw otherwise,
+/// which exposes a qcow2 file raw to the guest (and lets it corrupt it).
+///
+/// The extension decides for well-known ones; anything else (`.img`, no
+/// extension) is identified from the file header when it is readable here.
+pub fn image_format(path: &str) -> Option<String> {
+    let lower = path.to_ascii_lowercase();
+    let ext = lower.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    let by_ext = match ext {
+        "qcow2" | "qcow" => Some("qcow2"),
+        "raw" | "iso" => Some("raw"),
+        "vmdk" => Some("vmdk"),
+        "vdi" => Some("vdi"),
+        "vhdx" => Some("vhdx"),
+        "qed" => Some("qed"),
+        _ => None,
+    };
+    if let Some(f) = by_ext {
+        return Some(f.to_string());
+    }
+    let mut head = [0u8; 4];
+    let mut file = std::fs::File::open(path).ok()?;
+    std::io::Read::read_exact(&mut file, &mut head).ok()?;
+    match &head {
+        b"QFI\xfb" => Some(String::from("qcow2")),
+        b"KDMV" => Some(String::from("vmdk")),
+        _ => None,
+    }
+}
+
+/// `virsh attach-disk d src target --driver qemu --subdriver FMT …`.
+pub fn attach_disk_formatted(
+    domain: &str,
+    src: &str,
+    target: &str,
+    format: &str,
+    live: bool,
+    config: bool,
+) -> CommandPlan {
+    let mut plan = attach_disk(domain, src, target, live, config);
+    plan.steps[0].argv.extend(
+        ["--driver", "qemu", "--subdriver", format]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    plan
 }
 
 /// `virsh attach-disk …` / `detach-disk`.
@@ -189,30 +257,37 @@ pub fn attach_nic(domain: &str, source: &str, model: &str, mac: Option<&str>, li
     CommandPlan::single("virsh", argv, &format!("Attached NIC on {domain}"))
 }
 
-/// `virsh domif-setlink d iface up|down`.
-pub fn set_link(domain: &str, iface: &str, up: bool) -> CommandPlan {
-    CommandPlan::single(
-        "virsh",
-        vec!["domif-setlink", domain, iface, if up { "up" } else { "down" }],
-        &format!("Set link {} on {domain}", if up { "up" } else { "down" }),
-    )
+/// `virsh domif-setlink d iface up|down [--config]`; `iface` is the target
+/// device or the MAC address. Without `--config` it changes the running guest.
+pub fn set_link(domain: &str, iface: &str, up: bool, config: bool) -> CommandPlan {
+    let state = if up { "up" } else { "down" };
+    let mut argv = vec!["domif-setlink", domain, iface, state];
+    if config {
+        argv.push("--config");
+    }
+    CommandPlan::single("virsh", argv, &format!("Set link {state} on {domain}"))
 }
 
-/// `virsh domiftune d iface --inbound … --outbound …`.
-pub fn tune_iface(domain: &str, iface: &str, inbound: &str, outbound: &str) -> CommandPlan {
-    CommandPlan::single(
-        "virsh",
-        vec![
-            "domiftune",
-            domain,
-            iface,
-            "--inbound",
-            inbound,
-            "--outbound",
-            outbound,
-        ],
-        &format!("Tuned {iface} on {domain}"),
-    )
+/// `virsh domiftune d iface --inbound … --outbound … [--live] [--config]`.
+pub fn tune_iface(
+    domain: &str,
+    iface: &str,
+    inbound: &str,
+    outbound: &str,
+    live: bool,
+    config: bool,
+) -> CommandPlan {
+    let mut argv = vec![
+        "domiftune",
+        domain,
+        iface,
+        "--inbound",
+        inbound,
+        "--outbound",
+        outbound,
+    ];
+    argv.extend(scope_flags(live, config));
+    CommandPlan::single("virsh", argv, &format!("Tuned {iface} on {domain}"))
 }
 
 /// `virsh define /tmp/vt-<domain>.xml` (XML edit path display; real path at runtime).
@@ -295,7 +370,7 @@ mod tests {
                 .argv
                 .contains(&"--eject".to_string())
         );
-        assert!(!set_memory("d", "8G", "16G", true, true).is_empty());
+        assert!(!set_memory("d", "8G", Some("16G"), true, true).is_empty());
         assert!(define("d").steps[0].argv[1].contains("vt-d.xml"));
     }
 }

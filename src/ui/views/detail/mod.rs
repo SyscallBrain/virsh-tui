@@ -186,6 +186,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &DetailState) {
         crate::ui::layout::render_too_small(frame, theme);
         return;
     }
+    if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
+        render_minimal(frame, theme, state);
+        return;
+    }
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -299,14 +303,7 @@ fn render_header(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Re
 }
 
 fn state_label(s: DomainState) -> &'static str {
-    match s {
-        DomainState::Running => "running",
-        DomainState::Paused => "paused",
-        DomainState::Crashed => "crashed",
-        DomainState::ShutOff => "shut off",
-        DomainState::PmSuspended => "pmsuspended",
-        DomainState::Other => "other",
-    }
+    s.label()
 }
 
 fn render_overview(frame: &mut Frame, theme: &Theme, state: &DetailState, area: Rect) {
@@ -798,4 +795,45 @@ fn render_message(frame: &mut Frame, theme: &Theme, state: &DetailState, area: R
         return;
     };
     frame.render_widget(Paragraph::new(line).style(theme.base()), area);
+}
+
+/// Small-terminal detail: the tab name and the key facts of the domain.
+fn render_minimal(frame: &mut Frame, theme: &Theme, state: &DetailState) {
+    use crate::ui::views::minimal::{Row, render};
+    let c = &state.config;
+    let mut rows = vec![
+        Row::plain(format!("state     {}", state_label(state.state))),
+        Row::plain(format!("uptime    {}", state.uptime)),
+        Row::plain(format!("vCPUs     {} / {}", c.current_vcpus, c.vcpus)),
+        Row::plain(format!(
+            "memory    {:.1} / {:.1} GiB",
+            c.mem_kib as f64 / 1048576.0,
+            c.max_mem_kib as f64 / 1048576.0
+        )),
+        Row::plain(format!("machine   {}", c.machine)),
+        Row::plain(format!("firmware  {}", c.firmware_label())),
+    ];
+    for d in &c.disks {
+        rows.push(Row::plain(format!("disk {:<4} {}", d.target, d.source)));
+    }
+    for n in &c.nics {
+        rows.push(Row::plain(format!("nic       {} {}", n.source, n.mac)));
+    }
+    let pending = state.hw.pending_count();
+    if pending > 0 {
+        rows.push(Row::styled(
+            format!("● {pending} pending hardware change(s): :w apply, :q! discard"),
+            Style::default().fg(theme.tokens.yellow),
+        ));
+    }
+    render(
+        frame,
+        theme,
+        &format!("{} · {} · {}", state.domain, state.tab.label(), state.uri),
+        " (enlarge the terminal for the full detail tabs)",
+        &rows,
+        None,
+        " H/L tab ⌫ back : cmd ? help",
+        &state.message,
+    );
 }

@@ -47,33 +47,66 @@ fn write_elem(elem: &Element, depth: usize, out: &mut String) {
     for (k, v) in &attrs {
         open.push_str(&format!(" {k}=\"{}\"", escape_xml(v, true)));
     }
-    let elements: Vec<&Element> = elem
+    let has_elements = elem.children.iter().any(|c| matches!(c, XMLNode::Element(_)));
+    let has_text = elem.children.iter().any(|c| match c {
+        XMLNode::Text(t) => !t.trim().is_empty(),
+        XMLNode::CData(_) => true,
+        _ => false,
+    });
+    let has_markup = elem
         .children
         .iter()
-        .filter_map(|c| match c {
-            XMLNode::Element(e) => Some(e),
-            _ => None,
-        })
-        .collect();
-    let texts: Vec<&str> = elem
-        .children
-        .iter()
-        .filter_map(|c| match c {
-            XMLNode::Text(t) => Some(t.as_str()),
-            _ => None,
-        })
-        .collect();
-    let text = texts.concat().trim().to_string();
-    if elements.is_empty() && text.is_empty() {
+        .any(|c| matches!(c, XMLNode::Comment(_) | XMLNode::CData(_)));
+    if !has_elements && !has_text && !has_markup {
         out.push_str(&format!("{pad}{open}/>\n"));
-    } else if elements.is_empty() {
-        out.push_str(&format!("{pad}{open}>{}</{qname}>\n", escape_xml(&text, false)));
+    } else if !has_elements && !has_markup {
+        // Plain text: trimmed, as libvirt writes it.
+        let text: String = elem
+            .children
+            .iter()
+            .filter_map(|c| match c {
+                XMLNode::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        out.push_str(&format!(
+            "{pad}{open}>{}</{qname}>\n",
+            escape_xml(text.trim(), false)
+        ));
+    } else if has_text {
+        // Text-only or mixed content: written inline, in order, so text,
+        // CDATA and child elements keep their exact interleaving.
+        out.push_str(&format!("{pad}{open}>"));
+        write_inline(elem, out);
+        out.push_str(&format!("</{qname}>\n"));
     } else {
         out.push_str(&format!("{pad}{open}>\n"));
-        for child in elements {
-            write_elem(child, depth + 1, out);
+        for child in &elem.children {
+            match child {
+                XMLNode::Element(e) => write_elem(e, depth + 1, out),
+                XMLNode::Comment(c) => out.push_str(&format!("{pad}  <!--{c}-->\n")),
+                XMLNode::CData(c) => out.push_str(&format!("{pad}  <![CDATA[{c}]]>\n")),
+                _ => {}
+            }
         }
         out.push_str(&format!("{pad}</{qname}>\n"));
+    }
+}
+
+/// Children of a text/mixed-content element, verbatim order, no indentation.
+fn write_inline(elem: &Element, out: &mut String) {
+    for child in &elem.children {
+        match child {
+            XMLNode::Text(t) => out.push_str(&escape_xml(t, false)),
+            XMLNode::CData(c) => out.push_str(&format!("<![CDATA[{c}]]>")),
+            XMLNode::Comment(c) => out.push_str(&format!("<!--{c}-->")),
+            XMLNode::Element(e) => {
+                let mut nested = String::new();
+                write_elem(e, 0, &mut nested);
+                out.push_str(nested.trim_end_matches('\n'));
+            }
+            _ => {}
+        }
     }
 }
 
@@ -121,8 +154,7 @@ fn set_text(elem: &mut Element, text: &str) {
 pub fn set_vcpus(xml: &str, current: u32, max: u32) -> Result<String> {
     let mut root = parse(xml)?;
     let vcpu = ensure_child(&mut root, "vcpu");
-    vcpu.attributes
-        .insert(String::from("placement"), String::from("static"));
+    // Keep the existing placement (auto/static): libvirt defaults to static.
     if current == max {
         vcpu.attributes.remove("current");
     } else {
@@ -216,6 +248,15 @@ mod tests {
         assert!(topo.contains("cores=\"8\"") || topo.contains("cores='8'"));
         let mem = set_memory(&arch(), 8 * 1024 * 1024, 16 * 1024 * 1024).unwrap();
         assert!(mem.contains("16777216"));
+    }
+
+    #[test]
+    fn cdata_and_mixed_content_survive() {
+        let xml = "<domain><description><![CDATA[a <b> & c]]></description><metadata><x>t<y/>u</x></metadata><name>vm</name></domain>";
+        let out = set_vcpus(xml, 1, 2).unwrap();
+        assert!(out.contains("<![CDATA[a <b> & c]]>"), "{out}");
+        assert!(out.contains("<x>t<y/>u</x>"), "{out}");
+        assert!(out.contains("<name>vm</name>"), "{out}");
     }
 
     #[test]

@@ -113,12 +113,27 @@ pub fn subscribe(uri: &str) -> mpsc::Receiver<crate::model::LibvirtEvent> {
                 if tx.is_closed() {
                     break;
                 }
+                let started = std::time::Instant::now();
                 match stream_once(&uri, sub, filter, &tx).await {
-                    Ok(()) => failures = 0,
+                    // Only a stream that lived a while (or delivered events)
+                    // counts as healthy: one that exits at once (unsupported
+                    // event type, daemon down) backs off up to 30 s.
+                    Ok(delivered)
+                        if delivered > 0 || started.elapsed() >= std::time::Duration::from_secs(30) =>
+                    {
+                        failures = 0;
+                    }
+                    Ok(_) => failures += 1,
                     Err(e) => {
                         failures += 1;
                         tracing::warn!("{sub} stream: {e}");
                     }
+                }
+                // An event type this libvirt does not know fails forever:
+                // give up on that one stream instead of respawning it.
+                if failures >= 8 {
+                    tracing::warn!("{sub} {filter:?} stream keeps exiting; not restarted");
+                    break;
                 }
                 // Always back off before respawning: a stream that ends immediately
                 // (daemon down, bad URI) must not turn into a busy loop.
@@ -135,7 +150,7 @@ async fn stream_once(
     sub: &str,
     filter: &[&str],
     tx: &mpsc::Sender<crate::model::LibvirtEvent>,
-) -> color_eyre::Result<()> {
+) -> color_eyre::Result<usize> {
     stream_once_with_program(uri, sub, filter, tx, "virsh").await
 }
 
@@ -145,7 +160,7 @@ async fn stream_once_with_program(
     filter: &[&str],
     tx: &mpsc::Sender<crate::model::LibvirtEvent>,
     program: &str,
-) -> color_eyre::Result<()> {
+) -> color_eyre::Result<usize> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
     let mut command = Command::new(program);
@@ -171,6 +186,7 @@ async fn stream_once_with_program(
         .take()
         .ok_or_else(|| color_eyre::eyre::eyre!("no stdout"))?;
     let mut lines = BufReader::new(stdout).lines();
+    let mut delivered = 0usize;
     loop {
         let line = tokio::select! {
             _ = tx.closed() => break,
@@ -179,10 +195,11 @@ async fn stream_once_with_program(
                 None => break,
             },
         };
-        if let Some(ev) = parse_event_line(&line)
-            && tx.send(ev).await.is_err()
-        {
-            break;
+        if let Some(ev) = parse_event_line(&line) {
+            if tx.send(ev).await.is_err() {
+                break;
+            }
+            delivered += 1;
         }
     }
     // A disconnected receiver must stop a quiet stream as well as an active one.
@@ -192,7 +209,7 @@ async fn stream_once_with_program(
     #[cfg(unix)]
     group.mark_reaped();
     let _ = child.wait().await;
-    Ok(())
+    Ok(delivered)
 }
 
 #[cfg(test)]

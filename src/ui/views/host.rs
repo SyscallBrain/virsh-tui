@@ -477,6 +477,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &HostState) {
         crate::ui::layout::render_too_small(frame, theme);
         return;
     }
+    if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
+        render_minimal(frame, theme, state);
+        return;
+    }
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -898,4 +902,33 @@ fn read_uptime() -> String {
     let hours = ((secs % 86400.0) / 3600.0) as u32;
     let mins = ((secs % 3600.0) / 60.0) as u32;
     format!("{days}d {hours:02}h {mins:02}m")
+}
+
+/// Small-terminal host view: the running domains.
+fn render_minimal(frame: &mut Frame, theme: &Theme, state: &HostState) {
+    use crate::ui::views::minimal::{Row, col, render};
+    let rows: Vec<Row> = state
+        .domains
+        .iter()
+        .map(|d| {
+            Row::plain(format!(
+                "{}{}{:>4.0}% {}",
+                col(&d.name, 22),
+                col(&format!("{} vCPU", d.vcpus), 8),
+                d.cpu_frac * 100.0,
+                d.mem_label
+            ))
+        })
+        .collect();
+    let selected = (!rows.is_empty()).then_some(state.selected);
+    render(
+        frame,
+        theme,
+        &format!("2 Host · {}", state.uri),
+        &format!(" {}{}{:>5} MEM", col("DOMAIN", 22), col("VCPUS", 8), "CPU"),
+        &rows,
+        selected,
+        " j/k ⏎ open ? help",
+        &state.message,
+    );
 }

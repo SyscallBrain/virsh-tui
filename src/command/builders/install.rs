@@ -4,17 +4,15 @@
 //! is shown is what runs.
 
 use super::super::plan::CommandPlan;
-use crate::ui::overlays::wizard::{MediaKind, WizardState, detect_os};
+use crate::ui::overlays::wizard::{MediaKind, WizardState};
 
-/// `--osinfo` value: explicit, detected from the ISO name, or virt-install detection.
+/// `--osinfo` value: the id the user typed, else virt-install's own detection
+/// from the media (a guessed id that osinfo does not know fails the install).
 pub fn osinfo(st: &WizardState) -> String {
     if !st.os_id.trim().is_empty() {
         return st.os_id.trim().to_string();
     }
-    match (st.media, detect_os(&st.iso_path)) {
-        (MediaKind::Iso, Some(os)) => os,
-        _ => String::from("detect=on,require=off"),
-    }
+    String::from("detect=on,require=off")
 }
 
 /// Build the full `virt-install … --noautoconsole` argv.
@@ -142,7 +140,7 @@ mod tests {
             ..Default::default()
         };
         let argv = virt_install(&st).steps[0].argv.join(" ");
-        assert!(argv.contains("--osinfo=archlinux"), "{argv}");
+        assert!(argv.contains("--osinfo=detect=on,require=off"), "{argv}");
         assert!(argv.contains("--memory=4096,maxmemory=8192"));
         st.media = MediaKind::None;
         st.firmware = String::from("bios");

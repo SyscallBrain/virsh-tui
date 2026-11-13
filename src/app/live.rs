@@ -10,11 +10,29 @@ pub(super) async fn fill_live_host(uri: &str) -> ui::views::host::HostState {
     let mut host = if is_local_uri(uri) {
         ui::views::host::HostState::live_local().await
     } else {
+        // Remote: /proc is the wrong machine; libvirt reports the basics.
+        let nodeinfo = crate::backend::virsh::exec::run(uri, &["nodeinfo"])
+            .await
+            .unwrap_or_default();
+        let memstats = crate::backend::virsh::exec::run(uri, &["nodememstats"])
+            .await
+            .unwrap_or_default();
+        let (model, threads, total_kib, available_kib) =
+            crate::backend::virsh::host_local::parse_node_facts(&nodeinfo, &memstats);
+        let gib = |kib: u64| kib as f64 / 1024.0 / 1024.0;
         ui::views::host::HostState {
             live: true,
             cpu_hist: Some(Vec::new()),
-            cpu_model: String::from("unavailable"),
-            message: String::from("Remote host CPU and memory metrics unavailable"),
+            cpu_model: if model.is_empty() {
+                String::from("unavailable")
+            } else {
+                model
+            },
+            threads_total: threads,
+            mem_total_gib: gib(total_kib),
+            mem_free_gib: gib(available_kib),
+            mem_used_gib: gib(total_kib.saturating_sub(available_kib)),
+            message: String::from("Remote host: per-thread CPU metrics are unavailable"),
             ..Default::default()
         }
     };
@@ -106,11 +124,22 @@ pub(super) fn apply_live_msg(uri: &str, dash: &mut ui::views::dashboard::Dashboa
             ifaces,
             at,
         } => {
+            // Keep the cursor on the same domain: rows are re-sorted below
+            // (CPU, uptime) after the summaries replaced them.
+            let selected = dash.selected().name.clone();
             dash.metrics.ingest_ifaces(&ifaces, at);
             dash.apply_summaries(&summaries);
             for r in dash.rows.iter_mut() {
-                if let Some(up) = uptimes.get(&r.name) {
-                    r.uptime.clone_from(up);
+                match uptimes.get(&r.name) {
+                    Some(&secs) => {
+                        r.uptime_secs = Some(secs);
+                        r.uptime = crate::backend::virsh::host_local::fmt_uptime(secs);
+                    }
+                    None if r.state != crate::model::DomainState::Running => {
+                        r.uptime_secs = None;
+                        r.uptime = String::from("—");
+                    }
+                    None => {}
                 }
             }
             dash.metrics.ingest_domains(&stats, at);
@@ -118,6 +147,7 @@ pub(super) fn apply_live_msg(uri: &str, dash: &mut ui::views::dashboard::Dashboa
                 dash.metrics.ingest_proc_stat(&stat);
             }
             dash.apply_metrics();
+            dash.select_name(&selected);
             dash.check_shutdowns();
             dash.uri = uri.to_string();
             if !dash.connected || dash.message == "loading…" {
@@ -328,8 +358,33 @@ pub(super) async fn fill_live_nets(uri: &str) -> ui::views::networks::NetworksSt
         Err(e) => st.message = format!("✗ {}", first_line(&e.to_string())),
     }
     st.selected = 0;
+    st.domain_ifaces = Some(domain_interfaces(uri).await);
     load_net_selection(uri, &mut st).await;
     st
+}
+
+/// `domiflist` of every domain (bounded concurrency), read once per load.
+async fn domain_interfaces(uri: &str) -> Vec<ui::views::networks::DomainIface> {
+    use crate::backend::{Backend, virsh::VirshBackend};
+    let Ok(domains) = VirshBackend::new(uri).list_domains().await else {
+        return vec![];
+    };
+    let outputs = run_many(
+        uri,
+        domains
+            .iter()
+            .map(|d| vec![String::from("domiflist"), d.name.clone()])
+            .collect(),
+    )
+    .await;
+    let mut out = Vec::new();
+    for (d, result) in domains.iter().zip(outputs) {
+        let Ok(text) = result else { continue };
+        for (iface, kind, source, mac) in parse_domiflist(&text) {
+            out.push((d.name.clone(), iface, kind, source, mac));
+        }
+    }
+    out
 }
 
 /// Leases (with static hosts and owning domains) and attached interfaces of
@@ -343,22 +398,19 @@ pub(super) async fn load_net_selection(uri: &str, st: &mut ui::views::networks::
     let Some(net) = st.networks.get(st.selected).cloned() else {
         return;
     };
-    // MAC → domain and the interfaces plugged into this network.
+    // MAC → domain and the interfaces plugged into this network, from the
+    // per-load cache (no `domiflist` per domain on every selection change).
     let mut by_mac: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let backend = VirshBackend::new(uri);
-    if let Ok(domains) = backend.list_domains().await {
-        for d in &domains {
-            let Ok(out) = crate::backend::virsh::exec::run(uri, &["domiflist", &d.name]).await else {
-                continue;
-            };
-            for (iface, kind, source, mac) in parse_domiflist(&out) {
-                by_mac.insert(mac.to_lowercase(), d.name.clone());
-                let on_net = (kind == "network" && source == net.name)
-                    || (kind == "bridge" && source == net.cfg.bridge);
-                if on_net && iface != "-" {
-                    st.attached.push((iface, d.name.clone()));
-                }
-            }
+    if st.domain_ifaces.is_none() {
+        st.domain_ifaces = Some(domain_interfaces(uri).await);
+    }
+    for (domain, iface, kind, source, mac) in st.domain_ifaces.iter().flatten() {
+        by_mac.insert(mac.to_lowercase(), domain.clone());
+        let on_net =
+            (kind == "network" && *source == net.name) || (kind == "bridge" && *source == net.cfg.bridge);
+        if on_net && iface != "-" {
+            st.attached.push((iface.clone(), domain.clone()));
         }
     }
     let statics = &net.cfg.static_hosts;
@@ -407,19 +459,10 @@ pub(super) async fn load_net_selection(uri: &str, st: &mut ui::views::networks::
 
 /// `virsh domiflist` rows: (interface, type, source, mac).
 pub(super) fn parse_domiflist(out: &str) -> Vec<(String, String, String, String)> {
-    out.lines()
-        .skip(2)
-        .filter_map(|l| {
-            let c: Vec<&str> = l.split_whitespace().collect();
-            (c.len() >= 5).then(|| {
-                (
-                    c[0].to_string(),
-                    c[1].to_string(),
-                    c[2].to_string(),
-                    c[4].to_string(),
-                )
-            })
-        })
+    crate::backend::virsh::parse_list::table_rows(out)
+        .into_iter()
+        .filter(|c| c.len() >= 5)
+        .map(|c| (c[0].clone(), c[1].clone(), c[2].clone(), c[4].clone()))
         .collect()
 }
 
@@ -530,11 +573,40 @@ pub(super) async fn read_ifaces() -> Vec<crate::ui::views::networks::IfaceRow> {
     out
 }
 
-/// Build live storage state: pools, every domain's disk sources, the volumes
-/// of the selected pool, and the ISO library across all active pools.
+/// Bounded concurrency for per-object virsh reads (N domains, N volumes).
+const READ_CONCURRENCY: usize = 6;
+
+/// Run `virsh` reads with bounded concurrency, keeping the input order.
+pub(super) async fn run_many(uri: &str, commands: Vec<Vec<String>>) -> Vec<color_eyre::Result<String>> {
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(READ_CONCURRENCY));
+    let mut set = tokio::task::JoinSet::new();
+    let count = commands.len();
+    for (i, argv) in commands.into_iter().enumerate() {
+        let uri = uri.to_string();
+        let semaphore = semaphore.clone();
+        set.spawn(async move {
+            let _permit = semaphore.acquire_owned().await;
+            let args: Vec<&str> = argv.iter().map(String::as_str).collect();
+            (i, crate::backend::virsh::exec::run(&uri, &args).await)
+        });
+    }
+    let mut out: Vec<Option<color_eyre::Result<String>>> = (0..count).map(|_| None).collect();
+    while let Some(joined) = set.join_next().await {
+        if let Ok((i, result)) = joined {
+            out[i] = Some(result);
+        }
+    }
+    out.into_iter()
+        .map(|r| r.unwrap_or_else(|| Err(color_eyre::eyre::eyre!("read task failed"))))
+        .collect()
+}
+
+/// Build live storage state: pools, every domain's disk references (inactive
+/// and live XML), the volumes of every active pool with backing references
+/// counted across pools, and the ISO library.
 pub(super) async fn fill_live_store(uri: &str) -> ui::views::storage::StorageState {
     use crate::backend::{Backend, virsh::VirshBackend};
-    use crate::ui::views::storage::{IsoEntry, PoolRow, StorageState};
+    use crate::ui::views::storage::{IsoEntry, PoolRow, StorageState, VolumeRow};
     let backend = VirshBackend::new(uri);
     let mut st = StorageState::demo();
     st.uri = uri.to_string();
@@ -544,110 +616,146 @@ pub(super) async fn fill_live_store(uri: &str) -> ui::views::storage::StorageSta
     st.isos.clear();
     st.message.clear();
     st.attachments.clear();
-    if let Ok(domains) = backend.list_domains().await {
-        for d in &domains {
-            if let Ok(xml) = crate::backend::virsh::exec::run(uri, &["dumpxml", "--inactive", &d.name]).await
-            {
-                for src in disk_sources(&xml) {
-                    st.attachments.push((d.name.clone(), src));
+    st.pool_volumes.clear();
+    st.incomplete = false;
+    match backend.list_domains().await {
+        Ok(domains) => {
+            let mut commands = Vec::new();
+            let mut owners = Vec::new();
+            for d in &domains {
+                commands.push(vec![
+                    String::from("dumpxml"),
+                    String::from("--inactive"),
+                    d.name.clone(),
+                ]);
+                owners.push(d.name.clone());
+                if matches!(
+                    d.state,
+                    crate::model::DomainState::Running | crate::model::DomainState::Paused
+                ) {
+                    commands.push(vec![String::from("dumpxml"), d.name.clone()]);
+                    owners.push(d.name.clone());
                 }
             }
-        }
-    }
-    match backend.pools().await {
-        Ok(pools) => {
-            for p in &pools {
-                let xml = crate::backend::virsh::exec::run(uri, &["pool-dumpxml", &p.name])
-                    .await
-                    .unwrap_or_default();
-                let frac = if p.capacity_mib == 0 {
-                    0.0
-                } else {
-                    p.allocation_mib as f64 / p.capacity_mib as f64
-                };
-                st.pools.push(PoolRow {
-                    name: p.name.clone(),
-                    kind: pool_kind(&xml),
-                    path: pool_target(&xml),
-                    frac,
-                    value: format!(
-                        "{} / {}",
-                        human_size(p.allocation_mib as f64, "MiB"),
-                        human_size(p.capacity_mib as f64, "MiB")
-                    ),
-                    active: p.state == "running",
-                });
-                // ISO library: every *.iso in every active pool.
-                if p.state == "running"
-                    && let Ok(out) =
-                        crate::backend::virsh::exec::run(uri, &["vol-list", "--pool", &p.name, "--details"])
-                            .await
-                {
-                    for (name, _path) in parse_vol_list(&out) {
-                        if name.to_lowercase().ends_with(".iso") {
-                            st.isos.push(IsoEntry {
-                                pool: p.name.clone(),
-                                name,
-                                size: String::new(),
-                                date: String::new(),
-                            });
+            for (owner, result) in owners.into_iter().zip(run_many(uri, commands).await) {
+                match result {
+                    Ok(xml) => {
+                        for key in disk_sources(&xml) {
+                            if !st.attachments.iter().any(|(d, k)| *d == owner && *k == key) {
+                                st.attachments.push((owner.clone(), key));
+                            }
                         }
                     }
+                    Err(_) => st.incomplete = true,
                 }
             }
         }
-        Err(e) => st.message = format!("✗ {}", first_line(&e.to_string())),
+        Err(_) => st.incomplete = true,
     }
-    st.pool_selected = 0;
-    load_pool_volumes(uri, &mut st).await;
-    st
-}
-
-/// Volumes of the selected pool with format/sizes, backing chains and owners.
-pub(super) async fn load_pool_volumes(uri: &str, st: &mut ui::views::storage::StorageState) {
-    use crate::ui::views::storage::VolumeRow;
-    st.volumes.clear();
-    st.vol_selected = 0;
-    let Some(pool) = st.pools.get(st.pool_selected).cloned() else {
-        return;
+    let pools = match backend.pools().await {
+        Ok(pools) => pools,
+        Err(e) => {
+            st.message = format!("✗ {}", first_line(&e.to_string()));
+            return st;
+        }
     };
-    if !pool.active {
-        return;
+    let pool_xml = run_many(
+        uri,
+        pools
+            .iter()
+            .map(|p| vec![String::from("pool-dumpxml"), p.name.clone()])
+            .collect(),
+    )
+    .await;
+    // (pool, name, path, format, capacity, allocation, backing)
+    type VolumeFacts = (String, String, String, String, u64, u64, Option<String>);
+    let mut volumes: Vec<VolumeFacts> = Vec::new();
+    for (p, xml) in pools.iter().zip(pool_xml) {
+        let xml = xml.unwrap_or_default();
+        let frac = if p.capacity_mib == 0 {
+            0.0
+        } else {
+            p.allocation_mib as f64 / p.capacity_mib as f64
+        };
+        st.pools.push(PoolRow {
+            name: p.name.clone(),
+            kind: pool_kind(&xml),
+            path: pool_target(&xml),
+            frac,
+            value: format!(
+                "{} / {}",
+                human_size(p.allocation_mib as f64, "MiB"),
+                human_size(p.capacity_mib as f64, "MiB")
+            ),
+            active: p.state == "running",
+            autostart: p.autostart,
+        });
+        if p.state != "running" {
+            continue;
+        }
+        let Ok(out) = crate::backend::virsh::exec::run(uri, &["vol-list", "--pool", &p.name]).await else {
+            st.incomplete = true;
+            continue;
+        };
+        let listed = parse_vol_list(&out);
+        let details = run_many(
+            uri,
+            listed
+                .iter()
+                .map(|(name, _)| {
+                    vec![
+                        String::from("vol-dumpxml"),
+                        String::from("--pool"),
+                        p.name.clone(),
+                        name.clone(),
+                    ]
+                })
+                .collect(),
+        )
+        .await;
+        for ((name, path), xml) in listed.into_iter().zip(details) {
+            let parsed = xml
+                .ok()
+                .and_then(|xml| crate::backend::virsh::parse_xml::parse_volume_xml(&xml).ok());
+            if parsed.is_none() {
+                st.incomplete = true;
+            }
+            let (format, cap, alloc, backing) = parsed.unwrap_or((String::from("—"), 0, 0, None));
+            if name.to_lowercase().ends_with(".iso") {
+                st.isos.push(IsoEntry {
+                    pool: p.name.clone(),
+                    name: name.clone(),
+                    path: path.clone(),
+                    size: human_size(cap as f64, "B"),
+                    date: String::new(),
+                });
+            }
+            volumes.push((p.name.clone(), name, path, format, cap, alloc, backing));
+        }
     }
-    let Ok(out) =
-        crate::backend::virsh::exec::run(uri, &["vol-list", "--pool", &pool.name, "--details"]).await
-    else {
-        return;
-    };
-    // First pass: every volume's facts; second pass: backing counts (order independent).
-    let mut rows: Vec<(String, String, String, u64, u64, Option<String>)> = Vec::new();
-    for (name, path) in parse_vol_list(&out) {
-        let xml = crate::backend::virsh::exec::run(uri, &["vol-dumpxml", "--pool", &pool.name, &name])
-            .await
-            .unwrap_or_default();
-        let (format, cap, alloc, backing) = crate::backend::virsh::parse_xml::parse_volume_xml(&xml)
-            .unwrap_or((String::from("—"), 0, 0, None));
-        rows.push((name, path, format, cap, alloc, backing));
-    }
-    let backing_of = |path: &str| rows.iter().filter(|r| r.5.as_deref() == Some(path)).count();
-    for (name, path, format, cap, alloc, _) in &rows {
-        let owners: Vec<&str> = st
+    let backing_count = |path: &str| volumes.iter().filter(|v| v.6.as_deref() == Some(path)).count();
+    for (pool, name, path, format, cap, alloc, _) in &volumes {
+        let key = ui::views::storage::volume_key(pool, name);
+        let mut owners: Vec<&str> = st
             .attachments
             .iter()
-            .filter(|(_, src)| src == path)
+            .filter(|(_, k)| k == path || *k == key)
             .map(|(d, _)| d.as_str())
             .collect();
-        let children = backing_of(path);
+        owners.dedup();
+        let children = backing_count(path);
         let used_by = if !owners.is_empty() {
             owners.join(", ")
         } else if children > 0 {
             format!("◆ backing of {children}")
         } else if name.to_lowercase().ends_with(".iso") {
             String::from("iso")
+        } else if st.incomplete {
+            String::from("? unknown")
         } else {
-            String::from("⚠ orphan")
+            String::from("⚠ no domain")
         };
-        st.volumes.push(VolumeRow {
+        st.pool_volumes.entry(pool.clone()).or_default().push(VolumeRow {
             name: name.clone(),
             format: format.clone(),
             capacity: human_size(*cap as f64, "B"),
@@ -656,22 +764,46 @@ pub(super) async fn load_pool_volumes(uri: &str, st: &mut ui::views::storage::St
             used_by,
         });
     }
+    st.pool_selected = 0;
+    load_pool_volumes(uri, &mut st).await;
+    st
 }
 
-/// Disk source files from domain XML.
+/// Volumes of the selected pool, from the per-load cache.
+pub(super) async fn load_pool_volumes(_uri: &str, st: &mut ui::views::storage::StorageState) {
+    st.volumes.clear();
+    st.vol_selected = 0;
+    let Some(pool) = st.pools.get(st.pool_selected).cloned() else {
+        return;
+    };
+    if !pool.active {
+        return;
+    }
+    st.volumes = st.pool_volumes.get(&pool.name).cloned().unwrap_or_default();
+}
+
+/// Disk references of a domain XML: source paths (file/dev/dir, including
+/// backing chains in live XML) and [`ui::views::storage::volume_key`]s for
+/// `<source pool= volume=>` disks. Entities are decoded by the XML parser.
 pub(super) fn disk_sources(xml: &str) -> Vec<String> {
+    let Ok(doc) = roxmltree::Document::parse(xml) else {
+        return vec![];
+    };
     let mut out = Vec::new();
-    for line in xml.lines() {
-        let t = line.trim();
-        if t.starts_with("<source") {
-            for q in ["file='", "file=\"", "dev='", "dev=\""] {
-                if let Some(v) = t.split(q).nth(1).and_then(|s| s.split(['\'', '"']).next()) {
-                    out.push(v.to_string());
-                    break;
+    for disk in doc.descendants().filter(|n| n.has_tag_name("disk")) {
+        for source in disk.descendants().filter(|n| n.has_tag_name("source")) {
+            if let (Some(pool), Some(volume)) = (source.attribute("pool"), source.attribute("volume")) {
+                out.push(ui::views::storage::volume_key(pool, volume));
+            }
+            for attr in ["file", "dev", "dir"] {
+                if let Some(path) = source.attribute(attr) {
+                    out.push(path.to_string());
                 }
             }
         }
     }
+    out.sort();
+    out.dedup();
     out
 }
 
@@ -700,19 +832,13 @@ pub(super) fn pool_kind(xml: &str) -> String {
     String::from("dir")
 }
 
-/// Parse `vol-list --details` rows into (name, path).
+/// Parse `vol-list [--details]` rows into (name, path).
 pub(super) fn parse_vol_list(text: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for line in text.lines().skip(2) {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        if cols.len() >= 2 {
-            out.push((cols[0].to_string(), cols[1].to_string()));
-        }
-    }
-    out
+    crate::backend::virsh::parse_list::table_rows(text)
+        .into_iter()
+        .filter(|c| c.len() >= 2 && !c[0].is_empty())
+        .map(|c| (c[0].clone(), c[1].clone()))
+        .collect()
 }
 
 pub(super) fn human_size(bytes: f64, unit: &str) -> String {

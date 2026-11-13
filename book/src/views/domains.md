@@ -23,7 +23,7 @@ CPU, memory, swap, hugepages and the two largest storage pools.
 | `/` | filter by name as you type; `Enter` keeps the filter, `Esc` clears it |
 | `n` / `N` | next / previous match |
 | `f` / `F` | cycle the state chips: all, running, paused, crashed, off |
-| `o` | cycle the sort order: state, name, CPU, memory, uptime |
+| `o` | cycle the sort order: state, name, CPU, memory, uptime (longest first) |
 | `:42` | jump to row 42 |
 
 ## Lifecycle
@@ -35,10 +35,15 @@ CPU, memory, swap, hugepages and the two largest storage pools.
 | `D` | destroy (force off), confirms | `virsh destroy` |
 | `r` | reboot | `virsh reboot` |
 | `R` | reset (hard), confirms | `virsh reset` |
-| `p` | pause or resume | `virsh suspend` / `virsh resume` |
-| `Z` | save state to disk and stop | `virsh managedsave` |
-| `a` | toggle autostart | `virsh autostart [--disable]` |
-| `X` | undefine, asks you to type the name | `virsh undefine` |
+| `p` | pause or resume (per domain) | `virsh suspend` / `virsh resume` |
+| `Z` | save state to disk and stop, confirms (`ZZ` quits) | `virsh managedsave` |
+| `a` | toggle autostart (per domain) | `virsh autostart [--disable]` |
+| `X` | undefine, asks you to type the name | `virsh undefine --keep-nvram --snapshots-metadata --managed-save` |
+| `Space c` | clone: prefills `:clone <name> <name>-clone` to edit the new name | `virt-clone` |
+
+The cursor stays on the same domain while CPU or uptime re-sort the list.
+`undefine` keeps the UEFI variables file and the disks, and drops snapshot
+metadata and a managed-save image, without which virsh refuses.
 
 After `S`, virsh-tui watches the domain. If it is still running after the
 grace period, the message line says the guest ignored the request, and you
@@ -62,8 +67,15 @@ can retry or use `D`.
 | `yi` | first IP address |
 | `yc` | the last command virsh-tui ran |
 
+The clipboard keeps its content after the copy (the app stays its owner on
+X11/Wayland); in a terminal without a clipboard, OSC 52 is used.
+
 ## Several domains at once
 
 Mark domains with `m`, or press `V` and extend the selection with `j`/`k`.
-Lifecycle keys then act on every marked domain. The confirmation dialog lists
-them before anything runs.
+Lifecycle keys then act on every marked domain that is visible (a filter or
+chip that hides a marked domain also leaves it out). With more than one
+domain the confirmation dialog lists every command before anything runs. A
+domain that fails does not stop the others: the message line reports
+`n ok / m failed` with the failed names, and `:messages` has each error. The
+marks are cleared when the job ends.

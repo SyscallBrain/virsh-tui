@@ -7,25 +7,10 @@ pub fn radio(on: bool) -> &'static str {
     if on { "(●)" } else { "( )" }
 }
 
-/// Parse size strings like `512M`, `8G`, `1.5T` into MiB.
+/// Parse size strings like `512M`, `8G`, `1.5T` into MiB (a unit is required,
+/// see [`crate::ui::views::detail::hardware::size_to_kib`]).
 pub fn parse_size_mib(s: &str) -> Option<u64> {
-    let s = s.trim();
-    let (num, mult) = if let Some(n) = s.strip_suffix(['G', 'g']) {
-        (n, 1024.0)
-    } else if let Some(n) = s.strip_suffix(['M', 'm']) {
-        (n, 1.0)
-    } else if let Some(n) = s.strip_suffix(['T', 't']) {
-        (n, 1024.0 * 1024.0)
-    } else if let Some(n) = s.strip_suffix(['K', 'k']) {
-        (n, 1.0 / 1024.0)
-    } else {
-        (s, 1.0 / 1024.0 / 1024.0)
-    };
-    let v: f64 = num.trim().parse().ok()?;
-    if v < 0.0 {
-        return None;
-    }
-    Some((v * mult).round() as u64)
+    crate::ui::views::detail::hardware::size_to_kib(s).map(|kib| kib.div_ceil(1024))
 }
 
 /// Field kind.

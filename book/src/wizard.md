@@ -2,7 +2,9 @@
 
 ![New domain wizard](images/wizard.png)
 
-`Space n` opens the new domain wizard for local connections. The wizard is unavailable for remote connections until remote capacity can be determined reliably. It collects what `virt-install` needs
+`Space n` opens the new domain wizard. On a remote connection the first
+`Space n` reads the host's CPU and memory with `virsh nodeinfo` /
+`nodememstats` (press it again a moment later). It collects what `virt-install` needs
 in six steps and shows the resulting command at the bottom, highlighting the
 part that belongs to the current step. The command shown is the one that
 runs.
@@ -18,6 +20,11 @@ runs.
 
 The left column lists the steps with a one-line summary each and a checklist
 of what still blocks creation, such as a missing name or ISO path.
+
+The CPU model defaults to `host-passthrough`. On a local host without KVM
+(no `/dev/kvm`, for example inside a VM without nested virtualization),
+libvirt can only emulate the guest and rejects `host-passthrough`, so the
+wizard uses `host-model` and lists `host-passthrough` as a blocking problem.
 
 ## Keys
 
@@ -46,10 +53,14 @@ A new wizard starts with 2 vCPUs (maximum 4), 4 GiB of memory (maximum
 8 GiB), a 20 GiB qcow2 virtio disk in the first active pool, a virtio NIC on
 the first active network, UEFI firmware and SPICE graphics.
 
-Leave the OS field empty and virsh-tui guesses it from the ISO file name
-(Fedora, Arch Linux, Ubuntu and Debian are recognised). Otherwise it passes
-`--osinfo detect=on,require=off` and lets `virt-install` detect it from the
-media. `virt-install --osinfo list` shows the accepted names.
+Leave the OS field empty and virsh-tui passes
+`--osinfo detect=on,require=off`, so `virt-install` detects the OS from the
+media itself; the field's hint shows a guess from the ISO name, but the guess
+is never passed (a wrong id would make `virt-install` fail). Type an id to
+force it; `virt-install --osinfo list` shows the accepted names.
+
+The form refuses 0 vCPUs or 0 GiB of memory, and a maximum memory above the
+memory when the balloon is off (the guest would always get the maximum).
 
 ## Creating
 

@@ -1,0 +1,568 @@
+//! Throwaway probes for the 2026-11-12 review. A passing test confirms the finding.
+
+use super::tests::fixture_app;
+use super::*;
+use crate::model::DomainState;
+use crossterm::event::{KeyEventKind, KeyEventState};
+use ui::views::detail::{DetailState, DetailTab, SnapModal};
+
+fn ev(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+    KeyEvent {
+        code,
+        modifiers,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::empty(),
+    }
+}
+fn plain(c: char) -> KeyEvent {
+    ev(KeyCode::Char(c), KeyModifiers::empty())
+}
+fn shift(c: char) -> KeyEvent {
+    ev(KeyCode::Char(c), KeyModifiers::SHIFT)
+}
+fn ctrl(c: char) -> KeyEvent {
+    ev(KeyCode::Char(c), KeyModifiers::CONTROL)
+}
+fn job_argv(app: &App) -> Vec<Vec<String>> {
+    app.active_job
+        .as_ref()
+        .map(|j| {
+            j.plans
+                .iter()
+                .flat_map(|(_, p)| p.steps.iter().map(|s| s.argv.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn p0_1_zz_first_z_submits_managedsave() {
+    let mut app = fixture_app();
+    let quit = app.handle_key_event(shift('Z'));
+    let argv = job_argv(&app);
+    eprintln!("PROBE p0_1: quit={quit} argv={argv:?}");
+    assert!(!quit);
+    assert_eq!(argv[0][0], "managedsave");
+}
+
+#[test]
+fn p0_2_selection_hops_under_cpu_sort() {
+    use crate::backend::RawDomainStats;
+    use std::collections::HashMap;
+    let mk = |name: &str| crate::model::DomainSummary {
+        name: name.into(),
+        uuid: String::new(),
+        id: None,
+        state: DomainState::Running,
+        autostart: false,
+        persistent: true,
+        vcpus: 1,
+        max_vcpus: 1,
+        mem_kib: 1_048_576,
+        max_mem_kib: 1_048_576,
+        has_managed_save: false,
+    };
+    let summaries = vec![mk("a"), mk("b"), mk("c")];
+    let stats = |cpu: [u64; 3]| -> Vec<RawDomainStats> {
+        ["a", "b", "c"]
+            .iter()
+            .zip(cpu)
+            .map(|(n, c)| {
+                let mut v = HashMap::new();
+                v.insert("state.state".to_string(), "1".to_string());
+                v.insert("vcpu.current".to_string(), "1".to_string());
+                v.insert("cpu.time".to_string(), c.to_string());
+                RawDomainStats {
+                    domain: n.to_string(),
+                    values: v,
+                }
+            })
+            .collect()
+    };
+    let mut dash = ui::views::dashboard::DashboardState::from_summaries(&summaries);
+    dash.sort = ui::views::dashboard::Sort::Cpu;
+    let t0 = std::time::Instant::now();
+    let mut sample = |dash: &mut ui::views::dashboard::DashboardState, cpu: [u64; 3], secs: u64| {
+        apply_live_msg(
+            "test:///default",
+            dash,
+            LiveMsg::Sample {
+                summaries: summaries.clone(),
+                stats: stats(cpu),
+                proc_stat: None,
+                uptimes: HashMap::new(),
+                ifaces: HashMap::new(),
+                at: t0 + Duration::from_secs(secs),
+            },
+        );
+    };
+    sample(&mut dash, [0, 0, 0], 0);
+    sample(&mut dash, [100_000_000, 500_000_000, 900_000_000], 1);
+    dash.select_name("a");
+    let before = dash.selected().name.clone();
+    sample(&mut dash, [200_000_000, 1_000_000_000, 1_800_000_000], 2);
+    let after = dash.selected().name.clone();
+    eprintln!("PROBE p0_2: before={before} after={after}");
+    assert_eq!(before, "a");
+    assert_ne!(after, "a");
+}
+
+#[tokio::test]
+async fn p0_3_stale_detail_is_picker_target() {
+    let mut app = fixture_app();
+    app.detail = Some(DetailState::demo("stale-vm"));
+    app.view = View::Dashboard;
+    let selected = app.dash.selected().name.clone();
+    app.request_picker();
+    let target = app.store.picker.as_ref().map(|p| p.domain.clone());
+    eprintln!("PROBE p0_3: dashboard selection={selected} picker target={target:?}");
+    assert_eq!(target.as_deref(), Some("stale-vm"));
+    assert_ne!(selected, "stale-vm");
+}
+
+#[test]
+fn p0_4_bare_sizes_reach_virsh_verbatim() {
+    let mut hw = ui::views::detail::hardware::HardwareState::demo();
+    hw.set_field("memory", "current", "8192");
+    hw.set_field("disk-vda", "size", "200");
+    let argv: Vec<Vec<String>> = hw
+        .will_run("vm")
+        .iter()
+        .flat_map(|p| p.steps.iter().map(|s| s.argv.clone()))
+        .collect();
+    eprintln!("PROBE p0_4: {argv:?}");
+    assert!(argv.iter().any(|a| a[0] == "setmem" && a[2] == "8192"));
+    assert!(argv.iter().any(|a| a[0] == "blockresize" && a[3] == "200"));
+    // Empty vCPU field silently becomes 1.
+    let mut hw = ui::views::detail::hardware::HardwareState::demo();
+    hw.set_field("cpus", "current", "");
+    let argv: Vec<Vec<String>> = hw
+        .will_run("vm")
+        .iter()
+        .flat_map(|p| p.steps.iter().map(|s| s.argv.clone()))
+        .collect();
+    eprintln!("PROBE p0_4 empty vcpus: {argv:?}");
+    assert!(argv.iter().any(|a| a[0] == "setvcpus" && a[2] == "1"));
+}
+
+#[tokio::test]
+async fn p0_5_and_p1_5_short_ex_forms() {
+    let mut app = fixture_app();
+    let off = app
+        .dash
+        .rows
+        .iter()
+        .find(|r| r.state == DomainState::ShutOff)
+        .map(|r| r.name.clone())
+        .expect("demo has a shut-off row");
+    app.ex_line = Some(crate::input::textinput::TextInput::with(&format!(
+        "attach-disk {off} /x.qcow2 vdb"
+    )));
+    app.handle_key_event(ev(KeyCode::Enter, KeyModifiers::empty()));
+    let disk = job_argv(&app);
+    eprintln!("PROBE p0_5 attach-disk on shut-off {off}: {disk:?}");
+    assert!(!disk[0].iter().any(|a| a.contains("subdriver")));
+    assert!(disk[0].iter().any(|a| a == "--live"));
+    app.active_job.take();
+
+    app.ex_line = Some(crate::input::textinput::TextInput::with(&format!(
+        "attach-iso {off} /x.iso"
+    )));
+    app.handle_key_event(ev(KeyCode::Enter, KeyModifiers::empty()));
+    let iso = job_argv(&app);
+    eprintln!("PROBE p1_5 attach-iso on shut-off {off}: {iso:?}");
+    assert!(iso.iter().any(|a| a.iter().any(|x| x == "--live")));
+}
+
+#[tokio::test]
+async fn p0_7_pool_destroy_follows_delete_volume_toggle() {
+    let mut app = fixture_app();
+    app.view = View::Storage;
+    let mut cfg = app.config.clone();
+    cfg.confirmations.delete_volume = false;
+    crate::config::set_runtime(&cfg);
+    app.handle_key_event(shift('D'));
+    let argv = job_argv(&app);
+    crate::config::set_runtime(&app.config);
+    eprintln!(
+        "PROBE p0_7: confirm_open={} argv={argv:?}",
+        app.confirm.is_some()
+    );
+    assert!(app.confirm.is_none());
+    assert_eq!(argv[0][0], "pool-destroy");
+}
+
+#[tokio::test]
+async fn p1_1_bulk_stops_at_first_failure() {
+    use crate::command::job::{OwnedBatch, run_batch};
+    use crate::command::plan::CommandPlan;
+    let (_cancel, control) = tokio::sync::watch::channel(false);
+    let (events, _rx) = tokio::sync::mpsc::channel(8);
+    let outcome = run_batch(
+        OwnedBatch {
+            uri: "test:///default".into(),
+            demo: false,
+            dry_run: false,
+            plans: vec![
+                ("a".into(), CommandPlan::single("sh", vec!["-c", "exit 1"], "a")),
+                ("b".into(), CommandPlan::single("sh", vec!["-c", "true"], "b")),
+            ],
+            temporary_files: vec![],
+        },
+        control,
+        events,
+    )
+    .await;
+    eprintln!(
+        "PROBE p1_1: started={} completed={:?}",
+        outcome.started_steps.len(),
+        outcome.completed_targets
+    );
+    assert_eq!(outcome.started_steps.len(), 1);
+    assert!(outcome.completed_targets.is_empty());
+}
+
+#[tokio::test]
+async fn p1_6_ex_shutdown_ignores_filtered_rows() {
+    let mut app = fixture_app();
+    let running = app
+        .dash
+        .rows
+        .iter()
+        .find(|r| r.state == DomainState::Running)
+        .map(|r| r.name.clone())
+        .unwrap();
+    app.dash.set_filter("zzz-no-match");
+    app.ex_line = Some(crate::input::textinput::TextInput::with(&format!("shutdown {running}")));
+    app.handle_key_event(ev(KeyCode::Enter, KeyModifiers::empty()));
+    eprintln!("PROBE p1_6: message={:?} job={}", app.dash.message, app.active_job.is_some());
+    assert!(app.active_job.is_none());
+    assert!(app.dash.message.contains("no domain named"));
+}
+
+#[tokio::test]
+async fn p1_9_back_discards_pending_hardware_edits() {
+    let mut app = fixture_app();
+    let mut d = DetailState::demo("vt-test-a");
+    d.tab = DetailTab::Hardware;
+    d.hw.set_field("cpus", "current", "4");
+    let pending = d.hw.pending_count();
+    app.detail = Some(d);
+    app.view = View::Detail;
+    app.handle_key_event(plain('q'));
+    eprintln!(
+        "PROBE p1_9: pending={pending} detail_after={} view_dashboard={}",
+        app.detail.is_some(),
+        app.view == View::Dashboard
+    );
+    assert!(pending > 0);
+    assert!(app.detail.is_none());
+}
+
+#[tokio::test]
+async fn p1_10_uppercase_is_dropped_in_text_inputs() {
+    let mut app = fixture_app();
+    let mut d = DetailState::demo("vt-test-a");
+    d.tab = DetailTab::Snapshots;
+    d.snap_modal = SnapModal::Create;
+    d.snaps.create_name.clear();
+    d.snaps.create_focus = 0;
+    app.detail = Some(d);
+    app.view = View::Detail;
+    for k in [shift('A'), plain('b'), shift('C')] {
+        app.handle_key_event(k);
+    }
+    let name = app.detail.as_ref().unwrap().snaps.create_name.clone();
+    eprintln!("PROBE p1_10 snapshot name after typing AbC: {name:?}");
+    assert_eq!(name, "b");
+
+    // Hardware INSERT mode, text field focused: `L` leaves the tab instead of typing.
+    let mut app = fixture_app();
+    let mut d = DetailState::demo("vt-test-a");
+    d.tab = DetailTab::Hardware;
+    d.hw_insert = true;
+    let dev = d.hw.selected_device().id.clone();
+    let focus = d.hw.forms[&dev]
+        .fields
+        .iter()
+        .position(|f| f.kind == crate::ui::widgets::form::FieldKind::Text)
+        .expect("text field");
+    d.hw.forms.get_mut(&dev).unwrap().focus = focus;
+    let before = d.hw.forms[&dev].fields[focus].current.clone();
+    app.detail = Some(d);
+    app.view = View::Detail;
+    app.handle_key_event(shift('L'));
+    let d = app.detail.as_ref().unwrap();
+    eprintln!(
+        "PROBE p1_10 hardware insert: device={dev} before={before:?} after={:?} tab={:?}",
+        d.hw.forms[&dev].fields[focus].current, d.tab
+    );
+    assert_eq!(d.hw.forms[&dev].fields[focus].current, before);
+    assert_ne!(d.tab, DetailTab::Hardware);
+}
+
+#[test]
+fn p1_5_detach_disk_on_shut_off_domain_uses_live() {
+    let mut d = DetailState::demo("vt-test-a");
+    d.state = DomainState::ShutOff;
+    d.hw.selected = d
+        .hw
+        .devices
+        .iter()
+        .position(|x| x.id.starts_with("disk"))
+        .unwrap();
+    let mut confirm = None;
+    stage_detach(&mut d, &mut confirm);
+    let commands = confirm.map(|(c, _, _)| c.commands).unwrap_or_default();
+    eprintln!("PROBE p1_5 detach: {commands:?}");
+    assert!(commands[0].contains("--live"));
+}
+
+#[test]
+fn p1_11_nic_link_uses_index_for_inactive_xml() {
+    let xml = include_str!("../../tests/fixtures/virsh/dumpxml_arch_inactive.txt");
+    let cfg = crate::backend::virsh::parse_xml::parse_domain_xml(xml).unwrap();
+    let mut hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, xml, true);
+    let nic = hw
+        .devices
+        .iter()
+        .find(|d| d.id.starts_with("nic-"))
+        .map(|d| d.id.clone())
+        .expect("fixture has a NIC");
+    hw.set_field(&nic, "link", "");
+    let argv: Vec<Vec<String>> = hw
+        .will_run("vm")
+        .iter()
+        .flat_map(|p| p.steps.iter().map(|s| s.argv.clone()))
+        .collect();
+    eprintln!("PROBE p1_11: nic id={nic} argv={argv:?}");
+    assert!(argv.iter().any(|a| a[0] == "domif-setlink" && a[2].parse::<u32>().is_ok()));
+}
+
+#[test]
+fn p1_13_max_vcpu_edit_forces_define() {
+    let xml = include_str!("../../tests/fixtures/virsh/dumpxml_arch_inactive.txt");
+    let cfg = crate::backend::virsh::parse_xml::parse_domain_xml(xml).unwrap();
+    let mut hw = ui::views::detail::hardware::HardwareState::from_config(&cfg, xml, true);
+    hw.forms.get_mut("cpus").unwrap().focus = 1;
+    let before = (
+        hw.field_value("cpus", "sockets"),
+        hw.field_value("cpus", "cores"),
+        hw.field_value("cpus", "threads"),
+    );
+    edit_focused(&mut hw, "cpus", EditOp::Adjust(2));
+    let after = (
+        hw.field_value("cpus", "max"),
+        hw.field_value("cpus", "sockets"),
+        hw.field_value("cpus", "cores"),
+        hw.field_value("cpus", "threads"),
+    );
+    let first = hw.will_run("vm")[0].steps[0].argv.clone();
+    eprintln!("PROBE p1_13: topology {before:?} -> {after:?}; first step {first:?}; xml had topology: {}", xml.contains("<topology"));
+    assert_eq!(first[0], "define");
+}
+
+#[tokio::test]
+async fn p1_20_picker_ctrl_j_moves_up() {
+    let mut app = fixture_app();
+    app.view = View::Storage;
+    app.store.picker = Some(ui::views::storage::MediaPicker {
+        domain: "vt-test-a".into(),
+        target: "sda".into(),
+        bus: "sata".into(),
+        current: String::new(),
+        query: String::new(),
+        pool_idx: 0,
+        pools: vec!["isos".into()],
+        selected: 1,
+        live: false,
+        config: true,
+    });
+    app.handle_key_event(ctrl('j'));
+    let after_j = app.store.picker.as_ref().unwrap().selected;
+    app.handle_key_event(ctrl('k'));
+    app.handle_key_event(ctrl('k'));
+    let after_kk = app.store.picker.as_ref().unwrap().selected;
+    eprintln!("PROBE p1_20: start=1 after C-j={after_j} after C-k C-k={after_kk}");
+    assert_eq!(after_j, 0);
+    assert_eq!(after_kk, 2);
+}
+
+#[tokio::test]
+async fn p1_25_overlays_leak_keys() {
+    let mut app = fixture_app();
+    app.settings = Some(ui::views::settings::SettingsState::open(&app.config));
+    app.handle_key_event(plain('s'));
+    let argv = job_argv(&app);
+    eprintln!("PROBE p1_25 settings + s: {argv:?}");
+    assert_eq!(argv[0][0], "start");
+
+    let mut app = fixture_app();
+    app.settings = Some(ui::views::settings::SettingsState::open(&app.config));
+    let quit = app.handle_key_event(plain('q'));
+    eprintln!("PROBE p1_25 settings + q quits: {quit}");
+    assert!(quit);
+
+    let mut app = fixture_app();
+    app.help_filter = Some(String::new());
+    app.handle_key_event(shift('D'));
+    eprintln!("PROBE p1_25 help + D opens confirm: {}", app.confirm.is_some());
+    assert!(app.confirm.is_some());
+}
+
+#[test]
+fn parsers_and_helpers() {
+    use crate::backend::virsh::{host_local, parse_list};
+    let pools = " Name           State      Autostart   Persistent   Capacity   Allocation   Available\n---------------------------------------------------------------------------------------\n default-pool   inactive   no          yes          -          -            -\n";
+    let parsed = parse_list::parse_pool_list(pools).unwrap();
+    eprintln!("PROBE p1_17 inactive pools parsed: {}", parsed.len());
+    assert!(parsed.is_empty());
+
+    let vols = " Name         Path                       Type   Capacity   Allocation\n-----------------------------------------------------------------------\n my vol.iso   /default-pool/my vol.iso   file   1.00 MiB   1.00 MiB\n";
+    let parsed = parse_vol_list(vols);
+    eprintln!("PROBE p1_18 vol-list: {parsed:?}");
+    assert_eq!(parsed[0].0, "my");
+
+    let os = ui::overlays::wizard::detect_os("/isos/Fedora-Server-dvd-x86_64-41-1.4.iso");
+    eprintln!("PROBE p1_32 detect_os: {os:?}");
+    assert_eq!(os.as_deref(), Some("fedora86"));
+
+    let gw = crate::command::builders::network::gateway_of("192.168.100.128");
+    eprintln!("PROBE p1_23 gateway for 192.168.100.128/25: {gw}");
+    assert_eq!(gw, "192.168.100.1");
+
+    // user includes guest: 100 jiffies guest, 100 idle per interval -> true busy = 0.5
+    let a = host_local::parse_proc_stat("cpu0 100 0 0 100 0 0 0 0 100 0\n");
+    let b = host_local::parse_proc_stat("cpu0 200 0 0 200 0 0 0 0 200 0\n");
+    let busy = host_local::cpu_busy_fraction(a[0], b[0]);
+    eprintln!("PROBE p1_36 busy fraction (expected 0.5): {busy}");
+    assert!(busy > 0.6);
+
+    let plan = crate::command::builders::install::virt_install(&ui::overlays::wizard::WizardState {
+        name: "vm".into(),
+        title: "web, staging".into(),
+        iso_path: "/x.iso".into(),
+        ..Default::default()
+    });
+    let meta = plan.steps[0].argv.iter().find(|a| a.starts_with("--metadata")).cloned();
+    eprintln!("PROBE p1_33 metadata arg: {meta:?}");
+}
+
+fn draw_at(app: &App, w: u16, h: u16) -> Result<(), String> {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let backend = ratatui::backend::TestBackend::new(w, h);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+    }));
+    res.map_err(|e| {
+        e.downcast_ref::<String>()
+            .cloned()
+            .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default()
+    })
+}
+
+#[tokio::test]
+async fn r2_small_terminal_panics() {
+    std::panic::set_hook(Box::new(|_| {}));
+    let sizes: Vec<(u16, u16)> = vec![
+        (1, 1), (3, 2), (5, 3), (7, 5), (10, 4), (12, 6), (20, 3), (20, 8), (40, 10), (60, 5),
+        (80, 24), (99, 29), (100, 30), (101, 31), (120, 30), (159, 43), (160, 30), (174, 43), (300, 100),
+    ];
+    let mut failures: Vec<String> = Vec::new();
+    let variants: Vec<(&str, Box<dyn Fn() -> App>)> = vec![
+        ("dashboard", Box::new(fixture_app)),
+        ("host", Box::new(|| { let mut a = fixture_app(); a.view = View::Host; a })),
+        ("networks", Box::new(|| { let mut a = fixture_app(); a.view = View::Networks; a })),
+        ("networks+form", Box::new(|| { let mut a = fixture_app(); a.view = View::Networks; a.nets.open_new_form(); a })),
+        ("storage", Box::new(|| { let mut a = fixture_app(); a.view = View::Storage; a })),
+        ("events", Box::new(|| { let mut a = fixture_app(); a.view = View::Events; a })),
+        ("help", Box::new(|| { let mut a = fixture_app(); a.help_filter = Some(String::new()); a })),
+        ("settings", Box::new(|| { let mut a = fixture_app(); a.settings = Some(ui::views::settings::SettingsState::open(&a.config)); a })),
+        ("palette", Box::new(|| { let mut a = fixture_app(); a.palette = Some(ui::overlays::palette::PaletteState::demo()); a })),
+        ("wizard", Box::new(|| { let mut a = fixture_app(); a.wizard = Some(ui::overlays::wizard::WizardState::demo_step3()); a })),
+        ("exline", Box::new(|| { let mut a = fixture_app(); a.ex_line = Some(crate::input::textinput::TextInput::with("start arch-dev")); a })),
+        ("picker", Box::new(|| { let mut a = fixture_app(); a.view = View::Storage; a.store.picker = Some(ui::views::storage::MediaPicker { domain: "d".into(), target: "sda".into(), bus: "sata".into(), current: String::new(), query: String::new(), pool_idx: 0, pools: vec!["isos".into()], selected: 0, live: false, config: true }); a })),
+        ("confirm", Box::new(|| { let mut a = fixture_app(); ask_confirm(&mut a.confirm, "⚠ Destroy domain", "destroy", &["a".to_string()], crate::command::builders::lifecycle::destroy); a })),
+        ("whichkey", Box::new(|| { let mut a = fixture_app(); a.engine.feed(&crate::input::key::KeySeq::parse("Space")); a.which_key_since = Some(std::time::Instant::now() - Duration::from_secs(1)); a })),
+    ];
+    for tab in [DetailTab::Overview, DetailTab::Monitor, DetailTab::Hardware, DetailTab::Snapshots, DetailTab::Console, DetailTab::Xml] {
+        for modal in [SnapModal::None, SnapModal::Create, SnapModal::Revert, SnapModal::Delete] {
+            if modal != SnapModal::None && tab != DetailTab::Snapshots { continue; }
+            let mut app = fixture_app();
+            let mut d = DetailState::demo("arch-dev");
+            d.tab = tab;
+            d.snap_modal = modal;
+            app.detail = Some(d);
+            app.view = View::Detail;
+            for (w, h) in &sizes {
+                if let Err(e) = draw_at(&app, *w, *h) {
+                    failures.push(format!("detail {tab:?}/{modal:?} {w}x{h}: {e}"));
+                }
+            }
+        }
+    }
+    for (name, make) in &variants {
+        let app = make();
+        for (w, h) in &sizes {
+            if let Err(e) = draw_at(&app, *w, *h) {
+                failures.push(format!("{name} {w}x{h}: {e}"));
+            }
+        }
+    }
+    let _ = std::panic::take_hook();
+    for f in &failures {
+        eprintln!("PROBE r2_panic: {f}");
+    }
+    eprintln!("PROBE r2_panic total: {}", failures.len());
+}
+
+#[tokio::test]
+async fn r2_marks_hidden_by_filter_are_still_targets() {
+    let mut app = fixture_app();
+    let marks: Vec<String> = app.dash.marks.iter().cloned().collect();
+    app.dash.set_filter("arch");
+    let visible: Vec<String> = app.dash.visible_rows().iter().map(|r| r.name.clone()).collect();
+    let t = targets(&app.dash);
+    eprintln!("PROBE r2_marks: marks={marks:?} visible={visible:?} targets={t:?}");
+    assert!(t.iter().any(|n| !visible.contains(n)));
+}
+
+#[tokio::test]
+async fn r2_pause_direction_comes_from_cursor_row() {
+    use crate::input::engine::KeyAction as A;
+    let mut app = fixture_app();
+    let paused = app.dash.rows.iter().find(|r| r.state == DomainState::Paused).map(|r| r.name.clone());
+    eprintln!("PROBE r2_pause: paused row in demo = {paused:?}, marks = {:?}", app.dash.marks);
+    if let Some(p) = paused {
+        app.dash.select_name(&p);
+        let plans = app.lifecycle_plans(A::Pause).unwrap();
+        let v: Vec<_> = plans.iter().map(|(t, p)| format!("{} {}", p.steps[0].argv[0], t)).collect();
+        eprintln!("PROBE r2_pause: cursor={} plans={v:?}", app.dash.selected().name);
+        assert!(v.iter().all(|s| s.starts_with("resume")));
+        assert!(!plans.iter().any(|(t, _)| *t == p));
+    }
+}
+
+#[tokio::test]
+async fn r2_set_does_not_update_runtime() {
+    let mut app = fixture_app();
+    crate::config::set_runtime(&app.config);
+    app.ex_line = Some(crate::input::textinput::TextInput::with("set viewer=remote-viewer"));
+    app.handle_key_event(ev(KeyCode::Enter, KeyModifiers::empty()));
+    let rt = crate::config::runtime().console.viewer;
+    eprintln!("PROBE r2_set: message={:?} config={} runtime={rt}", app.dash.message, app.config.console.viewer);
+    assert_eq!(app.config.console.viewer, "remote-viewer");
+    assert_eq!(rt, "virt-viewer");
+}
+
+#[tokio::test]
+async fn r2_count_loop_cost() {
+    let mut app = fixture_app();
+    for c in "3000000".chars() {
+        app.handle_key_event(plain(c));
+    }
+    let t = std::time::Instant::now();
+    app.handle_key_event(plain('j'));
+    eprintln!("PROBE r2_count: 3000000j took {:?} with {} rows", t.elapsed(), app.dash.rows.len());
+}

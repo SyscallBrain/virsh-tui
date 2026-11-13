@@ -33,23 +33,36 @@ pub fn valid_name(name: &str, existing: &[&str]) -> bool {
         && !existing.contains(&name)
 }
 
-/// Auto-detect OS variant from an ISO filename.
+/// Best-effort OS guess from an ISO file name, shown as a hint only: the
+/// command never uses it (virt-install detects the OS from the media itself,
+/// see [`crate::command::builders::install::osinfo`]).
 pub fn detect_os(iso: &str) -> Option<String> {
     let lower = iso.rsplit('/').next().unwrap_or(iso).to_lowercase();
-    if lower.contains("fedora") {
-        let digits: String = lower.chars().filter(|c| c.is_ascii_digit()).take(2).collect();
-        return Some(format!("fedora{digits}"));
+    let tokens: Vec<&str> = lower
+        .split(['-', '_', '.', ' '])
+        .filter(|t| !t.is_empty())
+        .collect();
+    let numeric = |t: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit());
+    // Version tokens, skipping the `64` of `x86_64`/`aarch64`-style arch names.
+    let versions: Vec<&str> = tokens
+        .iter()
+        .enumerate()
+        .filter(|(i, t)| numeric(t) && !(*i > 0 && matches!(tokens[i - 1], "x86" | "amd" | "i686")))
+        .map(|(_, t)| *t)
+        .collect();
+    match tokens.first().copied()? {
+        "fedora" => versions
+            .iter()
+            .find(|v| v.len() == 2)
+            .map(|v| format!("fedora{v}")),
+        "archlinux" => Some(String::from("archlinux")),
+        "ubuntu" => match versions.as_slice() {
+            [major, minor, ..] => Some(format!("ubuntu{major}.{minor}")),
+            _ => None,
+        },
+        "debian" => versions.first().map(|v| format!("debian{v}")),
+        _ => None,
     }
-    if lower.contains("arch") {
-        return Some(String::from("archlinux"));
-    }
-    if lower.contains("ubuntu") {
-        return Some(String::from("ubuntu24.04"));
-    }
-    if lower.contains("debian") {
-        return Some(String::from("debian13"));
-    }
-    None
 }
 
 /// Install media kind.
@@ -134,6 +147,9 @@ pub struct HostFacts {
     pub pools: Vec<String>,
     pub networks: Vec<String>,
     pub isos: Vec<String>,
+    /// The hypervisor has no KVM (`/dev/kvm` missing): guests run under TCG,
+    /// where libvirt rejects `host-passthrough`.
+    pub no_kvm: bool,
 }
 
 impl Default for WizardState {
@@ -236,6 +252,16 @@ fn opts(v: &[&str]) -> Vec<String> {
 }
 
 impl WizardState {
+    /// Serialized content for "is this still the same draft" checks: the
+    /// cursor (step/focus) is not part of it, so moving around while a job
+    /// runs does not make a finished create look stale.
+    pub fn content_snapshot(&self) -> String {
+        let mut copy = self.clone();
+        copy.step = 0;
+        copy.focus = 0;
+        toml::to_string(&copy).unwrap_or_default()
+    }
+
     /// Demo at step 3 (acceptance snapshot).
     pub fn demo_step3() -> Self {
         Self {
@@ -264,6 +290,7 @@ impl WizardState {
                 ],
                 networks: vec![String::from("default"), String::from("lab-isolated")],
                 isos: vec![String::from("/var/lib/libvirt/isos/Fedora-WS-Live-42.iso")],
+                no_kvm: false,
             },
             ..Default::default()
         }
@@ -460,7 +487,7 @@ impl WizardState {
             F::Name => String::from("letters, digits, . _ - · must be unique"),
             F::Os => match detect_os(&self.iso_path) {
                 Some(os) if self.os_id.is_empty() => {
-                    format!("empty: virt-install detects it (ISO looks like {os})")
+                    format!("empty: virt-install detects it from the media (looks like {os})")
                 }
                 _ => String::from(
                     "e.g. fedora42, ubuntu24.04, archlinux, win11 · empty: detect from the media",
@@ -675,6 +702,14 @@ impl WizardState {
         self.focus = (self.focus.min(n as usize - 1) as i32 + delta).rem_euclid(n) as usize;
     }
 
+    /// Fit host-dependent defaults: without KVM, `host-passthrough` cannot
+    /// start, so fall back to `host-model`.
+    pub fn adapt_to_host(&mut self) {
+        if self.host.no_kvm && self.cpu_model == "host-passthrough" {
+            self.cpu_model = String::from("host-model");
+        }
+    }
+
     /// Go to step `s` (focus on its first field).
     pub fn goto_step(&mut self, s: usize) {
         self.step = s.min(5);
@@ -689,6 +724,26 @@ impl WizardState {
             out.push((0, String::from("the domain needs a name")));
         } else if !valid_name(&self.name, &existing) {
             out.push((0, format!("`{}` is invalid or already exists", self.name)));
+        }
+        if self.vcpus == 0 {
+            out.push((2, String::from("at least 1 vCPU")));
+        }
+        if self.mem_gib == 0 {
+            out.push((2, String::from("at least 1 GiB of memory")));
+        }
+        if self.host.no_kvm && self.cpu_model == "host-passthrough" {
+            out.push((
+                2,
+                String::from("host-passthrough needs KVM (/dev/kvm is missing): choose host-model"),
+            ));
+        }
+        if !self.balloon && self.max_mem_gib > self.mem_gib {
+            out.push((
+                2,
+                String::from(
+                    "without a balloon the guest always gets the maximum memory: enable the balloon or set maximum = memory",
+                ),
+            ));
         }
         match self.media {
             MediaKind::Iso if self.iso_path.trim().is_empty() => {
@@ -741,10 +796,31 @@ impl WizardState {
         Ok(())
     }
 
-    /// Autosave to the default path.
+    /// Autosave to the default path, at most once a second and only when
+    /// the content changed (it is called on every key and every tick).
     pub fn autosave(&self) {
-        if let Some(path) = Self::draft_path() {
-            let _ = self.save_draft(&path);
+        self.autosave_inner(false);
+    }
+
+    /// Save now (closing the wizard).
+    pub fn autosave_now(&self) {
+        self.autosave_inner(true);
+    }
+
+    fn autosave_inner(&self, force: bool) {
+        static LAST: std::sync::Mutex<Option<(std::time::Instant, String)>> = std::sync::Mutex::new(None);
+        let Some(path) = Self::draft_path() else { return };
+        let Ok(text) = toml::to_string_pretty(self) else {
+            return;
+        };
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        let due = match last.as_ref() {
+            Some((_, saved)) if *saved == text => false,
+            Some((at, _)) => force || at.elapsed() >= std::time::Duration::from_secs(1),
+            None => true,
+        };
+        if due && self.save_draft(&path).is_ok() {
+            *last = Some((std::time::Instant::now(), text));
         }
     }
 

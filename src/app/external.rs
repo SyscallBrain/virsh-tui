@@ -15,6 +15,25 @@ static NEEDS_FULL_REDRAW: AtomicBool = AtomicBool::new(false);
 /// An OS shutdown must also interrupt a suspended-terminal wait.
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+/// Messages from detached programs and background reapers (viewer exit
+/// status, spawn errors), drained into the message line on the next tick.
+static NOTICES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Queue a message for the message line.
+pub fn post_notice(message: String) {
+    if let Ok(mut notices) = NOTICES.lock() {
+        notices.push(message);
+    }
+}
+
+/// Take the queued messages.
+pub fn take_notices() -> Vec<String> {
+    NOTICES
+        .lock()
+        .map(|mut n| std::mem::take(&mut *n))
+        .unwrap_or_default()
+}
+
 /// Notify foreground waits that the process is shutting down.
 pub fn notify_shutdown() {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
@@ -36,13 +55,18 @@ pub fn spawn_input_thread() -> tokio::sync::mpsc::UnboundedReceiver<crossterm::e
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     std::thread::spawn(move || {
         loop {
+            // Announce "busy" before checking the pause flag: the suspender
+            // sets the flag and then waits for idle, so it either sees this
+            // thread busy (and waits) or this thread sees the flag.
+            INPUT_IDLE.store(false, Ordering::SeqCst);
             if INPUT_PAUSED.load(Ordering::SeqCst) {
                 INPUT_IDLE.store(true, Ordering::SeqCst);
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 continue;
             }
-            INPUT_IDLE.store(false, Ordering::SeqCst);
             match crossterm::event::poll(std::time::Duration::from_millis(50)) {
+                // Never read once paused: the bytes belong to the editor.
+                Ok(true) if INPUT_PAUSED.load(Ordering::SeqCst) => {}
                 Ok(true) => {
                     if let Ok(ev) = crossterm::event::read()
                         && tx.send(ev).is_err()
@@ -73,6 +97,7 @@ pub fn with_suspended_terminal<T>(f: impl FnOnce() -> T) -> T {
     }
     let _ = crossterm::execute!(
         std::io::stdout(),
+        crossterm::event::DisableBracketedPaste,
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::cursor::Show
     );
@@ -82,6 +107,7 @@ pub fn with_suspended_terminal<T>(f: impl FnOnce() -> T) -> T {
     let _ = crossterm::execute!(
         std::io::stdout(),
         crossterm::terminal::EnterAlternateScreen,
+        crossterm::event::EnableBracketedPaste,
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
         crossterm::cursor::Hide
     );
@@ -105,12 +131,27 @@ pub fn editor_argv() -> Vec<String> {
         .unwrap_or_else(|| vec![String::from("vi")])
 }
 
+/// Outcome of a foreground program.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Foreground {
+    Success,
+    /// Could not start (missing program, permissions).
+    SpawnFailed(String),
+    /// Exited with a failure status (or was stopped by shutdown).
+    Failed(Option<i32>),
+}
+
+#[cfg(test)]
 fn run_foreground(argv: &[&str], path: Option<&std::path::Path>, shutdown: &AtomicBool) -> bool {
+    run_foreground_status(argv, path, shutdown) == Foreground::Success
+}
+
+fn run_foreground_status(argv: &[&str], path: Option<&std::path::Path>, shutdown: &AtomicBool) -> Foreground {
     let Some((program, args)) = argv.split_first() else {
-        return false;
+        return Foreground::SpawnFailed(String::from("empty command"));
     };
     if shutdown.load(Ordering::SeqCst) {
-        return false;
+        return Foreground::Failed(None);
     }
     let mut command = std::process::Command::new(program);
     command.args(args);
@@ -122,8 +163,14 @@ fn run_foreground(argv: &[&str], path: Option<&std::path::Path>, shutdown: &Atom
     if let Some(path) = path {
         command.arg(path);
     }
-    let Ok(mut child) = command.spawn() else {
-        return false;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(e) => return Foreground::SpawnFailed(format!("{program}: {e}")),
+    };
+    let finish = |status: std::io::Result<std::process::ExitStatus>, stopping: bool| match status {
+        Ok(status) if status.success() && !stopping => Foreground::Success,
+        Ok(status) => Foreground::Failed(status.code()),
+        Err(_) => Foreground::Failed(None),
     };
     #[cfg(unix)]
     let group = i32::try_from(child.id()).ok();
@@ -145,12 +192,22 @@ fn run_foreground(argv: &[&str], path: Option<&std::path::Path>, shutdown: &Atom
                 }
                 stopping = Some(std::time::Instant::now());
             }
+            // `C-z` in the editor/console stops its process group (it owns the
+            // terminal). Nobody would resume it: continue it right away, so
+            // job control inside the hand-off is a no-op instead of a hang.
+            if child_stopped(child.id()) {
+                signal_group(group, libc::SIGCONT);
+                if group.is_none() {
+                    unsafe {
+                        libc::kill(child.id() as i32, libc::SIGCONT);
+                    }
+                }
+            }
             match child_exited_unreaped(child.id()) {
                 Ok(true) => {
                     // The unreaped leader keeps the group ID reserved here.
                     signal_group(group, libc::SIGKILL);
-                    let status = child.wait();
-                    return stopping.is_none() && status.is_ok_and(|status| status.success());
+                    return finish(child.wait(), stopping.is_some());
                 }
                 Ok(false)
                     if stopping.is_some_and(|start| start.elapsed() >= std::time::Duration::from_secs(3)) =>
@@ -160,7 +217,7 @@ fn run_foreground(argv: &[&str], path: Option<&std::path::Path>, shutdown: &Atom
                         let _ = child.kill();
                     }
                     let _ = child.wait();
-                    return false;
+                    return Foreground::Failed(None);
                 }
                 Ok(false) => std::thread::sleep(std::time::Duration::from_millis(20)),
                 Err(_) => {
@@ -169,7 +226,7 @@ fn run_foreground(argv: &[&str], path: Option<&std::path::Path>, shutdown: &Atom
                         let _ = child.kill();
                     }
                     let _ = child.wait();
-                    return false;
+                    return Foreground::Failed(None);
                 }
             }
         }
@@ -186,15 +243,15 @@ fn run_foreground(argv: &[&str], path: Option<&std::path::Path>, shutdown: &Atom
             signal_group(group, libc::SIGKILL);
             let _ = child.kill();
             let _ = child.wait();
-            return false;
+            return Foreground::Failed(None);
         }
         match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
+            Ok(Some(status)) => return finish(Ok(status), false),
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
             Err(_) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return false;
+                return Foreground::Failed(None);
             }
         }
     }
@@ -208,6 +265,23 @@ fn signal_group(group: Option<i32>, signal: i32) {
             libc::kill(-group, signal);
         }
     }
+}
+
+/// Consume a job-control stop of `pid` (does not reap it).
+#[cfg(any(
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "freebsd",
+    target_os = "netbsd"
+))]
+fn child_stopped(pid: u32) -> bool {
+    #[cfg(target_os = "freebsd")]
+    let wait_id: libc::id_t = pid.into();
+    #[cfg(not(target_os = "freebsd"))]
+    let wait_id: libc::id_t = pid;
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let result = unsafe { libc::waitid(libc::P_PID, wait_id, &mut info, libc::WSTOPPED | libc::WNOHANG) };
+    result == 0 && unsafe { info.si_pid() } != 0
 }
 
 #[cfg(any(
@@ -284,22 +358,35 @@ fn set_foreground(fd: i32, group: i32) -> bool {
 /// Open `path` in the editor with the TUI suspended. Returns false when the
 /// editor could not be started or exited with an error.
 pub fn edit_file(path: &std::path::Path) -> bool {
-    let argv = editor_argv();
-    let args: Vec<&str> = argv.iter().map(String::as_str).collect();
-    with_suspended_terminal(|| run_foreground(&args, Some(path), &SHUTDOWN_REQUESTED))
+    edit_file_status(path) == Foreground::Success
 }
 
-/// Run a foreground program with the TUI suspended.
-pub fn suspend_run(argv: &[&str]) {
-    with_suspended_terminal(|| {
-        let _ = run_foreground(argv, None, &SHUTDOWN_REQUESTED);
-    });
+/// [`edit_file`] with the editor's outcome (spawn error, exit status).
+pub fn edit_file_status(path: &std::path::Path) -> Foreground {
+    let argv = editor_argv();
+    let args: Vec<&str> = argv.iter().map(String::as_str).collect();
+    with_suspended_terminal(|| run_foreground_status(&args, Some(path), &SHUTDOWN_REQUESTED))
+}
+
+/// Run a foreground program with the TUI suspended. Returns a message for
+/// the message line when it could not start or failed.
+pub fn suspend_run(argv: &[&str]) -> Option<String> {
+    let outcome = with_suspended_terminal(|| run_foreground_status(argv, None, &SHUTDOWN_REQUESTED));
+    let what = argv.iter().take(5).copied().collect::<Vec<_>>().join(" ");
+    match outcome {
+        Foreground::Success => None,
+        Foreground::SpawnFailed(e) => Some(format!("✗ cannot start {e}")),
+        Foreground::Failed(Some(code)) => Some(format!("✗ `{what}…` exited with status {code}")),
+        Foreground::Failed(None) => Some(format!("✗ `{what}…` was interrupted")),
+    }
 }
 
 /// Serial console with the configured escape key (`C-]` → `virsh -e ^]`).
-pub fn console(uri: &str, domain: &str) {
+/// Returns a failure message (domain not running, no console, …).
+pub fn console(uri: &str, domain: &str) -> Option<String> {
     let escape = escape_arg(&crate::config::runtime().console.escape);
-    suspend_run(&["virsh", "-e", &escape, "-c", uri, "console", domain]);
+    suspend_run(&["virsh", "-e", &escape, "-c", uri, "console", domain])
+        .map(|m| format!("{m} (console of {domain})"))
 }
 
 /// `C-x` / `^x` → `^x` (virsh's notation); anything else falls back to `^]`.
@@ -314,17 +401,35 @@ fn escape_arg(key: &str) -> String {
     }
 }
 
-/// Spawn a detached program (viewer) with all stdio closed.
+/// Spawn a detached program (viewer) with all stdio closed. Spawn errors and
+/// a failing exit status are reported through [`post_notice`]; a reaper
+/// thread waits for it so it never lingers as a zombie.
 pub fn detached_run(argv: &[&str]) {
     let Some((prog, args)) = argv.split_first() else {
         return;
     };
-    let _ = std::process::Command::new(prog)
+    let spawned = std::process::Command::new(prog)
         .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
+    let prog = prog.to_string();
+    match spawned {
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                if let Ok(status) = child.wait()
+                    && !status.success()
+                {
+                    post_notice(format!(
+                        "✗ {prog} exited with status {}",
+                        status.code().map_or_else(|| String::from("?"), |c| c.to_string())
+                    ));
+                }
+            });
+        }
+        Err(e) => post_notice(format!("✗ cannot start {prog}: {e}")),
+    }
 }
 
 #[cfg(test)]

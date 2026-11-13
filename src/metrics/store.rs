@@ -15,7 +15,8 @@ pub const HISTORY: usize = 60;
 /// Samples kept per series: enough for the 1 h window.
 pub const HISTORY_MAX: usize = 3600;
 
-/// History windows cycled with `t`: (samples, label).
+/// History windows cycled with `t`: (seconds, label). The number of samples
+/// shown depends on the refresh interval (see [`window_len`]).
 pub const WINDOWS: [(usize, &str); 3] = [(60, "60s"), (300, "5m"), (3600, "1h")];
 
 static WINDOW: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -27,9 +28,11 @@ pub fn cycle_window() -> &'static str {
     WINDOWS[next].1
 }
 
-/// Samples in the selected window.
+/// Samples in the selected window at the configured refresh interval.
 pub fn window_len() -> usize {
-    WINDOWS[WINDOW.load(std::sync::atomic::Ordering::Relaxed) % WINDOWS.len()].0
+    let secs = WINDOWS[WINDOW.load(std::sync::atomic::Ordering::Relaxed) % WINDOWS.len()].0;
+    let interval = crate::config::refresh_interval_secs() as usize;
+    (secs / interval).clamp(2, HISTORY_MAX)
 }
 
 /// Label of the selected window (`60s`, `5m`, `1h`).
@@ -237,10 +240,9 @@ impl MetricsStore {
     /// domains that stopped or disappeared are dropped so a restart starts clean.
     pub fn ingest_domains(&mut self, stats: &[RawDomainStats], now: Instant) {
         let running: Vec<&RawDomainStats> = stats.iter().filter(|s| is_running(s)).collect();
-        self.domains
-            .retain(|name, _| running.iter().any(|s| &s.domain == name));
-        self.prev
-            .retain(|name, _| running.iter().any(|s| &s.domain == name));
+        let names: std::collections::HashSet<&str> = running.iter().map(|s| s.domain.as_str()).collect();
+        self.domains.retain(|name, _| names.contains(name.as_str()));
+        self.prev.retain(|name, _| names.contains(name.as_str()));
         for s in running {
             let cur = counters(s);
             let series = self.domains.entry(s.domain.clone()).or_default();
@@ -248,9 +250,14 @@ impl MetricsStore {
             n.vcpus = s.u64("vcpu.current").unwrap_or(1) as u32;
             n.mem_max_kib = s.u64("balloon.current").unwrap_or(0);
             n.rss_kib = s.u64("balloon.rss").unwrap_or(0);
-            match (s.u64("balloon.available"), s.u64("balloon.unused")) {
-                (Some(avail), Some(unused)) => {
-                    n.mem_used_kib = mem_used_kib(avail, unused);
+            // `usable` (reclaimable without swapping) excludes the page
+            // cache that `unused` counts as used.
+            match (
+                s.u64("balloon.available"),
+                s.u64("balloon.usable").or_else(|| s.u64("balloon.unused")),
+            ) {
+                (Some(avail), Some(free)) => {
+                    n.mem_used_kib = mem_used_kib(avail, free);
                     n.mem_from_guest = true;
                 }
                 _ => {
@@ -269,7 +276,7 @@ impl MetricsStore {
             n.errs = sum_indexed(s, "net", "rx.errs") + sum_indexed(s, "net", "tx.errs");
             n.first_disk = s.values.get("block.0.name").cloned().unwrap_or_default();
             n.first_iface = s.values.get("net.0.name").cloned().unwrap_or_default();
-            if let Some((t0, before)) = self.prev.get(&s.domain).cloned().as_ref() {
+            if let Some((t0, before)) = self.prev.remove(&s.domain).as_ref() {
                 let wall = now.duration_since(*t0);
                 let secs = wall.as_secs_f64();
                 // A counter going backwards means the domain restarted: skip this delta.

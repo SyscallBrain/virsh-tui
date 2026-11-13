@@ -23,7 +23,8 @@ pub fn create(domain: &str, name: &str, description: &str, atomic: bool, quiesce
 pub fn revert(domain: &str, snap: &str, after: Option<&str>, force: bool, safety: bool) -> CommandPlan {
     let mut steps = Vec::new();
     if safety {
-        let stamp = jiff::Zoned::now().strftime("%H%M").to_string();
+        // Date and seconds: two reverts in the same minute (or day) must not collide.
+        let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
         steps.push(
             create(domain, &format!("auto-before-revert-{stamp}"), "", true, false)
                 .steps

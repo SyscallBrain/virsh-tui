@@ -129,8 +129,9 @@ impl EventsState {
 
     /// Push an event (cap 5,000).
     pub fn push(&mut self, ev: LibvirtEvent) {
+        // Drop the oldest in batches: one shift per 500 events, not per event.
         if self.events.len() >= 5000 {
-            self.events.remove(0);
+            self.events.drain(..500);
         }
         self.events.push(ev);
     }
@@ -156,6 +157,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &EventsState) {
     let area = frame.area();
     if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::TooSmall {
         crate::ui::layout::render_too_small(frame, theme);
+        return;
+    }
+    if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
+        render_minimal(frame, theme, state);
         return;
     }
     let t = &theme.tokens;
@@ -296,4 +301,33 @@ fn fit(s: &str, w: usize) -> String {
         let cut: String = s.chars().take(w.saturating_sub(2)).collect();
         format!("{cut}… ")
     }
+}
+
+/// Small-terminal events: newest first.
+fn render_minimal(frame: &mut Frame, theme: &Theme, state: &EventsState) {
+    use crate::ui::views::minimal::{Row, col, render};
+    let rows: Vec<Row> = state
+        .visible()
+        .iter()
+        .map(|e| {
+            Row::plain(format!(
+                "{}{}{} {}",
+                col(e.timestamp.rsplit(' ').next().unwrap_or(&e.timestamp), 9),
+                col(&e.object, 18),
+                col(&e.event, 10),
+                e.detail
+            ))
+        })
+        .collect();
+    let selected = (!rows.is_empty()).then_some(state.selected);
+    render(
+        frame,
+        theme,
+        &format!("5 Events · {}", state.uri),
+        &format!(" {}{}EVENT", col("TIME", 9), col("OBJECT", 18)),
+        &rows,
+        selected,
+        " j/k f filter / search ⏎ open ? help",
+        "",
+    );
 }

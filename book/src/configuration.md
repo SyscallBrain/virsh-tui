@@ -16,7 +16,6 @@ default_uri = "qemu:///system"   # used when -c/--connect is not given
 refresh_interval_secs = 1        # how often stats are sampled
 editor = "vi"                    # used when $VISUAL and $EDITOR are unset
 start_view = "domains"           # domains, host, networks, storage, events
-confirm_style = "yn"             # reserved, not used yet
 
 [appearance]
 theme = "tokyo-night"            # built-in name or a file in themes/
@@ -31,7 +30,7 @@ dim_modals = true                # dim the screen behind dialogs
 uris = [                         # offered by :connect completion and Settings
   "qemu:///system",
   "qemu:///session",
-  "qemu+ssh://user@host/system",
+  # add remote hosts here, e.g. "qemu+ssh://admin@server/system"
 ]
 default = "qemu:///system"
 
@@ -94,4 +93,12 @@ reverts unsaved previews and closes.
 
 Supported keys: `theme`, `transparent`, `borders`, `icons`, `graphs`,
 `gradient`, `dim_modals`, `default_uri`, `editor`, `start_view`, `viewer`,
-`escape`, `refresh_interval_secs`. `Tab` completes them.
+`escape`, `refresh_interval_secs`. `Tab` completes them. Values are checked
+(booleans take `true`/`false`, `refresh_interval_secs` 1-60, `viewer`
+`virt-viewer` or `remote-viewer`, …); a rejected value changes nothing. A new
+value takes effect at once: a new refresh interval restarts sampling, and the
+history windows (`t`: 60 s / 5 min / 1 h) keep their length in time.
+
+If `config.toml` cannot be parsed, virsh-tui starts on defaults, says so in
+the message line, and does not save over the file until it is fixed. The
+file is written atomically (a temporary file renamed over it).

@@ -21,6 +21,15 @@ pub(super) fn run_ex_line(
 ) -> bool {
     use crate::command::builders::hardware as hardware_ext;
     use crate::command::builders::lifecycle;
+    let active = |dash: &crate::ui::views::dashboard::DashboardState, d: &str| {
+        dash.rows.iter().any(|r| {
+            r.name == d
+                && matches!(
+                    r.state,
+                    crate::model::DomainState::Running | crate::model::DomainState::Paused
+                )
+        })
+    };
     match crate::input::ex::parse(line) {
         Ok(crate::input::ex::ExCommand::Quit | crate::input::ex::ExCommand::QuitAll) => return true,
         Ok(crate::input::ex::ExCommand::Help(topic)) => {
@@ -53,6 +62,23 @@ pub(super) fn run_ex_line(
                 messages,
             );
         }
+        Ok(crate::input::ex::ExCommand::Clone(d, n)) => {
+            if let Some(problem) = clone_problem(dash, &d, &n) {
+                dash.message = problem;
+                return false;
+            }
+            let on = uri.clone();
+            preview_targets(
+                uri,
+                std::slice::from_ref(&d),
+                move |t| lifecycle::clone_on(&on, t, &n),
+                dry_run,
+                demo,
+                dash,
+                history,
+                messages,
+            );
+        }
         Ok(crate::input::ex::ExCommand::Desc(d, _text)) => {
             dash.message = if demo || dry_run {
                 format!("[dry-run] Described {d}  ── virsh define /tmp/vt-{d}.xml")
@@ -61,10 +87,17 @@ pub(super) fn run_ex_line(
             };
         }
         Ok(crate::input::ex::ExCommand::AttachDisk(d, src, target)) => {
+            let Some(format) = hardware_ext::image_format(&src) else {
+                dash.message = format!(
+                    "✗ cannot tell the image format of {src}: run :attach-disk {d} {src} {target} --driver qemu --subdriver <qcow2|raw> --config"
+                );
+                return false;
+            };
+            let live = active(dash, &d);
             preview_targets(
                 uri,
                 std::slice::from_ref(&d),
-                move |t| hardware_ext::attach_disk(t, &src, &target, true, true),
+                move |t| hardware_ext::attach_disk_formatted(t, &src, &target, &format, live, true),
                 dry_run,
                 demo,
                 dash,
@@ -76,7 +109,10 @@ pub(super) fn run_ex_line(
             preview_targets(
                 uri,
                 std::slice::from_ref(&d),
-                move |t| hardware_ext::detach_disk(t, &target, true),
+                {
+                    let live = active(dash, &d);
+                    move |t| hardware_ext::detach_disk(t, &target, live)
+                },
                 dry_run,
                 demo,
                 dash,
@@ -88,7 +124,10 @@ pub(super) fn run_ex_line(
             preview_targets(
                 uri,
                 std::slice::from_ref(&d),
-                move |t| hardware_ext::attach_nic(t, &source, &model, None, true),
+                {
+                    let live = active(dash, &d);
+                    move |t| hardware_ext::attach_nic(t, &source, &model, None, live)
+                },
                 dry_run,
                 demo,
                 dash,
@@ -97,6 +136,11 @@ pub(super) fn run_ex_line(
             );
         }
         Ok(crate::input::ex::ExCommand::Resize(d, target, size)) => {
+            let Some(kib) = crate::ui::views::detail::hardware::size_to_kib(&size) else {
+                dash.message = format!("✗ invalid size `{size}`: use a unit (512M, 8G, 1.5T)");
+                return false;
+            };
+            let size = crate::ui::views::detail::hardware::kib_arg(kib);
             preview_targets(
                 uri,
                 std::slice::from_ref(&d),
@@ -123,7 +167,10 @@ pub(super) fn run_ex_line(
             preview_targets(
                 uri,
                 std::slice::from_ref(&d),
-                move |t| hardware_ext::change_media(t, &target, iso.as_deref(), true),
+                {
+                    let live = active(dash, &d);
+                    move |t| hardware_ext::change_media(t, &target, iso.as_deref(), live)
+                },
                 dry_run,
                 demo,
                 dash,
@@ -161,6 +208,9 @@ pub(super) fn run_ex_line(
         }
         Ok(crate::input::ex::ExCommand::Shutdown(d)) => {
             let prev = dash.selected().name.clone();
+            // `:shutdown <vm>` names a domain: ignore the filter/chip for it.
+            let (filter, chip) = (std::mem::take(&mut dash.filter), dash.chip);
+            dash.chip = crate::ui::views::dashboard::Chip::All;
             dash.select_name(&d);
             if dash.selected().name == d {
                 let marks = std::mem::take(&mut dash.marks);
@@ -179,11 +229,14 @@ pub(super) fn run_ex_line(
             } else {
                 dash.message = format!("✗ no domain named {d}");
             }
+            dash.filter = filter;
+            dash.chip = chip;
             dash.select_name(&prev);
         }
         Ok(crate::input::ex::ExCommand::Destroy(d)) => {
             ask_confirm(
                 confirm,
+                crate::ui::overlays::confirm::ConfirmKind::DomainDestroy,
                 "⚠ Destroy domain",
                 "destroy",
                 &[d],
@@ -208,7 +261,7 @@ pub(super) fn run_ex_line(
                 stdin: None,
             };
             let shown = crate::command::display::display(&step);
-            if crate::ui::overlays::confirm::Confirm::destructive(&argv[0]) {
+            if crate::ui::overlays::confirm::Confirm::destructive_argv(&argv) {
                 let plan = crate::command::plan::CommandPlan {
                     steps: vec![step],
                     summary: format!("Ran {}", argv[0]),
@@ -216,6 +269,7 @@ pub(super) fn run_ex_line(
                 let title = format!("⚠ virsh {}", argv[0]);
                 ask_confirm(
                     confirm,
+                    crate::ui::overlays::confirm::ConfirmKind::Always,
                     &title,
                     &argv[0],
                     &[argv.get(1).cloned().unwrap_or_default()],

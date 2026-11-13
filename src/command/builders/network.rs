@@ -106,8 +106,8 @@ pub fn define_xml(
     let ip_block = if mode == "bridge" {
         format!("  <bridge name='{}'/>\n", e(bridge))
     } else {
-        let (addr, prefix) = cidr.split_once('/').unwrap_or((cidr, "24"));
-        let gateway = gateway_of(addr);
+        let (_, prefix) = cidr.split_once('/').unwrap_or((cidr, "24"));
+        let gateway = gateway_for(cidr).map_or_else(|| gateway_of(cidr), |g| g.to_string());
         format!(
             "  <bridge name='{}' stp='on' delay='0'/>\n  <ip address='{}' prefix='{}'>\n    <dhcp>\n      <range start='{}' end='{}'/>\n    </dhcp>\n  </ip>\n",
             e(bridge),
@@ -128,7 +128,59 @@ pub fn define_xml(
     )
 }
 
-/// Gateway (.1) for an IPv4 network address.
+/// Parse `a.b.c.d/p` (prefix 8..=30, room for a gateway and a DHCP range).
+pub fn parse_cidr(cidr: &str) -> Option<(std::net::Ipv4Addr, u8)> {
+    let (addr, prefix) = cidr.trim().split_once('/')?;
+    let addr: std::net::Ipv4Addr = addr.parse().ok()?;
+    let prefix: u8 = prefix.parse().ok()?;
+    (8..=30).contains(&prefix).then_some((addr, prefix))
+}
+
+/// (network, broadcast) of a CIDR.
+pub fn subnet_bounds(cidr: &str) -> Option<(u32, u32)> {
+    let (addr, prefix) = parse_cidr(cidr)?;
+    let mask = u32::MAX << (32 - u32::from(prefix));
+    let network = u32::from(addr) & mask;
+    Some((network, network | !mask))
+}
+
+/// The host's address on the network: the typed address when it is a host
+/// address (`192.168.100.254/24`), else the first host of the subnet
+/// (`192.168.100.128/25` → `192.168.100.129`).
+pub fn gateway_for(cidr: &str) -> Option<std::net::Ipv4Addr> {
+    let (addr, _) = parse_cidr(cidr)?;
+    let (network, broadcast) = subnet_bounds(cidr)?;
+    let a = u32::from(addr);
+    Some(std::net::Ipv4Addr::from(if a == network || a == broadcast {
+        network + 1
+    } else {
+        a
+    }))
+}
+
+/// Default DHCP range: every host after the gateway (up to the broadcast).
+pub fn default_dhcp_range(cidr: &str) -> Option<(String, String)> {
+    let (network, broadcast) = subnet_bounds(cidr)?;
+    let gateway = u32::from(gateway_for(cidr)?);
+    let start = if gateway == network + 1 {
+        gateway + 1
+    } else {
+        network + 1
+    };
+    let end = if gateway == broadcast - 1 {
+        broadcast - 2
+    } else {
+        broadcast - 1
+    };
+    (start <= end).then(|| {
+        (
+            std::net::Ipv4Addr::from(start).to_string(),
+            std::net::Ipv4Addr::from(end).to_string(),
+        )
+    })
+}
+
+/// Gateway (.1) for an IPv4 network address (legacy: no prefix known).
 pub fn gateway_of(network_addr: &str) -> String {
     let mut parts: Vec<&str> = network_addr.split('.').collect();
     if parts.len() == 4 {

@@ -94,8 +94,9 @@ pub fn default_map() -> HashMap<Vec<String>, KeyAction> {
     // "." repeat is handled explicitly by the engine before map lookup.
     // Confirm modal keys (y/n) are handled by the modal itself, not the global map,
     // so that yank sequences (yy/yu/yi/yc) keep working.
-    // Quit keys (q/ZZ/C-c) are handled at the app level for the same reason:
-    // Z is managed-save and ZZ is quit.
+    // Quit keys (q/ZZ/C-c) are handled at the app level for the same reason.
+    // `Z` is managed-save: the app holds the first `Z` back until it is clear
+    // that no second `Z` (ZZ, quit) follows, then asks for confirmation.
     m
 }
 
@@ -139,10 +140,16 @@ pub fn apply_overrides(
             };
             map.retain(|_, a| *a != action);
             for k in keys.iter().filter_map(|k| k.as_str()) {
-                let seq: Vec<String> = k
-                    .split_whitespace()
-                    .map(|t| super::key::KeySeq::parse(t).token().to_string())
-                    .collect();
+                let tokens: Vec<super::key::KeySeq> =
+                    k.split_whitespace().map(super::key::KeySeq::parse).collect();
+                if let Some(bad) = tokens.iter().find(|t| !t.is_valid()) {
+                    warnings.push(format!(
+                        "keymap.toml: `{name}`: unknown key `{}` in \"{k}\" (use a character, C-x, A-x, Space, Enter, Esc, Tab, S-Tab, Backspace, Up/Down/Left/Right)",
+                        bad.token()
+                    ));
+                    continue;
+                }
+                let seq: Vec<String> = tokens.iter().map(|t| t.token().to_string()).collect();
                 if !seq.is_empty() {
                     map.insert(seq, action);
                 }

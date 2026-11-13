@@ -146,3 +146,14 @@ Several items ticked above were **not** true before this review and were fixed h
 - Network XML preparation shows `Loading network XML…`; wizard XML
   preparation shows `Preparing XML…`. A prepared draft that cannot open its
   editor immediately is retained for an explicit `e` or `C-e` retry.
+
+
+## Review fixes (2026-11-12)
+
+- Help overlay title reads ` / search · ⇥ view keys · ⎋ close ` (second page
+  of view keys); `help_overlay` and `help_120x36` snapshots updated for that
+  one line only.
+- Below 100×30 (down to 40×12) views use a single-column list, which is not
+  in the mockups; the mockup layouts are unchanged from 100×30 up.
+- Live volume labels are `⚠ no domain` / `? unknown`; the demo keeps the
+  mockup's `⚠ orphan`.

@@ -21,7 +21,7 @@ pub enum LiveMsg {
         summaries: Vec<DomainSummary>,
         stats: Vec<RawDomainStats>,
         proc_stat: Option<String>,
-        uptimes: HashMap<String, String>,
+        uptimes: HashMap<String, u64>,
         /// rx/tx byte counters of host bridges (local URIs).
         ifaces: HashMap<String, (u64, u64)>,
         at: Instant,
@@ -95,21 +95,41 @@ pub fn spawn(uri: &str, interval_secs: u64, balloon_period: Option<u64>) -> Poll
         let mut known: HashSet<String> = HashSet::new();
         let mut ip_due = true;
         let mut ballooned: HashSet<String> = HashSet::new();
+        let mut autostart: Option<HashSet<String>> = None;
+        let mut names: HashSet<String> = HashSet::new();
         loop {
             let mut sample_now = false;
+            let mut requests = Vec::new();
             tokio::select! {
                 _ = ticker.tick() => sample_now = true,
                 req = req_rx.recv() => match req {
                     None => break,
-                    Some(Request::Selected { name, running }) => {
-                        ip_due = selected.as_ref().is_none_or(|(n, _)| *n != name);
+                    Some(req) => requests.push(req),
+                },
+            }
+            // Coalesce a burst (holding `j` sends one selection per row): only
+            // the last selection is fetched.
+            if !requests.is_empty() {
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                while let Ok(req) = req_rx.try_recv() {
+                    requests.push(req);
+                }
+            }
+            for req in requests {
+                match req {
+                    Request::Selected { name, running } => {
+                        ip_due = ip_due || selected.as_ref().is_none_or(|(n, _)| *n != name);
                         selected = Some((name, running));
                     }
-                    Some(Request::RefetchConfig(name)) => {
+                    Request::RefetchConfig(name) => {
                         known.remove(&name);
                     }
-                    Some(Request::Now) => sample_now = true,
-                },
+                    Request::Now => {
+                        sample_now = true;
+                        // A job may have toggled autostart.
+                        autostart = None;
+                    }
+                }
             }
             if !sample_now || Instant::now() < next_try {
                 // Still serve a pending config fetch for a new selection.
@@ -125,9 +145,16 @@ pub fn spawn(uri: &str, interval_secs: u64, balloon_period: Option<u64>) -> Poll
                 continue;
             }
             tick += 1;
-            let msg = match backend.domains_with_stats().await {
-                Ok((summaries, stats)) => {
+            if tick.is_multiple_of(10) {
+                autostart = None;
+            }
+            let msg = match backend.domains_with_stats_cached(autostart.as_ref()).await {
+                Ok((summaries, stats, flags)) => {
                     failures = 0;
+                    // New or removed domains: re-read the flags next tick.
+                    let current: HashSet<String> = summaries.iter().map(|s| s.name.clone()).collect();
+                    autostart = (current == names).then_some(flags);
+                    names = current;
                     if let Some(period) = balloon_period {
                         for s in stats.iter().filter(|s| s.u64("state.state") == Some(1)) {
                             if s.values.contains_key("balloon.available")
@@ -151,7 +178,7 @@ pub fn spawn(uri: &str, interval_secs: u64, balloon_period: Option<u64>) -> Poll
                             .iter()
                             .filter(|s| s.state == crate::model::DomainState::Running)
                             .filter_map(|s| {
-                                crate::backend::virsh::host_local::domain_uptime(&s.name)
+                                crate::backend::virsh::host_local::domain_uptime_secs(&s.name)
                                     .map(|u| (s.name.clone(), u))
                             })
                             .collect()

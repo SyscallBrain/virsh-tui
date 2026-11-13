@@ -24,10 +24,14 @@ pub struct TreeRow {
 
 /// Build tree rows from parent links (roots first, depth-first).
 pub fn build_tree(snaps: &[Snapshot], current: Option<&str>) -> Vec<TreeRow> {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
+    let names: HashSet<&str> = snaps.iter().map(|s| s.name.as_str()).collect();
     let mut children: HashMap<Option<String>, Vec<&Snapshot>> = HashMap::new();
     for s in snaps {
-        children.entry(s.parent.clone()).or_default().push(s);
+        // A parent missing from the list (deleted metadata) makes a root,
+        // otherwise the snapshot would never be drawn.
+        let parent = s.parent.clone().filter(|p| names.contains(p.as_str()));
+        children.entry(parent).or_default().push(s);
     }
     for list in children.values_mut() {
         list.sort_by(|a, b| a.name.cmp(&b.name));
@@ -57,9 +61,15 @@ pub fn build_tree(snaps: &[Snapshot], current: Option<&str>) -> Vec<TreeRow> {
             rows.push(TreeRow {
                 prefix: mine,
                 name: s.name.clone(),
-                date: String::new(),
+                date: s.created.chars().take(10).collect(),
                 state: s.state.clone(),
-                kind: String::new(),
+                kind: if s.state == "disk-snapshot" {
+                    String::from("disk")
+                } else if matches!(s.state.as_str(), "running" | "paused") {
+                    String::from("mem+disk")
+                } else {
+                    String::from("disk")
+                },
                 current: current == Some(s.name.as_str()),
             });
             let mut stack = last_stack.clone();
@@ -122,6 +132,99 @@ pub struct SnapshotState {
     pub create_quiesce: bool,
     /// Frozen clock for demo/snapshots (mockup shows 1438).
     pub frozen: bool,
+    /// Live details per snapshot (from `snapshot-dumpxml`); the selected
+    /// one fills `details` and `description`.
+    pub infos: std::collections::HashMap<String, SnapInfo>,
+}
+
+/// Details of one snapshot for the side panel.
+#[derive(Debug, Clone, Default)]
+pub struct SnapInfo {
+    pub details: Vec<(String, String)>,
+    pub description: String,
+}
+
+/// Details from `virsh snapshot-dumpxml` (+ the tree for parent/children).
+pub fn snap_info(xml: &str, rows: &[Snapshot]) -> Option<SnapInfo> {
+    let doc = roxmltree::Document::parse(xml).ok()?;
+    let root = doc.root_element();
+    let text = |tag: &str| {
+        root.children()
+            .find(|n| n.has_tag_name(tag))
+            .and_then(|n| n.text())
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string()
+    };
+    let name = text("name");
+    let created = text("creationTime")
+        .parse::<i64>()
+        .ok()
+        .and_then(|t| jiff::Timestamp::from_second(t).ok())
+        .map(|t| t.strftime("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_default();
+    let state = text("state");
+    let memory = root
+        .children()
+        .find(|n| n.has_tag_name("memory"))
+        .and_then(|m| m.attribute("snapshot"))
+        .unwrap_or("no");
+    let disks: Vec<String> = root
+        .children()
+        .find(|n| n.has_tag_name("disks"))
+        .map(|d| {
+            d.children()
+                .filter(|n| n.has_tag_name("disk"))
+                .map(|n| {
+                    format!(
+                        "{} {}",
+                        n.attribute("name").unwrap_or("?"),
+                        match n.attribute("snapshot").unwrap_or("internal") {
+                            "no" => "excluded",
+                            other => other,
+                        }
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let parent = rows
+        .iter()
+        .find(|r| r.name == name)
+        .and_then(|r| r.parent.clone())
+        .unwrap_or_else(|| String::from("—"));
+    let children: Vec<&str> = rows
+        .iter()
+        .filter(|r| r.parent.as_deref() == Some(name.as_str()))
+        .map(|r| r.name.as_str())
+        .collect();
+    let mut details = vec![
+        (String::from("created   "), created),
+        (
+            String::from("state     "),
+            if memory == "no" {
+                state
+            } else {
+                format!("{state} (memory included)")
+            },
+        ),
+        (String::from("parent    "), parent),
+        (
+            String::from("children  "),
+            if children.is_empty() {
+                String::from("0")
+            } else {
+                format!("{} · {}", children.len(), children.join(", "))
+            },
+        ),
+    ];
+    if !disks.is_empty() {
+        details.push((String::from("disks     "), disks.join(" · ")));
+    }
+    Some(SnapInfo {
+        details,
+        description: text("description"),
+    })
 }
 
 impl SnapshotState {
@@ -227,6 +330,20 @@ impl SnapshotState {
             create_atomic: true,
             create_quiesce: false,
             frozen: true,
+            infos: Default::default(),
+        }
+    }
+
+    /// Show the live details of the selected snapshot (no-op without them).
+    pub fn sync_details(&mut self) {
+        if let Some(info) = self.infos.get(self.selected_name()).cloned() {
+            self.details = info.details;
+            self.description_title = String::from("description");
+            self.description = if info.description.is_empty() {
+                String::from("—")
+            } else {
+                info.description
+            };
         }
     }
 
@@ -245,6 +362,7 @@ impl SnapshotState {
             return;
         }
         self.selected = (self.selected as i32 + delta).clamp(0, n - 1) as usize;
+        self.sync_details();
     }
 }
 

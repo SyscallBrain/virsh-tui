@@ -25,42 +25,6 @@ pub struct HelpDoc {
     pub options: Vec<HelpOpt>,
 }
 
-/// Load the `virsh help` index, cached per virsh version.
-pub fn load_index(uri: &str) -> Vec<HelpEntry> {
-    let version =
-        crate::backend::virsh::exec::run_blocking(uri, &["version", "--daemon"]).unwrap_or_default();
-    let cache_path = cache_file(&version);
-    if let Some(path) = cache_path.as_ref()
-        && let Ok(text) = std::fs::read_to_string(path)
-        && let Ok(entries) = serde_json::from_str::<Vec<HelpEntry>>(&text)
-    {
-        return entries;
-    }
-    // No cache yet: build it once (a single `virsh help` call).
-    let entries = crate::backend::virsh::exec::run_blocking(uri, &["help"])
-        .map(|t| parse_help_index(&t))
-        .unwrap_or_default();
-    if !entries.is_empty()
-        && let Some(path) = cache_path
-    {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(&path, serde_json::to_string(&entries).unwrap_or_default());
-    }
-    entries
-}
-
-/// `virsh help <cmd>` parsed (blocking; ~10 ms, called once per command).
-pub fn load_doc(uri: &str, cmd: &str) -> Option<HelpDoc> {
-    if !cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return None;
-    }
-    let text = crate::backend::virsh::exec::run_blocking(uri, &["help", cmd]).ok()?;
-    let doc = parse_help_cmd(&text);
-    (!doc.name.is_empty()).then_some(doc)
-}
-
 /// Fetch a command's help without blocking the UI thread.
 pub async fn fetch_doc(uri: &str, cmd: &str) -> Option<HelpDoc> {
     if !cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
@@ -71,34 +35,14 @@ pub async fn fetch_doc(uri: &str, cmd: &str) -> Option<HelpDoc> {
     (!doc.name.is_empty()).then_some(doc)
 }
 
-/// Fetch and cache the full index.
-pub async fn fetch_index(uri: &str) -> Vec<HelpEntry> {
-    let entries = match crate::backend::virsh::exec::run(uri, &["help"]).await {
-        Ok(text) => parse_help_index(&text),
-        Err(_) => vec![],
-    };
-    let version = crate::backend::virsh::exec::run(uri, &["version", "--daemon"])
-        .await
-        .unwrap_or_default();
-    if let Some(path) = cache_file(&version) {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(&path, serde_json::to_string(&entries).unwrap_or_default());
-    }
-    entries
+/// Fetch the full `virsh help` index. `None` when virsh could not be
+/// asked: the caller keeps no index and asks again next time.
+pub async fn fetch_index(uri: &str) -> Option<Vec<HelpEntry>> {
+    let text = crate::backend::virsh::exec::run(uri, &["help"]).await.ok()?;
+    let entries = parse_help_index(&text);
+    (!entries.is_empty()).then_some(entries)
 }
 
-/// Cache file for a virsh version string.
-fn cache_file(version: &str) -> Option<std::path::PathBuf> {
-    let safe: String = version
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '.')
-        .collect();
-    directories::ProjectDirs::from("", "", "virsh-tui")
-        .map(|d| d.cache_dir().to_path_buf())
-        .map(|p| p.join(format!("help-{safe}.json")))
-}
 /// Parse `virsh help` index (lines of `    cmd - summary`, skipping headers).
 pub fn parse_help_index(text: &str) -> Vec<HelpEntry> {
     let mut out = Vec::new();

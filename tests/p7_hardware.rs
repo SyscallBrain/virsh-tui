@@ -39,7 +39,7 @@ fn hardware_builders_native_first() {
         .collect();
     assert!(argv.iter().any(|a| a.contains(&"--maximum".to_string())));
     assert!(argv.iter().any(|a| a.contains(&"--live".to_string())));
-    let mem = hardware::set_memory("d", "8G", "16G", true, true);
+    let mem = hardware::set_memory("d", "8G", Some("16G"), true, true);
     assert!(!mem.is_empty());
 }
 

@@ -8,14 +8,18 @@ pub enum Breakpoint {
     Wide,
     /// 100-159 columns: stacked single column.
     Compact,
-    /// Below 100x30: too-small panel.
+    /// Below 100x30 (down to 40x12): one list per view, no side panels.
+    Minimal,
+    /// Below 40x12: too-small panel.
     TooSmall,
 }
 
 /// Classify a terminal size.
 pub fn breakpoint(width: u16, height: u16) -> Breakpoint {
-    if width < 100 || height < 30 {
+    if width < 40 || height < 12 {
         Breakpoint::TooSmall
+    } else if width < 100 || height < 30 {
+        Breakpoint::Minimal
     } else if width < 160 {
         Breakpoint::Compact
     } else {
@@ -43,7 +47,7 @@ pub fn render_too_small(frame: &mut ratatui::Frame, theme: &crate::theme::Theme)
     let area = frame.area();
     let w = area.width;
     let h = area.height;
-    let msg = format!("Terminal too small — {w}×{h}, need 100×30");
+    let msg = format!("Terminal too small — {w}×{h}, need 40×12");
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(theme.border)

@@ -83,6 +83,15 @@ pub fn vol_resize(pool: &str, vol: &str, size: &str, shrink: bool) -> CommandPla
     CommandPlan::single("virsh", argv, &format!("Resized {vol} in {pool}"))
 }
 
+/// `vol-resize <path> SIZE`: grow a volume identified by its path (offline disk resize).
+pub fn vol_resize_path(path: &str, size: &str) -> CommandPlan {
+    CommandPlan::single(
+        "virsh",
+        vec!["vol-resize", path, size],
+        &format!("Resized {path} to {size}"),
+    )
+}
+
 /// `vol-clone --pool pool vol new`.
 pub fn vol_clone(pool: &str, vol: &str, name: &str) -> CommandPlan {
     CommandPlan::single(

@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Review experiments against fake virsh/virt-install/editor binaries (no libvirt)."""
+import fcntl
+import os
+import pty
+import select
+import signal
+import struct
+import subprocess
+import sys
+import tempfile
+import termios
+import time
+from pathlib import Path
+
+binary, mode = sys.argv[1], sys.argv[2]
+
+
+def proc_state(pid):
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except OSError:
+        return None
+
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    binaries = root / "bin"
+    binaries.mkdir()
+    virsh = binaries / "virsh"
+    virsh.write_text("""#!/usr/bin/env python3
+import os,sys,time
+from pathlib import Path
+args = sys.argv[1:]
+if args[:1] == ['-c']: args = args[2:]
+cmd = args[0] if args else ''
+if cmd in ('event', 'net-event', 'pool-event'):
+    with open(os.environ['VT_EVENT_PIDS'], 'a') as f: f.write(str(os.getpid()) + '\\n')
+    time.sleep(60)
+elif cmd == 'domstats':
+    print("Domain: 'vt-test-vm'\\n  state.state=5\\n  vcpu.current=1\\n  vcpu.maximum=1")
+elif cmd == 'dumpxml':
+    print('<domain><name>vt-test-vm</name><vcpu>1</vcpu><memory>1048576</memory><currentMemory>1048576</currentMemory><devices/></domain>')
+elif cmd in ('define', 'net-define'):
+    with open(os.environ['VT_DEFINE_CALLS'], 'a') as f: f.write(args[1] + '\\n')
+    print('validation failed intentionally', file=sys.stderr)
+    sys.exit(1)
+""", encoding="utf-8")
+    virsh.chmod(0o755)
+    install = binaries / "virt-install"
+    install.write_text("#!/bin/sh\necho '<domain><name>vt-test-new</name></domain>'\n", encoding="utf-8")
+    install.chmod(0o755)
+    editor = root / "editor.py"
+    editor.write_text("""import os,signal,sys
+from pathlib import Path
+with open(os.environ['VT_EDITOR_CALLS'], 'a') as f: f.write(str(os.getpid()) + '\\n')
+if os.environ.get('VT_EDITOR_SUSPEND'):
+    os.kill(os.getpid(), signal.SIGTSTP)
+""", encoding="utf-8")
+    master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 43, 174, 0, 0))
+    env = os.environ.copy()
+    env.update(TERM="xterm-256color", PATH=str(binaries) + os.pathsep + env.get("PATH", ""),
+               XDG_CONFIG_HOME=directory, XDG_STATE_HOME=directory, XDG_CACHE_HOME=directory,
+               EDITOR=f"python3 {editor}", VISUAL="", VT_EDITOR_CALLS=str(root / "editor-calls"),
+               VT_DEFINE_CALLS=str(root / "define-calls"), VT_EVENT_PIDS=str(root / "event-pids"))
+    if mode == "suspend":
+        env["VT_EDITOR_SUSPEND"] = "1"
+
+    def controlling_terminal():
+        os.setsid()
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+    child = subprocess.Popen([binary, "--connect", "test:///default"], stdin=slave, stdout=slave,
+                             stderr=slave, env=env, preexec_fn=controlling_terminal)
+
+    def pump(seconds, until=None):
+        output = bytearray()
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if until and until(output):
+                break
+            ready, _, _ = select.select([master], [], [], 0.05)
+            if ready:
+                try:
+                    chunk = os.read(master, 65536)
+                except OSError:
+                    break
+                output.extend(chunk)
+                if b"\x1b[6n" in chunk:
+                    os.write(master, b"\x1b[1;1R")
+        return output
+
+    stray = []
+    try:
+        out = pump(8, lambda o: b"vt-test-vm" in o)
+        assert b"vt-test-vm" in out, "fake domain did not appear"
+        if mode == "suspend":
+            calls = root / "editor-calls"
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline and not calls.exists():
+                os.write(master, b"e")
+                pump(0.4)
+            assert calls.exists(), "editor never started"
+            editor_pid = int(calls.read_text().split()[0])
+            pump(2.0)
+            print("editor state after 2s:", proc_state(editor_pid))
+            print("tui state after 2s:", proc_state(child.pid))
+            print("terminal foreground pgrp:", os.tcgetpgrp(master), "editor pgid:", os.getpgid(editor_pid),
+                  "tui pgid:", os.getpgid(child.pid))
+            os.write(master, b"qqq")
+            pump(1.0)
+            print("after typing keys -> editor:", proc_state(editor_pid), "tui alive:", child.poll() is None)
+            stray.append(editor_pid)
+        elif mode == "wizard-loop":
+            os.write(master, b" n")
+            pump(0.4)
+            os.write(master, b"\x05")
+            pump(4.0)
+            calls = (root / "editor-calls").read_text().split() if (root / "editor-calls").exists() else []
+            defines = (root / "define-calls").read_text().split() if (root / "define-calls").exists() else []
+            print("editor launches in 4s without any edit:", len(calls))
+            print("define attempts in 4s:", len(defines))
+        elif mode == "sighup":
+            pump(1.5)
+            pids = [int(p) for p in (root / "event-pids").read_text().split()]
+            print("event stream pids:", pids)
+            os.close(slave)
+            os.close(master)
+            master = slave = None
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("tui did not exit after hangup")
+            print("tui exit status:", child.returncode)
+            time.sleep(1.5)
+            alive = [p for p in pids if proc_state(p) not in (None, "Z")]
+            print("event processes still alive 1.5s after hangup:", alive)
+            stray.extend(alive)
+    finally:
+        for pid in stray:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        if child.poll() is None:
+            child.send_signal(signal.SIGTERM)
+            try:
+                child.wait(timeout=6)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+        for fd in (master, slave):
+            if fd is not None:
+                os.close(fd)

@@ -34,17 +34,8 @@ pub(super) fn wizard_host_facts(
             .filter(|n| n.active)
             .map(|n| n.name.clone())
             .collect(),
-        isos: store
-            .isos
-            .iter()
-            .filter_map(|i| {
-                store
-                    .pools
-                    .iter()
-                    .find(|p| p.name == i.pool)
-                    .map(|p| format!("{}/{}", p.path.trim_end_matches('/'), i.name))
-            })
-            .collect(),
+        isos: store.isos.iter().map(|i| i.path.clone()).collect(),
+        no_kvm: !std::path::Path::new("/dev/kvm").exists(),
     }
 }
 
@@ -65,6 +56,7 @@ pub(super) fn open_wizard(
         st.net_source = host.networks[0].clone();
     }
     st.host = host;
+    st.adapt_to_host();
     st.error.clear();
     *wizard = Some(st);
 }
@@ -97,6 +89,7 @@ pub(super) fn handle_wizard_key(
                     host,
                     ..Default::default()
                 };
+                wz.adapt_to_host();
             }
             KeyCode::Char('y') => {
                 let plan = crate::command::builders::install::virt_install(wz);
@@ -105,7 +98,7 @@ pub(super) fn handle_wizard_key(
             }
             KeyCode::Char('e') => {
                 wz.error = if demo || dry_run {
-                    let message = String::from("[dry-run] edit as XML  ── virt-install --print-xml");
+                    let message = String::from("[dry-run] edit as XML  ── virt-install --print-xml=1");
                     messages.push_action(message.clone(), &wz.name, true);
                     message
                 } else {
@@ -120,7 +113,7 @@ pub(super) fn handle_wizard_key(
     let field_kind = wz.kind(wz.focused());
     match key.code {
         KeyCode::Esc => {
-            wz.autosave();
+            wz.autosave_now();
             *wizard = None;
         }
         KeyCode::Tab | KeyCode::Down => wz.move_focus(1),

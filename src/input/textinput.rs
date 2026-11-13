@@ -66,6 +66,38 @@ impl TextInput {
         }
     }
 
+    /// Delete the character under the cursor.
+    pub fn delete(&mut self) {
+        if self.cursor < self.text.len() {
+            self.text.remove(self.cursor);
+        }
+    }
+
+    /// Cursor to the start (Home, `C-a`).
+    pub fn home(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// Cursor to the end (End, `C-e`).
+    pub fn end(&mut self) {
+        self.cursor = self.text.len();
+    }
+
+    /// `C-u`: delete everything before the cursor.
+    pub fn kill_to_start(&mut self) {
+        self.text.drain(..self.cursor);
+        self.cursor = 0;
+    }
+
+    /// `C-w`: delete the word before the cursor (and the spaces after it).
+    pub fn kill_word(&mut self) {
+        let before = &self.text[..self.cursor];
+        let trimmed = before.trim_end_matches(' ');
+        let start = trimmed.rfind(' ').map_or(0, |i| i + 1);
+        self.text.drain(start..self.cursor);
+        self.cursor = start;
+    }
+
     /// Replace the whole value (cursor at the end).
     pub fn set(&mut self, text: &str) {
         self.text = text.to_string();

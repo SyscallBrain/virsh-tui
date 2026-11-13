@@ -74,6 +74,8 @@ pub struct DomainRow {
     pub mem_sort_mib: u64,
     pub cpu_frac: f64,
     pub uptime: String,
+    /// Uptime in seconds (sorting); None when unknown or not running.
+    pub uptime_secs: Option<u64>,
     pub autostart: bool,
 }
 
@@ -113,6 +115,9 @@ pub struct DashboardState {
     pub visual_anchor: Option<usize>,
     /// `C-l`: the app loop clears and repaints the terminal.
     pub redraw_requested: bool,
+    /// Last `visible_rows` order, keyed by a fingerprint of everything it
+    /// depends on (it is asked for several times per frame).
+    visible_cache: std::cell::RefCell<Option<(u64, Vec<usize>)>>,
 }
 
 /// A `virsh shutdown` whose outcome is not known yet.
@@ -136,17 +141,13 @@ impl DashboardState {
             .map(|(name, state, vcpus, mem, cpu, up, auto, _)| DomainRow {
                 name: name.to_string(),
                 state: *state,
-                state_label: match state {
-                    DomainState::Running => "running",
-                    DomainState::Paused => "paused",
-                    DomainState::Crashed => "crashed",
-                    _ => "shut off",
-                },
+                state_label: state.label(),
                 vcpus: *vcpus,
                 mem_label: mem.to_string(),
                 mem_sort_mib: mem_mib(mem),
                 cpu_frac: *cpu,
                 uptime: up.to_string(),
+                uptime_secs: crate::backend::virsh::host_local::parse_uptime_label(up),
                 autostart: *auto,
             })
             .collect();
@@ -177,6 +178,7 @@ impl DashboardState {
             shutdowns: Vec::new(),
             visual_anchor: None,
             redraw_requested: false,
+            visible_cache: Default::default(),
         }
     }
 
@@ -187,17 +189,13 @@ impl DashboardState {
             .map(|s| DomainRow {
                 name: s.name.clone(),
                 state: s.state,
-                state_label: match s.state {
-                    DomainState::Running => "running",
-                    DomainState::Paused => "paused",
-                    DomainState::Crashed => "crashed",
-                    _ => "shut off",
-                },
+                state_label: s.state.label(),
                 vcpus: s.vcpus,
                 mem_label: format!("{:.1}/{:.1}G", mib_to_gib(s.mem_kib), mib_to_gib(s.max_mem_kib)),
                 mem_sort_mib: s.max_mem_kib / 1024,
                 cpu_frac: 0.0,
                 uptime: String::from("—"),
+                uptime_secs: None,
                 autostart: s.autostart,
             })
             .collect();
@@ -224,6 +222,7 @@ impl DashboardState {
             shutdowns: Vec::new(),
             visual_anchor: None,
             redraw_requested: false,
+            visible_cache: Default::default(),
         }
     }
 
@@ -232,8 +231,19 @@ impl DashboardState {
     /// domains that no longer exist.
     pub fn apply_summaries(&mut self, summaries: &[crate::model::DomainSummary]) {
         let selected = self.selected().name.clone();
-        let fresh = Self::from_summaries(summaries);
-        self.rows = fresh.rows;
+        let mut fresh = Self::from_summaries(summaries).rows;
+        // Carry the sampled columns over so the sort order (CPU, uptime) does
+        // not flip until the new sample is applied.
+        for row in &mut fresh {
+            if let Some(old) = self.rows.iter().find(|r| r.name == row.name) {
+                row.cpu_frac = old.cpu_frac;
+                if row.state == old.state {
+                    row.uptime.clone_from(&old.uptime);
+                    row.uptime_secs = old.uptime_secs;
+                }
+            }
+        }
+        self.rows = fresh;
         let names: HashSet<&str> = self.rows.iter().map(|r| r.name.as_str()).collect();
         self.marks.retain(|m| names.contains(m.as_str()));
         self.select_name(&selected);
@@ -294,20 +304,61 @@ impl DashboardState {
     }
     /// Rows after chip + text filter + sort (selection indexes into this list).
     pub fn visible_rows(&self) -> Vec<&DomainRow> {
-        let mut out: Vec<&DomainRow> = self
-            .rows
-            .iter()
-            .filter(|r| self.chip.matches(r.state))
-            .filter(|r| self.filter.is_empty() || r.name.to_lowercase().contains(&self.filter.to_lowercase()))
-            .collect();
-        match self.sort {
-            Sort::State => out.sort_by_key(|r| (state_rank(r.state), r.name.clone())),
-            Sort::Name => out.sort_by_key(|r| r.name.clone()),
-            Sort::Cpu => out.sort_by(|a, b| b.cpu_frac.total_cmp(&a.cpu_frac).then(a.name.cmp(&b.name))),
-            Sort::Mem => out.sort_by_key(|r| (u64::MAX - r.mem_sort_mib, r.name.clone())),
-            Sort::Uptime => out.sort_by_key(|r| r.uptime.clone()),
+        let key = self.visible_key();
+        if let Some((cached, order)) = self.visible_cache.borrow().as_ref()
+            && *cached == key
+        {
+            return order.iter().filter_map(|&i| self.rows.get(i)).collect();
         }
-        out
+        let filter = self.filter.to_lowercase();
+        let mut order: Vec<usize> = (0..self.rows.len())
+            .filter(|&i| self.chip.matches(self.rows[i].state))
+            .filter(|&i| filter.is_empty() || contains_ignore_case(&self.rows[i].name, &filter))
+            .collect();
+        let r = |i: &usize| &self.rows[*i];
+        match self.sort {
+            Sort::State => order.sort_by(|a, b| {
+                (state_rank(r(a).state), &r(a).name).cmp(&(state_rank(r(b).state), &r(b).name))
+            }),
+            Sort::Name => order.sort_by(|a, b| r(a).name.cmp(&r(b).name)),
+            Sort::Cpu => order.sort_by(|a, b| {
+                r(b).cpu_frac
+                    .total_cmp(&r(a).cpu_frac)
+                    .then(r(a).name.cmp(&r(b).name))
+            }),
+            Sort::Mem => order.sort_by(|a, b| {
+                r(b).mem_sort_mib
+                    .cmp(&r(a).mem_sort_mib)
+                    .then(r(a).name.cmp(&r(b).name))
+            }),
+            // Longest-running first; unknown uptimes last.
+            Sort::Uptime => order.sort_by(|a, b| {
+                r(b).uptime_secs
+                    .cmp(&r(a).uptime_secs)
+                    .then(r(a).name.cmp(&r(b).name))
+            }),
+        }
+        let rows = order.iter().map(|&i| &self.rows[i]).collect();
+        *self.visible_cache.borrow_mut() = Some((key, order));
+        rows
+    }
+
+    /// Fingerprint of the inputs of [`Self::visible_rows`].
+    fn visible_key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.filter.hash(&mut h);
+        (self.chip as u8).hash(&mut h);
+        (self.sort as u8).hash(&mut h);
+        self.rows.len().hash(&mut h);
+        for row in &self.rows {
+            row.name.hash(&mut h);
+            (row.state as u8).hash(&mut h);
+            row.cpu_frac.to_bits().hash(&mut h);
+            row.mem_sort_mib.hash(&mut h);
+            row.uptime_secs.hash(&mut h);
+        }
+        h.finish()
     }
 
     /// Selected domain (defaults to arch-dev).
@@ -321,6 +372,7 @@ impl DashboardState {
             mem_sort_mib: 0,
             cpu_frac: 0.0,
             uptime: String::new(),
+            uptime_secs: None,
             autostart: false,
         });
         let visible = self.visible_rows();
@@ -428,6 +480,19 @@ impl DashboardState {
     }
 }
 
+/// `hay` contains `needle_lower` (already lower-case), ignoring case,
+/// without allocating for ASCII names.
+fn contains_ignore_case(hay: &str, needle_lower: &str) -> bool {
+    if hay.is_ascii() && needle_lower.is_ascii() {
+        hay.as_bytes()
+            .windows(needle_lower.len().max(1))
+            .any(|w| w.eq_ignore_ascii_case(needle_lower.as_bytes()))
+            || needle_lower.is_empty()
+    } else {
+        hay.to_lowercase().contains(needle_lower)
+    }
+}
+
 fn state_rank(s: DomainState) -> u8 {
     match s {
         DomainState::Running => 0,
@@ -457,6 +522,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &DashboardState) {
     let area = frame.area();
     if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::TooSmall {
         crate::ui::layout::render_too_small(frame, theme);
+        return;
+    }
+    if crate::ui::layout::breakpoint(area.width, area.height) == crate::ui::layout::Breakpoint::Minimal {
+        render_minimal(frame, theme, state);
         return;
     }
     let rows = Layout::default()
@@ -1578,4 +1647,44 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &DashboardState, ar
 
 fn render_message(frame: &mut Frame, theme: &Theme, state: &DashboardState, area: Rect) {
     crate::ui::chrome::message_line(frame, theme, area, &state.message);
+}
+
+/// Small-terminal dashboard: one row per domain.
+fn render_minimal(frame: &mut Frame, theme: &Theme, state: &DashboardState) {
+    use crate::ui::views::minimal::{Row, col, render};
+    let t = &theme.tokens;
+    let rows: Vec<Row> = state
+        .visible_rows()
+        .iter()
+        .map(|r| {
+            let mark = if state.marks.contains(&r.name) { "●" } else { " " };
+            let color = match r.state {
+                DomainState::Running => t.green,
+                DomainState::Paused => t.yellow,
+                DomainState::Crashed => t.red,
+                _ => t.fg2,
+            };
+            Row::styled(
+                format!(
+                    "{mark}{}{}{:>4.0}% {}",
+                    col(&r.name, 22),
+                    col(r.state_label, 9),
+                    r.cpu_frac * 100.0,
+                    r.mem_label
+                ),
+                Style::default().fg(color),
+            )
+        })
+        .collect();
+    let selected = (!rows.is_empty()).then_some(state.selection);
+    render(
+        frame,
+        theme,
+        &format!("1 Domains · {}", state.uri),
+        &format!(" {}{}{:>5} MEM", col("NAME", 22), col("STATE", 9), "CPU"),
+        &rows,
+        selected,
+        " j/k ⏎ open s start S stop ? help : cmd",
+        &state.message,
+    );
 }

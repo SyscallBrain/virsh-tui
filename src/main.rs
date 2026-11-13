@@ -64,11 +64,25 @@ fn run_tui(cli: &Cli, config: &Config) -> Result<()> {
     let observed = shutdown.clone();
     let mut stdout = std::io::stdout();
     crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen)?;
+    crossterm::execute!(
+        stdout,
+        crossterm::terminal::EnterAlternateScreen,
+        crossterm::event::EnableBracketedPaste
+    )?;
     let result = runtime.block_on(app::run_with_shutdown(cli, config, shutdown));
+    // A hangup can make the last draw fail before the signal task records
+    // SIGHUP: give it a moment, so a closed terminal exits as 129 instead
+    // of reporting an I/O error to a stderr that no longer exists.
+    if result.is_err() && observed.borrow().is_none() {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     let signal = *observed.borrow();
     drop(runtime);
-    let _ = crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen);
+    let _ = crossterm::execute!(
+        stdout,
+        crossterm::event::DisableBracketedPaste,
+        crossterm::terminal::LeaveAlternateScreen
+    );
     let _ = crossterm::terminal::disable_raw_mode();
     if let Some(signal) = signal {
         std::process::exit(128 + signal);
@@ -84,10 +98,16 @@ fn install_signal_hook() -> Result<tokio::sync::watch::Receiver<Option<i32>>> {
         use tokio::signal::unix::{SignalKind, signal};
         let mut sigint = signal(SignalKind::interrupt())?;
         let mut sigterm = signal(SignalKind::terminate())?;
+        // A closed terminal (SIGHUP) or SIGQUIT must also stop the children
+        // (they run in their own process groups and would be orphaned).
+        let mut sighup = signal(SignalKind::hangup())?;
+        let mut sigquit = signal(SignalKind::quit())?;
         tokio::spawn(async move {
             let signal = tokio::select! {
                 _ = sigint.recv() => libc::SIGINT,
                 _ = sigterm.recv() => libc::SIGTERM,
+                _ = sighup.recv() => libc::SIGHUP,
+                _ = sigquit.recv() => libc::SIGQUIT,
             };
             virsh_tui::app::external::notify_shutdown();
             let _ = sender.send(Some(signal));
@@ -101,21 +121,36 @@ fn install_signal_hook() -> Result<tokio::sync::watch::Receiver<Option<i32>>> {
 fn install_panic_hook() {
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::terminal::disable_raw_mode();
-        hook(info);
+        // Worker tasks (jobs, reads) may panic and the app reports and
+        // survives that: only a main-thread panic ends the TUI, so only then
+        // is the terminal handed back.
+        if std::thread::current().name() == Some("main") {
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+            let _ = crossterm::terminal::disable_raw_mode();
+            hook(info);
+        } else {
+            tracing::error!("background task panicked: {info}");
+        }
     }));
 }
 
+/// Log to `$XDG_STATE_HOME/virsh-tui/virsh-tui.log` (appending; the previous
+/// log is kept as `.old` past 4 MiB). Logging is best effort: without a state
+/// directory, or when the file cannot be opened, the app runs without it.
 fn init_logging() -> Result<()> {
-    let dir = directories::ProjectDirs::from("", "", "virsh-tui")
+    let Some(dir) = directories::ProjectDirs::from("", "", "virsh-tui")
         .and_then(|d| d.state_dir().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join("virsh-tui.log");
-    if let Some(parent) = dir.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    else {
+        return Ok(());
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("virsh-tui.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 * 1024 * 1024) {
+        let _ = std::fs::rename(&path, dir.join("virsh-tui.log.old"));
     }
-    let file = std::fs::File::create(&dir)?;
+    let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) else {
+        return Ok(());
+    };
     tracing_subscriber::fmt()
         // RUST_LOG overrides the default level (e.g. RUST_LOG=virsh_tui=debug).
         .with_env_filter(

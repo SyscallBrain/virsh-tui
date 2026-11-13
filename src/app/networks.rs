@@ -45,6 +45,7 @@ pub(super) fn dispatch_networks(
                 .collect();
             *confirm = Some((
                 crate::ui::overlays::confirm::Confirm {
+                    kind: crate::ui::overlays::confirm::ConfirmKind::Always,
                     title: String::from("⚠ Destroy network"),
                     question: format!("Destroy network {name}?"),
                     commands,
@@ -73,6 +74,7 @@ pub(super) fn dispatch_networks(
                 .collect();
             *confirm = Some((
                 crate::ui::overlays::confirm::Confirm {
+                    kind: crate::ui::overlays::confirm::ConfirmKind::Always,
                     title: String::from("⚠ Undefine network"),
                     question: format!("Undefine network {name}?"),
                     commands,
@@ -102,9 +104,13 @@ pub(super) fn dispatch_networks(
             }
         }
         A::YankIp => {
-            if let Some(l) = nets.selected_lease() {
-                copy_text(&l.ip);
-            }
+            nets.message = match nets.selected_lease().map(|l| l.ip.clone()) {
+                Some(ip) => {
+                    copy_text(&ip);
+                    format!("✓ Copied IP {ip}")
+                }
+                None => String::from("✗ no lease selected"),
+            };
         }
         A::Open if nets.focus == NetFocus::Leases => {
             // The app loop opens the real domain (needs the dashboard selection).
@@ -200,7 +206,11 @@ pub(super) fn handle_networks_key(
                 }
                 return true;
             }
-            KeyCode::Char(c) if key.modifiers.is_empty() => {
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
                 if let Some(form) = nets.new_form.as_mut() {
                     if let Some(f) = form.fields.get_mut(form.focus) {
                         f.current.push(c);
@@ -278,15 +288,49 @@ pub(super) fn prepare_network_create(
     if nets.networks.iter().any(|n| n.name == name) {
         return Err(format!("✗ a network named {name} already exists"));
     }
+    // Linux interface names: at most 15 bytes, no `/` or whitespace.
+    if bridge.is_empty()
+        || bridge.len() > 15
+        || !bridge
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    {
+        return Err(format!(
+            "✗ invalid bridge name `{bridge}` (1-15 characters: letters, digits, - _ .)"
+        ));
+    }
+    // Bridge mode attaches to an existing host bridge: no addressing.
+    if mode == "bridge" {
+        let xml = nb::define_xml(&name, &mode, &bridge, &cidr, "", "", &dns);
+        return Ok((name, xml));
+    }
+    let Some((network, broadcast)) = nb::subnet_bounds(&cidr) else {
+        return Err(format!(
+            "✗ invalid IPv4 CIDR `{cidr}` (e.g. 192.168.100.0/24, prefix 8-30)"
+        ));
+    };
+    let gateway = nb::gateway_for(&cidr).map(u32::from).unwrap_or(network + 1);
     let typed = get("dhcp");
-    let parsed = typed
-        .split_once('–')
-        .or_else(|| typed.split_once('-'))
-        .map(|(a, b)| (a.trim().to_string(), b.trim().to_string()))
-        .filter(|(a, b)| a.parse::<std::net::Ipv4Addr>().is_ok() && b.parse::<std::net::Ipv4Addr>().is_ok());
-    let (start, end) = parsed
-        .or_else(|| crate::ui::views::networks::dhcp_range(&cidr))
-        .ok_or_else(|| format!("✗ invalid IPv4 CIDR {cidr}"))?;
+    let (start, end) = if typed.trim().is_empty() {
+        nb::default_dhcp_range(&cidr).ok_or_else(|| format!("✗ {cidr} has no room for DHCP"))?
+    } else {
+        let (a, b) = typed
+            .split_once('–')
+            .or_else(|| typed.split_once('-'))
+            .map(|(a, b)| (a.trim().to_string(), b.trim().to_string()))
+            .ok_or_else(|| format!("✗ invalid DHCP range `{typed}` (start – end)"))?;
+        let (Ok(sa), Ok(sb)) = (a.parse::<std::net::Ipv4Addr>(), b.parse::<std::net::Ipv4Addr>()) else {
+            return Err(format!("✗ invalid DHCP range `{typed}`"));
+        };
+        let (sa, sb) = (u32::from(sa), u32::from(sb));
+        if sa > sb || sa <= network || sb >= broadcast || (sa..=sb).contains(&gateway) {
+            return Err(format!(
+                "✗ DHCP range {a} – {b} must lie inside {cidr}, without the gateway {}",
+                std::net::Ipv4Addr::from(gateway)
+            ));
+        }
+        (a, b)
+    };
     let xml = nb::define_xml(&name, &mode, &bridge, &cidr, &start, &end, &dns);
     Ok((name, xml))
 }

@@ -13,6 +13,10 @@ use tokio::{
 
 const OUTPUT_LIMIT: usize = 1024 * 1024;
 
+/// Cap for structured reads whose size grows with the number of objects
+/// (`domstats` on a host with hundreds of guests easily passes 1 MiB).
+pub const LARGE_OUTPUT_LIMIT: usize = 64 * 1024 * 1024;
+
 /// Collected output; excess bytes are drained but not retained.
 #[derive(Debug)]
 pub struct StepOutput {
@@ -90,6 +94,9 @@ async fn observe_exit(id: u32) -> std::io::Result<()> {
     let wait_id: libc::id_t = id.into();
     #[cfg(not(target_os = "freebsd"))]
     let wait_id: libc::id_t = id;
+    // Quick commands are noticed within ~10 ms; long jobs (uploads,
+    // migrations) settle at one check every 250 ms instead of 100 per second.
+    let mut delay = Duration::from_millis(10);
     loop {
         let exited = {
             let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -109,7 +116,8 @@ async fn observe_exit(id: u32) -> std::io::Result<()> {
         if exited {
             return Ok(());
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(delay).await;
+        delay = (delay * 3 / 2).min(Duration::from_millis(250));
     }
 }
 
@@ -130,21 +138,31 @@ impl Drop for ProcessGroup {
     }
 }
 
-async fn drain(mut input: impl AsyncRead + Unpin) -> std::io::Result<(Vec<u8>, bool)> {
-    let mut output = Vec::new();
+/// Output collected so far by a [`drain`] task (kept when it is aborted).
+type Sink = std::sync::Arc<std::sync::Mutex<(Vec<u8>, bool)>>;
+
+async fn drain(mut input: impl AsyncRead + Unpin, limit: usize, sink: Sink) -> std::io::Result<()> {
     let mut buf = [0; 8192];
-    let mut truncated = false;
     loop {
         let n = input.read(&mut buf).await?;
         if n == 0 {
             break;
         }
-        let keep = n.min(OUTPUT_LIMIT.saturating_sub(output.len()));
-        output.extend_from_slice(&buf[..keep]);
-        truncated |= keep < n;
+        let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+        let keep = n.min(limit.saturating_sub(guard.0.len()));
+        guard.0.extend_from_slice(&buf[..keep]);
+        guard.1 |= keep < n;
     }
-    Ok((output, truncated))
+    Ok(())
 }
+
+fn take_sink(sink: &Sink) -> (Vec<u8>, bool) {
+    std::mem::take(&mut *sink.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// After the process exits, a descendant that left its process group may
+/// still hold stdout/stderr open: stop waiting for EOF after this long.
+const DRAIN_GRACE: Duration = Duration::from_secs(2);
 
 /// Run one captured step, cancelling the owned process group when requested.
 pub async fn run_step(
@@ -166,7 +184,21 @@ pub async fn run_step_with_timeout(
     control: &mut watch::Receiver<bool>,
     limit: Duration,
 ) -> Result<StepOutput, RunError> {
-    run_step_inner(uri, step, control, limit, || {}).await
+    run_step_inner(uri, step, control, limit, OUTPUT_LIMIT, || {}).await
+}
+
+/// [`run_step`] keeping up to `out_limit` bytes of stdout.
+pub async fn run_step_with_output_limit(
+    uri: &str,
+    step: &CommandStep,
+    control: &mut watch::Receiver<bool>,
+    out_limit: usize,
+) -> Result<StepOutput, RunError> {
+    let limit = crate::backend::virsh::exec::timeout_for(
+        &step.program,
+        step.argv.first().map(String::as_str).unwrap_or(""),
+    );
+    run_step_inner(uri, step, control, limit, out_limit, || {}).await
 }
 
 pub(super) async fn run_step_with_started(
@@ -179,7 +211,7 @@ pub(super) async fn run_step_with_started(
         &step.program,
         step.argv.first().map(String::as_str).unwrap_or(""),
     );
-    run_step_inner(uri, step, control, limit, started).await
+    run_step_inner(uri, step, control, limit, OUTPUT_LIMIT, started).await
 }
 
 async fn run_step_inner(
@@ -187,6 +219,7 @@ async fn run_step_inner(
     step: &CommandStep,
     control: &mut watch::Receiver<bool>,
     limit: Duration,
+    out_limit: usize,
     started: impl FnOnce(),
 ) -> Result<StepOutput, RunError> {
     if *control.borrow() {
@@ -217,8 +250,14 @@ async fn run_step_inner(
         .stderr
         .take()
         .ok_or_else(|| std::io::Error::other("missing stderr"))?;
-    let mut out = tokio::spawn(drain(stdout));
-    let mut err = tokio::spawn(drain(stderr));
+    let out_sink = Sink::default();
+    let err_sink = Sink::default();
+    let mut out = tokio::spawn(drain(stdout, out_limit, out_sink.clone()));
+    let mut err = tokio::spawn(drain(stderr, OUTPUT_LIMIT, err_sink.clone()));
+    // Armed (reset to now + DRAIN_GRACE) once the process has exited.
+    let grace = tokio::time::sleep(Duration::from_secs(365 * 24 * 3600));
+    tokio::pin!(grace);
+    let mut grace_armed = false;
     let timeout = tokio::time::sleep(limit);
     tokio::pin!(timeout);
     let portable_child_id = child.id().unwrap_or_default();
@@ -227,7 +266,18 @@ async fn run_step_inner(
     let mut stdout = None;
     let mut stderr = None;
     while status.is_none() || stdout.is_none() || stderr.is_none() {
+        if status.is_some() && !grace_armed {
+            grace_armed = true;
+            grace.as_mut().reset(tokio::time::Instant::now() + DRAIN_GRACE);
+        }
         tokio::select! {
+            _ = &mut grace, if grace_armed => {
+                // The leader is gone; keep what was read and stop waiting.
+                out.abort();
+                err.abort();
+                stdout.get_or_insert(());
+                stderr.get_or_insert(());
+            },
             result = observe_exit(portable_child_id), if status.is_none() && cfg!(any(target_os = "linux", target_os = "macos", target_os = "freebsd", target_os = "netbsd")) => {
                 if let Err(error) = result {
                     #[cfg(unix)] { group.leader_reaped = true; }
@@ -241,8 +291,8 @@ async fn run_step_inner(
                 status = Some(result?);
                 #[cfg(unix)] { group.leader_reaped = true; }
             },
-            result = &mut out, if stdout.is_none() => stdout = Some(result??),
-            result = &mut err, if stderr.is_none() => stderr = Some(result??),
+            result = &mut out, if stdout.is_none() => { result??; stdout = Some(()); },
+            result = &mut err, if stderr.is_none() => { result??; stderr = Some(()); },
             _ = &mut timeout => {
                 #[cfg(unix)] group.signal(libc::SIGKILL);
                 if status.is_none() {
@@ -282,8 +332,8 @@ async fn run_step_inner(
         }
     }
     let status = status.ok_or_else(|| std::io::Error::other("missing process status"))?;
-    let (stdout, stdout_truncated) = stdout.ok_or_else(|| std::io::Error::other("missing stdout result"))?;
-    let (stderr, stderr_truncated) = stderr.ok_or_else(|| std::io::Error::other("missing stderr result"))?;
+    let (stdout, stdout_truncated) = take_sink(&out_sink);
+    let (stderr, stderr_truncated) = take_sink(&err_sink);
     Ok(StepOutput {
         status,
         stdout,

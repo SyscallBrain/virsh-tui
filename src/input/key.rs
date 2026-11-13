@@ -25,6 +25,20 @@ impl KeySeq {
     pub fn token(&self) -> &str {
         &self.0
     }
+
+    /// A token a key press can produce (keymap.toml validation): one
+    /// character, `C-x`, `A-x`, or a named key.
+    pub fn is_valid(&self) -> bool {
+        let t = self.0.as_str();
+        let single = |s: &str| s.chars().count() == 1;
+        single(t)
+            || t.strip_prefix("C-").is_some_and(single)
+            || t.strip_prefix("A-").is_some_and(single)
+            || matches!(
+                t,
+                "Space" | "Enter" | "Esc" | "Tab" | "S-Tab" | "Backspace" | "Up" | "Down" | "Left" | "Right"
+            )
+    }
 }
 
 fn normalize_token(s: &str) -> String {

@@ -23,6 +23,18 @@ pub enum DomainState {
 }
 
 impl DomainState {
+    /// Lower-case label used in tables (`running`, `shut off`, `pmsuspended`).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Paused => "paused",
+            Self::Crashed => "crashed",
+            Self::ShutOff => "shut off",
+            Self::PmSuspended => "pmsuspended",
+            Self::Other => "other",
+        }
+    }
+
     /// Glyph used in tables.
     pub fn glyph(self) -> char {
         self.glyph_in(crate::theme::IconSet::Unicode)
@@ -127,12 +139,20 @@ impl DomainConfig {
 }
 
 /// Domain disk device.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiskInfo {
     pub target: String,
     pub source: String,
     pub device: String,
     pub bus: String,
+    /// `<driver type=…>` (qcow2, raw, …).
+    #[serde(default)]
+    pub format: String,
+    /// `<source pool=… volume=…>` (volume disks).
+    #[serde(default)]
+    pub pool: String,
+    #[serde(default)]
+    pub volume: String,
 }
 
 /// Domain NIC.
@@ -142,6 +162,9 @@ pub struct NicInfo {
     pub source: String,
     pub model: String,
     pub target: String,
+    /// `<link state='down'/>`.
+    #[serde(default)]
+    pub link_down: bool,
 }
 
 /// Graphics device.
@@ -222,6 +245,9 @@ pub struct Snapshot {
     pub name: String,
     pub parent: Option<String>,
     pub state: String,
+    /// `Creation Time` column (`2026-09-01 10:00:00 +0000`).
+    #[serde(default)]
+    pub created: String,
 }
 
 /// Host static info (subset).

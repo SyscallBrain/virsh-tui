@@ -12,6 +12,15 @@ fn name_validation() {
 fn osinfo_autodetect() {
     use virsh_tui::ui::overlays::wizard::detect_os;
     assert_eq!(detect_os("Fedora-WS-Live-42.iso"), Some("fedora42".to_string()));
+    assert_eq!(
+        detect_os("/isos/Fedora-Server-dvd-x86_64-41-1.4.iso"),
+        Some("fedora41".to_string())
+    );
+    assert_eq!(detect_os("Archcraft-Linux-2026.08-desktop.iso"), None);
+    assert_eq!(
+        detect_os("ubuntu-24.04.1-live-server-amd64.iso"),
+        Some("ubuntu24.04".to_string())
+    );
     assert_eq!(detect_os("random.bin"), None);
 }
 
@@ -70,4 +79,57 @@ fn fresh_wizard_has_sane_defaults_and_validation() {
         ..Default::default()
     };
     assert!(st.problems().is_empty());
+}
+
+/// Regression: without /dev/kvm, libvirt rejects `--cpu host-passthrough`
+/// ("CPU mode 'host-passthrough' … is not supported by hypervisor").
+#[test]
+fn without_kvm_the_wizard_avoids_host_passthrough() {
+    use virsh_tui::ui::overlays::wizard::{HostFacts, WizardState};
+    let mut st = WizardState {
+        name: String::from("vm"),
+        iso_path: String::from("/isos/a.iso"),
+        cpu_model: String::from("host-passthrough"),
+        host: HostFacts {
+            no_kvm: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let problems = st.problems();
+    assert!(
+        problems.iter().any(|(s, m)| *s == 2 && m.contains("KVM")),
+        "host-passthrough without KVM must block creation: {problems:?}"
+    );
+    st.adapt_to_host();
+    assert_eq!(st.cpu_model, "host-model");
+    assert!(st.problems().is_empty());
+
+    // With KVM the default stays host-passthrough.
+    let mut st = WizardState::default();
+    st.adapt_to_host();
+    assert_eq!(st.cpu_model, "host-passthrough");
+}
+
+/// Regression: virt-install prints WARNING lines before the real ERROR, and
+/// the job summary showed the warning instead of the cause.
+#[test]
+fn stderr_summary_prefers_the_error_line() {
+    use virsh_tui::command::job::stderr_summary;
+    let stderr = "WARNING  KVM acceleration not available, using 'qemu'\n\
+                  WARNING  Using --osinfo generic\n\
+                  ERROR    unsupported configuration: CPU mode 'host-passthrough' is not supported\n\
+                  Domain installation does not appear to have been successful.\n";
+    assert_eq!(
+        stderr_summary(stderr),
+        "unsupported configuration: CPU mode 'host-passthrough' is not supported"
+    );
+    // virsh style: keep the first error line.
+    assert_eq!(
+        stderr_summary("error: failed to get domain 'x'\nerror: Domain not found\n"),
+        "error: failed to get domain 'x'"
+    );
+    // No error marker: fall back to the first non-empty line.
+    assert_eq!(stderr_summary("\nsomething broke\n"), "something broke");
+    assert_eq!(stderr_summary(""), "unknown error");
 }
