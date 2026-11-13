@@ -2,7 +2,7 @@
 source: tests/p10_snapshots.rs
 expression: "buffer_text(120, 36, &state)"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:36:02  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events     ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:36:02  
  ╭ Pools ─────────────────────────────────────────────────────────────────────────────────────────────── 5 · 4 active ╮ 
  │ ● default  dir · /var/lib/libvirt/images                                                                           │ 
  │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 612 / 931 GiB                                                                 │ 

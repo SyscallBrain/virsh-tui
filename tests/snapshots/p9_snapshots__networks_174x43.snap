@@ -2,7 +2,7 @@
 source: tests/p9_snapshots.rs
 expression: "buffer_text(174, 43, &state)"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:35:12  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                           ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:35:12  
  ╭ Virtual networks ──────────────────────────────────────── 3/4 active ╮ ╭ default ────────── ● active · autostart · persistent ╮ ╭ Traffic · virbr0 ───────────────── ↓/↑ ╮ 
  │   NAME          MODE      BRIDGE      SUBNET             A           │ │ uuid      4a1c6e3b-7d2e-4f0a-9b1c-93d0be1c7f02       │ │ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⠀⠀⠀⣴⡀⠀⠀⠀⠀⠀⠀⠀ │ 
  │ ▌ ● default       nat       virbr0      192.168.122.0/24   ✓         │ │ forward   nat → enp6s0 · ports 1024-65535            │ │ ⢠⣶⣶⣷⣄⣀⣠⣀⠀⡀⣤⣶⣦⣤⣴⣾⣦⣶⣄⡀⡀⢠⣾⣿⣷⣴⣶⣤⣾⣿⣿⣿⣦⣠⣦⣤⣄⢀ │ 

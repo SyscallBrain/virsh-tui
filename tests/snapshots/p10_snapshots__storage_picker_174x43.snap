@@ -2,7 +2,7 @@
 source: tests/p10_snapshots.rs
 expression: "buffer_text(174, 43, &state)"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:36:02  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                           ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:36:02  
  ╭ Pools ───────────────────────────────────── 5 · 4 active ╮ ╭ Volumes · nvme-fast ───────────────────────────────────────────────────────────── 9 volumes · 1.2 / 1.8 TiB ╮ 
  │ ● default  dir · /var/lib/libvirt/images                 │ │   NAME                     FORMAT  CAPACITY  ALLOC     USAGE         USED BY                                │ 
  │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 612 / 931 GiB       │ │ ▌ arch-dev.qcow2           qcow2   120G      48.2G     ━━━━━━━━━━━ arch-dev                                 │ 

@@ -3,7 +3,7 @@
 ## Screen layout
 
 ```text
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events     ⌁ qemu:///system │ host │ ⟳ 1s │ 14:32
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events     ⌁ qemu:///system │ host │ ⟳ 1s │ 14:32
  ╭ panels … ╮
  │          │
  ╰──────────╯

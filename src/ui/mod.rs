@@ -59,29 +59,10 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &ChromeState) {
 
 fn render_topbar(frame: &mut Frame, theme: &Theme, state: &ChromeState, area: ratatui::layout::Rect) {
     let t = &theme.tokens;
-    let mut spans = vec![Span::styled(
-        " ◆ virsh-tui ",
-        Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
-    )];
+    let mut spans = chrome::brand_spans(theme);
     for (i, tab) in TABS.iter().enumerate() {
-        if i == state.active_tab {
-            spans.push(Span::styled(
-                format!(" {tab} "),
-                Style::default().fg(t.blue).bg(t.bg).add_modifier(Modifier::BOLD),
-            ));
-        } else {
-            let mut parts = tab.splitn(2, ' ');
-            let n = parts.next().unwrap_or("");
-            let label = parts.next().unwrap_or("");
-            spans.push(Span::styled(
-                format!(" {n}"),
-                Style::default().fg(t.orange).bg(t.bg2),
-            ));
-            spans.push(Span::styled(
-                format!(" {label} "),
-                Style::default().fg(t.comment).bg(t.bg2),
-            ));
-        }
+        let (n, label) = tab.split_once(' ').unwrap_or((tab, ""));
+        spans.extend(chrome::tab_spans(theme, n, label, i == state.active_tab));
     }
     let right = format!(" ⌁ {}  │  {}  │  ⟳ 1s  │  14:32:07 ", state.uri, state.hostname);
     spans.push(Span::styled(right, Style::default().fg(t.fg2).bg(t.bg2)));

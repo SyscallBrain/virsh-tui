@@ -2,7 +2,7 @@
 source: tests/p9_snapshots.rs
 expression: "buffer_text(120, 36, &state)"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:35:12  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events     ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:35:12  
  ╭ Virtual networks ────────────────────────────────────────────────────────────────────────────────────── 3/4 active ╮ 
  │   NAME          MODE      BRIDGE      SUBNET             A                                                         │ 
  │ ▌ ● default       nat       virbr0      192.168.122.0/24   ✓                                                       │ 

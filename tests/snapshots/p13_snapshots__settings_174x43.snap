@@ -2,7 +2,7 @@
 source: tests/p13_snapshots.rs
 expression: text
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                                                     ⚙ settings  │  14:40:03  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                                                    ⚙ settings  │  14:40:03  
  ╭ Settings ─────────────────╮ ╭ Theme ───────────────────────────── 9 built-in ╮ ╭ Appearance ─────────────────────────────────────────────────────────────────────────────╮ 
  │ ⚙ General                 │ │ ❯ tokyo-night ████████████████                 │ │ Borders                                                                                 │ 
  │ ◐ Appearance              │ │   tokyo-night-storm ████████████████           │ │ (●) ╭─╮ rounded ( ) ┌─┐ plain ( ) ╔═╗ double ( ) ┏━┓ thick                              │ 

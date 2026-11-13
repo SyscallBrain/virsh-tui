@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="657" height="120" viewBox="0 0 657.00 120.00" role="img" aria-label="virsh-tui">
+  <title>virsh-tui</title>
+  <rect width="657.00" height="120.00" rx="26.4" fill="#1a1b26"/>
+  <g transform="translate(24,12)">
+    <!-- running blade: prompt and cursor -->
+    <rect x="9.0" y="9.0" width="78.0" height="22.5" rx="6.0" fill="#24283b" stroke="#7aa2f7" stroke-width="3.9"/>
+    <circle cx="21.0" cy="20.25" r="3.9" fill="#9ece6a"/>
+    <path d="M33.0,15.0 L40.5,20.25 L33.0,25.5" fill="none" stroke="#9ece6a" stroke-width="3.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="46.5" y="22.5" width="13.5" height="4.5" rx="1.5" fill="#7dcfff"/>
+    <!-- paused blade -->
+    <rect x="9.0" y="37.5" width="78.0" height="22.5" rx="6.0" fill="#24283b" stroke="#3b4261" stroke-width="3.9"/>
+    <circle cx="21.0" cy="48.75" r="3.9" fill="#e0af68"/>
+    <rect x="33.0" y="46.8" width="42.0" height="3.9" rx="1.95" fill="#3b4261"/>
+    <!-- shut off blade -->
+    <rect x="9.0" y="66.0" width="78.0" height="22.5" rx="6.0" fill="#24283b" stroke="#3b4261" stroke-width="3.9"/>
+    <circle cx="21.0" cy="77.25" r="3.9" fill="#565f89"/>
+    <rect x="33.0" y="75.3" width="42.0" height="3.9" rx="1.95" fill="#3b4261"/>
+  </g>
+  <g transform="translate(148,28.5)">
+  <g fill="#c0caf5" shape-rendering="crispEdges">
+    <rect x="0.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="36.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="0.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="36.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="0.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="36.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="9.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="27.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="18.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="72.00" y="0.00" width="9.00" height="9.00"/>
+    <rect x="63.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="72.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="72.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="72.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="72.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="63.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="72.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="81.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="108.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="126.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="135.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="108.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="117.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="144.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="108.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="108.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="108.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="171.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="180.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="189.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="198.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="162.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="171.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="180.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="189.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="198.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="162.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="171.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="180.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="189.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="0.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="9.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="234.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="243.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="225.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="252.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="252.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="252.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="216.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="252.00" y="54.00" width="9.00" height="9.00"/>
+  </g>
+  <g fill="#565f89" shape-rendering="crispEdges">
+    <rect x="270.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="279.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="288.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="297.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="306.00" y="27.00" width="9.00" height="9.00"/>
+  </g>
+  <g fill="#7aa2f7" shape-rendering="crispEdges">
+    <rect x="333.00" y="0.00" width="9.00" height="9.00"/>
+    <rect x="333.00" y="9.00" width="9.00" height="9.00"/>
+    <rect x="324.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="333.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="342.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="351.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="333.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="333.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="333.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="360.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="342.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="351.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="378.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="414.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="378.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="414.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="378.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="414.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="378.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="405.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="414.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="387.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="396.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="414.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="450.00" y="0.00" width="9.00" height="9.00"/>
+    <rect x="441.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="450.00" y="18.00" width="9.00" height="9.00"/>
+    <rect x="450.00" y="27.00" width="9.00" height="9.00"/>
+    <rect x="450.00" y="36.00" width="9.00" height="9.00"/>
+    <rect x="450.00" y="45.00" width="9.00" height="9.00"/>
+    <rect x="441.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="450.00" y="54.00" width="9.00" height="9.00"/>
+    <rect x="459.00" y="54.00" width="9.00" height="9.00"/>
+  </g>
+  </g>
+</svg>
