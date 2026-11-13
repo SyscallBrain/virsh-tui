@@ -24,7 +24,8 @@ body{margin:0}
 .d{color:var(--comment)}.f2{color:var(--fg2)}.k{color:var(--orange);font-weight:700}
 .bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
 .tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
-.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+.tab.on{background:var(--blue);color:var(--bg2);font-weight:700}
+.tab.on b{color:var(--bg2)}
 .tab b{color:var(--orange)}
 .itab{padding:0 10px;color:var(--comment);white-space:pre}
 .itab.on{background:var(--sel);color:var(--fg);font-weight:700}
@@ -41,7 +42,7 @@ body{margin:0}
 <div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; {{vars}}">
 
   <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
-    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span style="color: var(--blue); font-weight: 700; line-height: 28px"> ▤ virsh-tui </span><span style="color: var(--gutter)">│</span>
     <span class="tab on"><b>1</b> Domains</span>
     <span class="tab"><b>2</b> Host</span>
     <span class="tab"><b>3</b> Networks</span>

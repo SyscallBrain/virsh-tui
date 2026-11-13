@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64.00 64.00" role="img" aria-label="virsh-tui">
+  <title>virsh-tui</title>
+  <rect width="64.00" height="64.00" rx="14.08" fill="#1a1b26"/>
+  <g transform="translate(4,4)">
+    <!-- running blade: prompt and cursor -->
+    <rect x="5.25" y="5.25" width="45.5" height="13.125" rx="3.5" fill="#24283b" stroke="#7aa2f7" stroke-width="2.275"/>
+    <circle cx="12.25" cy="11.812" r="2.275" fill="#9ece6a"/>
+    <path d="M19.25,8.75 L23.625,11.812 L19.25,14.875" fill="none" stroke="#9ece6a" stroke-width="2.275" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="27.125" y="13.125" width="7.875" height="2.625" rx="0.875" fill="#7dcfff"/>
+    <!-- paused blade -->
+    <rect x="5.25" y="21.875" width="45.5" height="13.125" rx="3.5" fill="#24283b" stroke="#3b4261" stroke-width="2.275"/>
+    <circle cx="12.25" cy="28.438" r="2.275" fill="#e0af68"/>
+    <rect x="19.25" y="27.3" width="24.5" height="2.275" rx="1.137" fill="#3b4261"/>
+    <!-- shut off blade -->
+    <rect x="5.25" y="38.5" width="45.5" height="13.125" rx="3.5" fill="#24283b" stroke="#3b4261" stroke-width="2.275"/>
+    <circle cx="12.25" cy="45.062" r="2.275" fill="#565f89"/>
+    <rect x="19.25" y="43.925" width="24.5" height="2.275" rx="1.137" fill="#3b4261"/>
+  </g>
+</svg>

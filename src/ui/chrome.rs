@@ -47,7 +47,40 @@ fn now_hms() -> String {
     jiff::Zoned::now().strftime("%H:%M:%S").to_string()
 }
 
-/// Top bar: logo pill, tabs (`active` highlighted), right-aligned
+/// The brand at the left of the top bar: the logo glyph `▤` (a rack of VMs,
+/// as in the logo) and the name in bold blue on the bar, then a `│` divider.
+pub fn brand_spans(theme: &Theme) -> Vec<Span<'static>> {
+    let t = &theme.tokens;
+    vec![
+        Span::styled(
+            " ▤ virsh-tui ",
+            Style::default().fg(t.blue).bg(t.bg2).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("│", Style::default().fg(t.gutter).bg(t.bg2)),
+    ]
+}
+
+/// One tab. The active tab is a solid blue pill (`bg2` text, bold) so focus
+/// reads at a glance; the others are an orange number and a dim name.
+pub fn tab_spans(theme: &Theme, n: &str, label: &str, on: bool) -> Vec<Span<'static>> {
+    let t = &theme.tokens;
+    if on {
+        let pill = Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD);
+        return vec![Span::styled(format!(" {n} {label} "), pill)];
+    }
+    vec![
+        Span::styled(
+            format!(" {n}"),
+            Style::default()
+                .fg(t.orange)
+                .bg(t.bg2)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!(" {label} "), Style::default().fg(t.comment).bg(t.bg2)),
+    ]
+}
+
+/// Top bar: brand, tabs (`active` highlighted), right-aligned
 /// `⌁ uri │ host │ ⟳ Ns │ HH:MM:SS`. `demo_time` is the mockup clock.
 pub fn topbar(
     frame: &mut Frame,
@@ -60,23 +93,9 @@ pub fn topbar(
 ) {
     let t = &theme.tokens;
     let bar = Style::default().bg(t.bg2);
-    let mut left = vec![Span::styled(
-        " ◆ virsh-tui ",
-        Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
-    )];
+    let mut left = brand_spans(theme);
     for (i, (n, label)) in TABS.iter().enumerate() {
-        let on = active == Some(i);
-        let bg = if on { t.bg } else { t.bg2 };
-        let label_style = if on {
-            Style::default().fg(t.blue).bg(bg).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(t.comment).bg(bg)
-        };
-        left.push(Span::styled(
-            format!(" {n}"),
-            Style::default().fg(t.orange).bg(bg).add_modifier(Modifier::BOLD),
-        ));
-        left.push(Span::styled(format!(" {label} "), label_style));
+        left.extend(tab_spans(theme, n, label, active == Some(i)));
     }
     let (host, refresh, time) = match LIVE.get() {
         Some(l) => (l.hostname.clone(), format!("{}s", l.refresh_secs), now_hms()),
@@ -105,22 +124,9 @@ pub fn topbar(
 pub fn topbar_settings(frame: &mut Frame, theme: &Theme, area: Rect, demo_time: &str) {
     let t = &theme.tokens;
     let bar = Style::default().bg(t.bg2);
-    let mut left = vec![Span::styled(
-        " ◆ virsh-tui ",
-        Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
-    )];
+    let mut left = brand_spans(theme);
     for (n, label) in TABS {
-        left.push(Span::styled(
-            format!(" {n}"),
-            Style::default()
-                .fg(t.orange)
-                .bg(t.bg2)
-                .add_modifier(Modifier::BOLD),
-        ));
-        left.push(Span::styled(
-            format!(" {label} "),
-            Style::default().fg(t.comment).bg(t.bg2),
-        ));
+        left.extend(tab_spans(theme, n, label, false));
     }
     let time = if LIVE.get().is_some() {
         now_hms()

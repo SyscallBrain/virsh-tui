@@ -1,6 +1,6 @@
 <div align="center">
 
-# virsh-tui
+<img src="book/src/images/logo-wordmark.svg" alt="virsh-tui" width="460">
 
 A keyboard-driven terminal UI for libvirt, with vim keys and live graphs.
 

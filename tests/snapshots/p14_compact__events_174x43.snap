@@ -2,7 +2,7 @@
 source: tests/p14_compact.rs
 expression: "shot(174, 43, |f| events::render(f, &th, &state))"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                           ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
  ╭ Events ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 4 / 4 events ╮ 
  │  all   lifecycle   devices   jobs   network   storage   app                                                                                                              │ 
  │   TIME      TYPE          OBJECT              EVENT        DETAIL                                                                                                        │ 

@@ -58,7 +58,7 @@ renders `bg` as `Color::Reset` (inherit terminal).
 ## 3. Global layout (every screen)
 
 ```
-┌ row 0  (1 line)  TOP BAR   bg2: [◆ virsh-tui](bg=blue,fg=bg2,bold)  1 Domains  2 Host  3 Networks  4 Storage  5 Events ……  ⌁ uri │ host │ ⟳ 1s │ HH:MM:SS
+┌ row 0  (1 line)  TOP BAR   bg2: [▤ virsh-tui](fg=blue,bold)│(gutter) [1 Domains](active: bg=blue,fg=bg2,bold)  2 Host  3 Networks  4 Storage  5 Events ……  ⌁ uri │ host │ ⟳ 1s │ HH:MM:SS
 │ row 1… (fill)    BODY      panels, 1 cell gap, 1 blank line above first row of panels (room for titles)
 │ row n-1 (1 line) STATUS    bg2: [MODE pill] [breadcrumb (bg=hl)]  key hints (keys orange, text comment) …… [counters (bg=hl)] [extra pill]
 └ row n  (1 line)  MESSAGE   last result: "✓ Started k8s-worker-02  ── virsh start k8s-worker-02" / "-- INSERT --" / errors in red

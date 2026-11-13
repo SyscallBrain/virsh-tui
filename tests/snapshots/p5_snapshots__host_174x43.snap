@@ -2,7 +2,7 @@
 source: tests/p5_snapshots.rs
 expression: "buffer_text(174, 43, &state)"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                            ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                           ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
  ╭ CPU · AMD Ryzen 9 7950X ───────────────────────────── 38% · 5.2 GHz · 61°C · load 9.42 8.71 7.90 ╮ ╭ Memory · 64 GiB ───────────────────────────── 41.2 used · 22.8 free ╮ 
  │ 100% ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ │ │ host RSS by domain                                                  │ 
  │      ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ │ │ ███████████████████████████████████████████████████████████████████ │ 

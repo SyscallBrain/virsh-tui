@@ -26,7 +26,8 @@ body{margin:0}
 .bl{color:var(--blue)}.cy{color:var(--cyan)}.mg{color:var(--magenta)}.gr{color:var(--green)}.ye{color:var(--yellow)}.or{color:var(--orange)}.rd{color:var(--red)}.tl{color:var(--teal)}.b{font-weight:700}
 .br{font-family:'DejaVu Sans Mono','JetBrains Mono',monospace;font-size:13px;line-height:15px;white-space:pre;letter-spacing:0}
 .tab{padding:0 12px;line-height:28px;color:var(--comment);white-space:pre}
-.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+.tab.on{background:var(--blue);color:var(--bg2);font-weight:700}
+.tab.on b{color:var(--bg2)}
 .tab b{color:var(--orange)}
 .pill{padding:0 10px;font-weight:700;white-space:pre}
 .chip{background:var(--hl);color:var(--fg2);padding:0 6px;white-space:pre}
@@ -35,7 +36,7 @@ body{margin:0}
 <div class="t" style="width: 1360px; height: 860px; display: flex; flex-direction: column; {{vars}}">
 
   <div style="display: flex; align-items: center; height: 28px; background: var(--bg2); white-space: pre">
-    <span class="pill" style="background: var(--blue); color: var(--bg2); line-height: 28px">◆ virsh-tui</span>
+    <span style="color: var(--blue); font-weight: 700; line-height: 28px"> ▤ virsh-tui </span><span style="color: var(--gutter)">│</span>
     <span class="tab on"><b>1</b> Domains</span>
     <span class="tab"><b>2</b> Host</span>
     <span class="tab"><b>3</b> Networks</span>

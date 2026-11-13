@@ -2,7 +2,7 @@
 source: tests/p3_snapshots.rs
 expression: "buffer_text(120, 36, &state)"
 ---
- ◆ virsh-tui  1 Domains  2 Host  3 Networks  4 Storage  5 Events      ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events     ⌁ qemu:///system  │  forge  │  ⟳ 1s  │  14:32:07  
  ╭ Domains ───────────────────────────────────────────────────────────────────────────────────────────────── 15 total ╮ 
  │ / filter…                                               all 15   ● running 9   ‖ paused 1   ✗ crashed 1   ○ off 4  │ 
  │       NAME              STATE ▾   CPU MEMORY     CPU%                  UPTIME    A                                 │ 

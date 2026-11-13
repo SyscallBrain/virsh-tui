@@ -500,7 +500,7 @@ Body margin: 1 column left and right. No top margin is needed because titles sit
 between columns: 1. Vertical gap between stacked panels: 0 at heights below 48 rows, 1 at 48 rows or more.
 
 ### 9.1 Top bar (all views)
-`[◆ virsh-tui]` (bg blue, fg bg2, bold, padded 1) + tabs `" N Label "` (N orange bold; active tab bg `bg` fg blue bold;
+`▤ virsh-tui` (fg blue, bold, bg bg2, padded 1) + `│` (gutter) + tabs `" N Label "` (N orange bold; active tab is a pill: bg blue, fg bg2, bold;
 inactive comment) + flexible gap + `⌁ ` (comment) `qemu:///system` (fg2) `  │  ` (comment) `forge` (hostname, fg2) `  │  ⟳ ` `1s` `  │  ` `HH:MM:SS  `.
 Tabs: `1 Domains  2 Host  3 Networks  4 Storage  5 Events`. Settings shows `⚙ settings  │  HH:MM:SS` on the right.
 
