@@ -39,13 +39,47 @@ wizard uses `host-model` and lists `host-passthrough` as a blocking problem.
 | `H` / `L` | adjust a number by 10 |
 | `Space` | toggle a check box or cycle a choice |
 | `Ctrl-n` / `Ctrl-p` | next / previous step |
-| `Enter` | next step; on the last step, create the domain |
+| `Enter` | next step; on the last step, create the domain; on the ISO path, open the ISO picker |
 | `Ctrl-y` | copy the `virt-install` command |
 | `Ctrl-e` | edit the generated XML in your editor, then define it |
 | `Ctrl-r` | reset the wizard to its defaults |
 | `Esc` | close; the draft is kept |
 
 In text fields every printable key types, including `h`, `l` and `y`.
+
+## Choosing an ISO
+
+![ISO picker](images/iso-picker.png)
+
+On step 2, `Enter` on the ISO path opens a picker. It lists the `.iso`
+volumes of the connection's storage pools and the `.iso` files in your ISO
+folders (by default the download folder from `xdg-user-dirs`, for example
+`~/Downloads`; set others with [`wizard.iso_dirs`](configuration.md)),
+newest first, with their size, date and where they were found. Folders are
+read one level deep; an ISO that is both in a pool and in a folder is listed
+once, as the pool's.
+
+| Key | Action |
+|-----|--------|
+| letters, digits | filter by file name |
+| `↓` / `↑`, `Ctrl-j` / `Ctrl-k` | move |
+| `Tab` | show only one source (a pool or a folder); cycles back to all |
+| `Ctrl-o` | browse the filesystem (folders and ISOs); again to go back to the list |
+| `Backspace` | delete a filter character; in the browser with an empty filter, go up a folder |
+| `Enter` | choose the ISO (in the browser, enter a folder) |
+| `Esc` | close the picker; the wizard stays open |
+
+The browser starts in the folder it was last used in, or next to the
+current ISO. You can still type a path in the field instead.
+
+On a remote connection (`qemu+ssh://…`) only pool ISOs are listed and the
+browser is off: the ISO has to exist on the remote host.
+
+On `qemu:///system` the emulator runs as its own user. If a folder on the
+way to the ISO cannot be searched by other users (a private home folder is
+the usual case), the field and the picker show a warning; copy the ISO into
+a storage pool, or give the folder search permission yourself. virsh-tui
+does not change permissions.
 
 ## Defaults and the OS variant
 

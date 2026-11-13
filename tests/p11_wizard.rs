@@ -133,3 +133,52 @@ fn stderr_summary_prefers_the_error_line() {
     assert_eq!(stderr_summary("\nsomething broke\n"), "something broke");
     assert_eq!(stderr_summary(""), "unknown error");
 }
+
+/// ⏎ on the ISO path opens a picker over the pool and folder ISOs; choosing
+/// fills the field, and the browser remembers its folder.
+#[test]
+fn iso_picker_fills_the_iso_path() {
+    use virsh_tui::ui::overlays::iso_picker::{iso_dirs, merge, scan_dir};
+    use virsh_tui::ui::overlays::wizard::{HostFacts, WField, WizardState};
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("archlinux-2026.11.01-x86_64.iso"), b"x").unwrap();
+    std::fs::write(dir.path().join("Fedora-42.iso"), b"x").unwrap();
+    let dirs = iso_dirs(&[dir.path().display().to_string()]);
+    let mut st = WizardState {
+        step: 1,
+        focus: 1,
+        host: HostFacts {
+            isos: merge(vec![], dirs.iter().flat_map(|d| scan_dir(d)).collect()),
+            local: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(st.focused(), WField::Iso);
+    assert!(st.hint(WField::Iso).contains("2 ISOs"));
+    st.open_iso_picker();
+    for c in "fedora".chars() {
+        st.picker.as_mut().unwrap().type_char(c);
+    }
+    st.picker_enter();
+    assert!(st.picker.is_none(), "choosing closes the picker");
+    assert_eq!(
+        st.iso_path,
+        dir.path().join("Fedora-42.iso").display().to_string()
+    );
+
+    // Browser: start in the configured folder, choose, remember it.
+    st.open_iso_picker();
+    let start = st.browse_start(&[]);
+    assert_eq!(start, dir.path(), "starts next to the current ISO");
+    st.picker.as_mut().unwrap().toggle_browse(start);
+    st.picker.as_mut().unwrap().query = String::from("arch");
+    st.picker.as_mut().unwrap().selected = 1; // `..` stays first
+    st.picker_enter();
+    assert!(st.iso_path.ends_with("archlinux-2026.11.01-x86_64.iso"));
+    assert_eq!(st.last_browse_dir, dir.path().display().to_string());
+    assert!(
+        !st.content_snapshot().contains("last_browse_dir = \"/"),
+        "the browse folder is not draft content"
+    );
+}

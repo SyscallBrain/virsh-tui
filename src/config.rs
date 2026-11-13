@@ -13,6 +13,7 @@ pub struct Config {
     pub monitoring: Monitoring,
     pub confirmations: Confirmations,
     pub console: Console,
+    pub wizard: Wizard,
     /// File this config was loaded from (`--config` or the default path);
     /// `save` writes back to it.
     #[serde(skip)]
@@ -108,6 +109,15 @@ impl Default for Monitoring {
             thread_sampling: true,
         }
     }
+}
+
+/// New-domain wizard options.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct Wizard {
+    /// Folders scanned (one level, `*.iso`) for the ISO picker. Empty: the
+    /// XDG download folder. `~/` is expanded.
+    pub iso_dirs: Vec<String>,
 }
 
 static RUNTIME: std::sync::RwLock<Option<Config>> = std::sync::RwLock::new(None);

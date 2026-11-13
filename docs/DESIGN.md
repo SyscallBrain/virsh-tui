@@ -148,6 +148,7 @@ History windows: `t` cycles 60 s → 5 min → 1 h (ring buffers per domain per 
 - Right: step form. Sliders + numeric fields; presets as chips (selected chip = magenta bg).
 - Bottom: **Equivalent command** (`virt-install …`) updating live, lines belonging to the current step highlighted with `hl`. `y` copy, `C-e` edit as XML.
 - Keys: `⇥` next field, `h/l` adjust, `H/L` ×step, `C-n/C-p` next/prev step, `⎋` cancel (draft autosaved).
+- **ISO picker** (`⏎` on step 2 › ISO path): modal `◎ Choose ISO` over the wizard, same look as Insert media. Rows: `◎` yellow, name (match orange bold), size, date (`comment`), source in `cyan` (`pool <name>` or the folder, `~/…`). Sources: pool `.iso` volumes + one-level scan of `[wizard] iso_dirs` (default XDG download dir), deduped (pool wins), newest first. `⇥` source filter, `C-o` filesystem browser (`▸` folders blue), `⏎` choose, `⎋` back to the wizard. Remote URIs: pools only, no browser. `qemu:///system`: yellow `⚠` line when a parent folder lacks `o+x`. Footer button reads `⏎ choose ISO…` while the field is focused.
 
 ### 05 · Command palette (`C-p`)
 - Modal, top-centered. Input with prefix modes: `❯` actions, `:` ex, `/` domains, `#` docs.

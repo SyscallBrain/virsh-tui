@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- New domain wizard: `Enter` on the ISO path opens an ISO picker with the
+  ISOs from the storage pools and your download folder (or the folders in
+  `[wizard] iso_dirs`), a filter, a per-source view and a filesystem
+  browser. On `qemu:///system` it warns when the emulator probably cannot
+  read the chosen ISO.
+
 ### Changed
 
 - Long-running commands use background jobs so the interface can continue to

@@ -2,6 +2,7 @@
 
 pub mod confirm;
 pub mod help;
+pub mod iso_picker;
 pub mod messages;
 pub mod palette;
 pub mod wizard;

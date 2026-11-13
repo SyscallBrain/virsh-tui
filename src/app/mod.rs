@@ -1831,6 +1831,7 @@ impl App {
                 key,
                 &mut self.wizard,
                 &self.uri,
+                &self.config.wizard.iso_dirs,
                 self.dry_run,
                 self.demo,
                 &mut self.history,
@@ -2413,7 +2414,14 @@ impl App {
                         ));
                         continue;
                     }
-                    let mut facts = wizard_host_facts(&self.dash, &self.nets, &self.store, self.demo);
+                    let mut facts = wizard_host_facts(
+                        &self.dash,
+                        &self.nets,
+                        &self.store,
+                        &self.uri,
+                        &self.config.wizard.iso_dirs,
+                        self.demo,
+                    );
                     if remote {
                         facts.threads = self.host.threads_total.max(1);
                         facts.free_gib = self.host.mem_free_gib;

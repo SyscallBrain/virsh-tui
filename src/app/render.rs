@@ -187,6 +187,19 @@ pub(super) fn dump_frame(
             ui::widgets::modal::dim_background(f, theme);
             ui::overlays::wizard::render(f, theme, &ui::overlays::wizard::WizardState::demo_step3());
         }
+        "iso-picker" => {
+            ui::views::dashboard::render(f, theme, dash);
+            ui::widgets::modal::dim_background(f, theme);
+            let mut st = ui::overlays::wizard::WizardState::demo_step3();
+            st.step = 1;
+            st.focus = 1;
+            st.open_iso_picker();
+            if let Some(p) = st.picker.as_mut() {
+                p.type_char('l');
+                p.type_char('i');
+            }
+            ui::overlays::wizard::render(f, theme, &st);
+        }
         "storage-picker" | "media" => ui::views::storage::render(f, theme, store, true),
         "hardware" => {
             let mut st = ui::views::detail::DetailState::demo("arch-dev");
