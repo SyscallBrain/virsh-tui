@@ -23,7 +23,7 @@ fn draw(w: u16, h: u16, render: impl FnOnce(&mut ratatui::Frame)) -> String {
 fn compact_settings_shows_all_editable_appearance_values() {
     let cfg = Config::default();
     let th = theme::builtin::tokyo_night();
-    let mut st = settings::SettingsState::open(&cfg);
+    let mut st = settings::SettingsState::open_theme(&cfg);
     st.pane = settings::SettingsPane::Options;
     st.opt_idx = 5;
     let text = draw(80, 24, |f| settings::render(f, &th, &cfg, &st));
@@ -46,7 +46,7 @@ fn compact_settings_shows_all_editable_appearance_values() {
 fn compact_settings_theme_selection_follows_focus() {
     let cfg = Config::default();
     let th = theme::builtin::tokyo_night();
-    let mut st = settings::SettingsState::open(&cfg);
+    let mut st = settings::SettingsState::open_theme(&cfg);
     st.themes = (0..40).map(|i| format!("custom-theme-{i:02}")).collect();
     st.theme_idx = 39;
     let text = draw(80, 24, |f| settings::render(f, &th, &cfg, &st));
@@ -117,4 +117,22 @@ fn smallest_palette_keeps_close_and_page_navigation_hints_visible() {
     for hint in ["C-l", "Esc", "Enter", "Tab", "PgUp/PgDn"] {
         assert!(text.contains(hint), "missing {hint}:\n{text}");
     }
+}
+
+#[test]
+fn settings_open_on_the_first_category() {
+    let mut cfg = Config::default();
+    cfg.appearance.theme = String::from("nord");
+    let th = theme::builtin::tokyo_night();
+    let st = settings::SettingsState::open(&cfg);
+    assert_eq!(st.cat, 0, "General, not Appearance");
+    assert_eq!(st.pane, settings::SettingsPane::Categories);
+    assert_eq!(
+        st.selected_theme(),
+        "nord",
+        "Appearance still shows the current theme"
+    );
+    let text = draw(174, 43, |f| settings::render(f, &th, &cfg, &st));
+    assert!(text.contains("settings › general"), "{text}");
+    assert!(text.contains("default URI"), "{text}");
 }

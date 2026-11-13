@@ -79,7 +79,7 @@ fn settings_compact() {
     };
     let th = theme::builtin::tokyo_night();
     let cfg = Config::default();
-    let state = SettingsState::open(&cfg);
+    let state = SettingsState::open_theme(&cfg);
     insta::assert_snapshot!(
         "settings_120x36",
         shot(120, 36, |f| settings::render(f, &th, &cfg, &state))

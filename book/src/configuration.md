@@ -86,8 +86,9 @@ The editor is chosen in this order: `$VISUAL`, `$EDITOR`,
 ## Settings screen
 
 `,` opens the settings. The categories on the left are General, Appearance,
-Keybindings, Connections, Monitoring, Confirmations, and Console & viewer.
-`j` and `k` move through the options; in the theme list they also preview the
+Keybindings, Connections, Monitoring, Confirmations, and Console & viewer;
+it opens on General with the category list focused (`Enter` or `l` enters a
+category). `j` and `k` move through the options; in the theme list they also preview the
 theme live. `Enter` applies and saves, `h` and `l` switch panes, `Esc`
 reverts unsaved previews and closes.
 

@@ -183,7 +183,7 @@ pub(super) fn dump_frame(
             f,
             theme,
             &crate::config::Config::default(),
-            &ui::views::settings::SettingsState::open(&crate::config::Config::default()),
+            &ui::views::settings::SettingsState::open_theme(&crate::config::Config::default()),
         ),
         "events" => ui::views::events::render(f, theme, &ui::views::events::EventsState::demo()),
         "wizard" => {

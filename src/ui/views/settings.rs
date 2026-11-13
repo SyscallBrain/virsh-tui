@@ -57,8 +57,18 @@ pub struct SettingsState {
 }
 
 impl SettingsState {
-    /// Open with the current config (theme pre-selected).
+    /// Open on the first category (General), focus on the category list;
+    /// the current theme is pre-selected for when Appearance is opened.
     pub fn open(config: &Config) -> Self {
+        Self {
+            cat: 0,
+            pane: SettingsPane::Categories,
+            ..Self::open_theme(config)
+        }
+    }
+
+    /// Open on Appearance with the theme list focused (screenshots and snapshots).
+    pub fn open_theme(config: &Config) -> Self {
         let mut themes: Vec<String> = builtin::all().iter().map(|t| t.name.to_string()).collect();
         for custom in custom_names() {
             if !themes.contains(&custom) {
@@ -826,16 +836,27 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, are
             Style::default().fg(t.bg2).bg(t.blue).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            " settings › appearance › theme ",
+            format!(" {} ", breadcrumb(state)),
             Style::default().fg(t.fg2).bg(t.hl),
         ),
     ];
-    spans.extend(crate::ui::chrome::hint_spans(
-        theme,
-        "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
-    ));
+    let hints = match state.pane {
+        SettingsPane::List => "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
+        SettingsPane::Categories => "  j/k category  ⏎ open  h/l pane  ⎋ close",
+        SettingsPane::Options => "  j/k option  ⏎ change  h/l pane  ⎋ close",
+    };
+    spans.extend(crate::ui::chrome::hint_spans(theme, hints));
     frame.render_widget(Paragraph::new(Line::from(spans)).style(theme.topbar()), area);
-    let _ = state;
+}
+
+/// `settings › general`, `settings › appearance › theme`, …
+fn breadcrumb(state: &SettingsState) -> String {
+    let name = Category::ALL[state.cat.min(6)].2.to_lowercase();
+    if state.pane == SettingsPane::List {
+        format!("settings › {name} › theme")
+    } else {
+        format!("settings › {name}")
+    }
 }
 
 fn render_message(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
