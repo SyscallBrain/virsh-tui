@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Linux packages: each release has static (musl) binaries for x86_64 and
+  aarch64, as `.tar.gz` archives and as `.deb` (Debian, Ubuntu), `.rpm`
+  (Fedora, RHEL, openSUSE) and Arch Linux packages, with `SHA256SUMS`. The
+  AUR has `virsh-tui` (built from source) and `virsh-tui-bin`.
+
 - New domain wizard: `Enter` on the ISO path opens an ISO picker with the
   ISOs from the storage pools and your download folder (or the folders in
   `[wizard] iso_dirs`), a filter, a per-source view and a filesystem

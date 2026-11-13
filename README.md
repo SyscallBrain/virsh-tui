@@ -87,13 +87,25 @@ example data.
 
 ## Install
 
-You need Linux and the libvirt client tools (`virsh`). `virt-install` is
-used by the new domain wizard and `virt-viewer` by the graphical viewer.
+You need Linux on x86_64 or aarch64 and the libvirt client tools (`virsh`).
+`virt-install` is used by the new domain wizard and `virt-viewer` by the
+graphical viewer; the packages below install `virsh` and recommend the other
+two.
 
-For x86_64, download the archive from the
-[latest release](https://github.com/SyscallBrain/virsh-tui/releases/latest),
-check it against its `.sha256` file, unpack it and put `virsh-tui` on your
-`PATH`.
+Download the file for your system from the
+[latest release](https://github.com/SyscallBrain/virsh-tui/releases/latest).
+x86_64 packages are named `amd64` or `x86_64`, and aarch64 packages `arm64`
+or `aarch64`. `SHA256SUMS` lists the checksum of every file. The binary is
+static, so it runs on any distribution whatever its glibc. (Releases after
+0.1.0 have these packages; 0.1.0 has only an x86_64 archive.)
+
+| System | Install |
+|---|---|
+| Arch Linux | `paru -S virsh-tui-bin` (or `virsh-tui` to build from source) from the AUR, or `sudo pacman -U ./virsh-tui-*-x86_64.pkg.tar.zst` |
+| Debian, Ubuntu | `sudo apt install ./virsh-tui_*_amd64.deb` |
+| Fedora, RHEL | `sudo dnf install ./virsh-tui-*.x86_64.rpm` |
+| openSUSE | `sudo zypper install --allow-unsigned-rpm ./virsh-tui-*.x86_64.rpm` |
+| Any other Linux | unpack the `.tar.gz` and put `virsh-tui` on your `PATH` |
 
 To build it yourself you need Rust 1.88 or newer:
 
