@@ -12,6 +12,7 @@ pub mod backend;
 pub mod cli;
 pub mod command;
 pub mod config;
+pub mod doctor;
 pub mod input;
 pub mod metrics;
 pub mod model;
