@@ -1,8 +1,12 @@
 //! Doctor: read-only environment checks with hints and fixes
 //! (`virsh-tui --doctor`, Settings › Doctor).
 
+mod checks;
 pub mod hints;
 mod report;
+pub mod runner;
+
+use std::path::PathBuf;
 
 pub use report::demo_report;
 
@@ -164,4 +168,42 @@ pub fn start_network_plan(net: &str) -> crate::command::plan::CommandPlan {
     let mut plan = network::start(net);
     plan.steps.extend(network::autostart(net, true).steps);
     plan
+}
+
+/// What the checks need to know about this session.
+#[derive(Debug, Clone)]
+pub struct Ctx {
+    pub uri: String,
+    pub uri_source: UriSource,
+    pub config: crate::config::Config,
+    pub config_path: Option<PathBuf>,
+    pub keymap_path: Option<PathBuf>,
+    pub themes_dir: Option<PathBuf>,
+    pub log_path: Option<PathBuf>,
+    pub term_size: Option<(u16, u16)>,
+}
+
+/// Run every check and build the report.
+pub async fn run<R: runner::Runner>(ctx: &Ctx, runner: &R) -> Report {
+    let os = runner
+        .read(std::path::Path::new("/etc/os-release"))
+        .and_then(|text| os_release_value(&text, "PRETTY_NAME"))
+        .unwrap_or_else(|| std::env::consts::OS.to_string());
+    Report {
+        header: Header {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            os,
+            uri: ctx.uri.clone(),
+            uri_source: ctx.uri_source,
+        },
+        checks: checks::run_all(ctx, runner).await,
+    }
+}
+
+/// `KEY=value` / `KEY="value"` from `/etc/os-release`.
+pub(crate) fn os_release_value(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let value = line.strip_prefix(key)?.strip_prefix('=')?;
+        Some(value.trim().trim_matches('"').to_string())
+    })
 }

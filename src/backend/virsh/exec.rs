@@ -94,13 +94,21 @@ fn friendly_first_line(stderr: &[u8]) -> String {
         .next()
         .unwrap_or("unknown error")
         .to_string();
-    let lower = first.to_lowercase();
+    match stderr_hint(&first) {
+        Some(hint) => format!("{first} ({hint})"),
+        None => first,
+    }
+}
+
+/// Actionable hint for a virsh error line (permissions, daemon down).
+pub(crate) fn stderr_hint(line: &str) -> Option<&'static str> {
+    let lower = line.to_lowercase();
     if lower.contains("permission denied") || lower.contains("not authorized") {
-        format!("{first} (not in the libvirt group?)")
+        Some("not in the libvirt group?")
     } else if lower.contains("failed to connect") || lower.contains("no connection") {
-        format!("{first} (is libvirtd running?)")
+        Some("is libvirtd running?")
     } else {
-        first
+        None
     }
 }
 
