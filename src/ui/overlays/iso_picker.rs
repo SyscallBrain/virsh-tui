@@ -233,6 +233,15 @@ fn emulator_uids() -> Vec<u32> {
 }
 
 /// Raw `system.posix_acl_access` of `dir`, if it has one.
+#[cfg(not(target_os = "linux"))]
+fn read_acl(_dir: &Path) -> Option<Vec<u8>> {
+    // `system.posix_acl_access` is a Linux xattr, and `getxattr` takes six
+    // arguments on macOS and the BSDs.
+    None
+}
+
+/// Raw `system.posix_acl_access` of `dir`, if it has one.
+#[cfg(target_os = "linux")]
 fn read_acl(dir: &Path) -> Option<Vec<u8>> {
     use std::os::unix::ffi::OsStrExt;
     let path = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
