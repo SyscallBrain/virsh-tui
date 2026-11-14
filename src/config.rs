@@ -132,31 +132,59 @@ static REFRESH_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 /// Status-bar key hints on (read every frame: no clone).
 static KEY_HINTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+// Unit tests run in parallel threads of one process: each test thread gets
+// its own runtime config so `:set` / Settings tests cannot see each other's
+// values. The binary uses the process-wide statics above.
+#[cfg(test)]
+thread_local! {
+    static TEST_RUNTIME: std::cell::RefCell<Option<Config>> = const { std::cell::RefCell::new(None) };
+}
+
 /// Whether the status bars show key hints.
 pub fn key_hints() -> bool {
+    #[cfg(test)]
+    if let Some(c) = TEST_RUNTIME.with(|r| r.borrow().as_ref().map(|c| c.general.key_hints)) {
+        return c;
+    }
     KEY_HINTS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The active refresh interval in seconds (≥ 1).
 pub fn refresh_interval_secs() -> u64 {
+    #[cfg(test)]
+    if let Some(n) = TEST_RUNTIME.with(|r| r.borrow().as_ref().map(|c| c.general.refresh_interval_secs)) {
+        return n.max(1);
+    }
     REFRESH_SECS.load(std::sync::atomic::Ordering::Relaxed).max(1)
 }
 
 /// Publish the active config (the one loaded from `--config` or the default
 /// path, plus Settings changes) for code that has no handle to it.
 pub fn set_runtime(c: &Config) {
-    REFRESH_SECS.store(
-        c.general.refresh_interval_secs.max(1),
-        std::sync::atomic::Ordering::Relaxed,
-    );
-    KEY_HINTS.store(c.general.key_hints, std::sync::atomic::Ordering::Relaxed);
-    if let Ok(mut g) = RUNTIME.write() {
-        *g = Some(c.clone());
+    #[cfg(test)]
+    {
+        TEST_RUNTIME.with(|r| *r.borrow_mut() = Some(c.clone()));
+        return;
+    }
+    #[allow(unreachable_code)]
+    {
+        REFRESH_SECS.store(
+            c.general.refresh_interval_secs.max(1),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        KEY_HINTS.store(c.general.key_hints, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut g) = RUNTIME.write() {
+            *g = Some(c.clone());
+        }
     }
 }
 
 /// The active config (defaults until published).
 pub fn runtime() -> Config {
+    #[cfg(test)]
+    if let Some(c) = TEST_RUNTIME.with(|r| r.borrow().clone()) {
+        return c;
+    }
     RUNTIME.read().ok().and_then(|g| g.clone()).unwrap_or_default()
 }
 
@@ -289,5 +317,26 @@ mod tests {
             Some(path),
             "save() writes back to the file it came from"
         );
+    }
+
+    #[test]
+    fn runtime_config_is_isolated_between_test_threads() {
+        use std::sync::{Arc, Barrier};
+        let set = Arc::new(Barrier::new(2));
+        let reset = Arc::new(Barrier::new(2));
+        let (s1, r1) = (set.clone(), reset.clone());
+        let a = std::thread::spawn(move || {
+            let mut cfg = Config::default();
+            cfg.console.viewer = String::from("remote-viewer");
+            cfg.general.key_hints = false;
+            super::set_runtime(&cfg);
+            s1.wait();
+            r1.wait();
+            (super::runtime().console.viewer, super::key_hints())
+        });
+        set.wait();
+        super::set_runtime(&Config::default());
+        reset.wait();
+        assert_eq!(a.join().unwrap(), (String::from("remote-viewer"), false));
     }
 }
