@@ -63,6 +63,7 @@ pub fn default_map() -> HashMap<Vec<String>, KeyAction> {
     bind(&["Space", "i", "a"], KeyAction::NicAttach);
     bind(&["Space", "i", "l"], KeyAction::NicLink);
     bind(&["Space", "x"], KeyAction::ExportXml);
+    bind(&["Space", "t"], KeyAction::Tags);
     bind(&["Space", "b"], KeyAction::BootOrder);
     // Monitor / views.
     bind(&["t"], KeyAction::WindowCycle);

@@ -20,7 +20,7 @@ CPU, memory, swap, hugepages and the two largest storage pools.
 | `j` / `k` | move down / up |
 | `gg` / `G` | first / last domain |
 | `Ctrl-d` / `Ctrl-u` | half a page down / up |
-| `/` | filter by name as you type; `Enter` keeps the filter, `Esc` clears it |
+| `/` | filter by name as you type (`#tag` filters by tag); `Enter` keeps the filter, `Esc` clears it |
 | `n` / `N` | next / previous match |
 | `f` / `F` | cycle the state chips: all, running, paused, crashed, off |
 | `o` | cycle the sort order: state, name, CPU, memory, uptime (longest first) |
@@ -48,6 +48,29 @@ metadata and a managed-save image, without which virsh refuses.
 After `S`, virsh-tui watches the domain. If it is still running after the
 grace period, the message line says the guest ignored the request, and you
 can retry or use `D`.
+
+## Tags
+
+Tags group domains your way (`web`, `prod`, `k8s`). They are stored in the
+domain's own XML, as libvirt metadata in virsh-tui's namespace, so they
+survive a restart, show up in `virsh dumpxml` and follow the domain to
+another host.
+
+`Space t` puts `:tag <domain> +` on the command line. Then:
+
+| Command | Effect |
+|---------|--------|
+| `:tag web-01 +prod +web` | add tags |
+| `:tag web-01 -prod` | remove a tag |
+| `:tag web-01 db backup` | replace all tags |
+| `:tag web-01 --clear` | remove all tags |
+| `:tag web-01` | show the tags |
+
+Tags are letters, digits, `-`, `_` and `.`, up to 32 characters. They run
+`virsh metadata … --config` (and `--live` on a running domain). The selected
+domain's tags appear in its panel title (`web-01 · #prod #web`), and `/#prod`
+shows only the domains tagged `prod` (a prefix is enough; `/#` shows every
+tagged domain). Mark them with `V` and `G` to act on the whole group.
 
 ## Console, viewer and XML
 

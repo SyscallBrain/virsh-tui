@@ -47,6 +47,8 @@ pub enum KeyAction {
     Migrate,
     SendKey,
     ExportXml,
+    /// Edit the selected domain's tags (`:tag <domain> +`).
+    Tags,
     NewDomain,
     YankName,
     YankUuid,
@@ -127,6 +129,7 @@ impl KeyAction {
         (Self::Migrate, "migrate"),
         (Self::SendKey, "send_key"),
         (Self::ExportXml, "export_xml"),
+        (Self::Tags, "tags"),
         (Self::NewDomain, "new_domain"),
         (Self::YankName, "yank_name"),
         (Self::YankUuid, "yank_uuid"),

@@ -15,13 +15,13 @@ expression: "shot(120, 36, |f|\noverlays::help::render(f, &th, \"\", &virsh_tui:
   │ ⏎           open            Z           suspend to disk  ␣da / ␣dr   disk attach / r :w / :q     apply / close   │  
   │ ⌫ / q       back            a           toggle autostart ␣ia / ␣il   NIC attach / li :!virsh     raw passthrough │  
   │ /           filter          c           serial console   ␣x          export XML                                  │  
-  │ n / N       next / prev mat v           graphical viewer ␣b          boot order      App                         │  
-  │                             e           edit XML ($EDITO                             ?           this help       │  
-  │ Modes                       X           undefine         Monitor                     ,           settings        │  
-  │ i / a       edit field (INS                              t           60s · 5m · 1h   C-r         force refresh   │  
-  │ ⎋           back to NORMAL  Yank                         o           cycle sort      C-l         redraw          │  
-  │ V           visual select   yy          name             f / F       cycle filter ch ZZ / :qa    quit            │  
-  │ m           mark / unmark   yu          uuid                                                                     │  
+  │ n / N       next / prev mat v           graphical viewer ␣t          edit tags       App                         │  
+  │                             e           edit XML ($EDITO ␣b          boot order      ?           this help       │  
+  │ Modes                       X           undefine                                     ,           settings        │  
+  │ i / a       edit field (INS                              Monitor                     C-r         force refresh   │  
+  │ ⎋           back to NORMAL  Yank                         t           60s · 5m · 1h   C-l         redraw          │  
+  │ V           visual select   yy          name             o           cycle sort      ZZ / :qa    quit            │  
+  │ m           mark / unmark   yu          uuid             f / F       cycle filter ch                             │  
   │ :           ex command      yi          ip address                                                               │  
   │ : ⇥         complete in : l yc          last virsh comma                                                         │  
   │ C-p         command palette                                                                                      │  

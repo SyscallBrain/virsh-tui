@@ -190,6 +190,7 @@ pub fn sections(map: &Keymap) -> Vec<Section> {
                     &[A::NicAttach, A::NicLink],
                 ),
                 ("␣x", "export XML", false, &[A::ExportXml]),
+                ("␣t", "edit tags", false, &[A::Tags]),
                 ("␣b", "boot order", false, &[A::BootOrder]),
             ],
         ),

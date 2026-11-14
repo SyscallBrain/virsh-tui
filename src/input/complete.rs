@@ -49,6 +49,7 @@ pub const APP_COMMANDS: &[(&str, &str)] = &[
     ("help", "[topic]"),
     ("messages", "message log"),
     ("run", "<action> [domain]  ([[actions]] in config.toml)"),
+    ("tag", "<domain> [+tag -tag | tags | --clear]"),
     ("doctor", "check the environment"),
     ("w", "apply hardware changes"),
     ("q", "close / quit"),
@@ -85,6 +86,7 @@ const SET_KEYS: &[&str] = &[
 
 /// App commands whose first argument is a domain.
 const DOMAIN_FIRST: &[&str] = &[
+    "tag",
     "start",
     "shutdown",
     "destroy",

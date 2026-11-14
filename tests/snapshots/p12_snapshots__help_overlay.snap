@@ -16,13 +16,13 @@ expression: "buffer_text(174, 43, |f|\noverlays::help::render(f, &th, \"\", &vir
          │ ⏎           open                      Z           suspend to disk            ␣da / ␣dr   disk attach / resize      :w / :q     apply / close             │         
          │ ⌫ / q       back                      a           toggle autostart           ␣ia / ␣il   NIC attach / link         :!virsh     raw passthrough           │         
          │ /           filter                    c           serial console             ␣x          export XML                                                      │         
-         │ n / N       next / prev match         v           graphical viewer           ␣b          boot order                App                                   │         
-         │                                       e           edit XML ($EDITOR)                                               ?           this help                 │         
-         │ Modes                                 X           undefine                   Monitor                               ,           settings                  │         
-         │ i / a       edit field (INSERT)                                              t           60s · 5m · 1h             C-r         force refresh             │         
-         │ ⎋           back to NORMAL            Yank                                   o           cycle sort                C-l         redraw                    │         
-         │ V           visual select             yy          name                       f / F       cycle filter chips        ZZ / :qa    quit                      │         
-         │ m           mark / unmark             yu          uuid                                                                                                   │         
+         │ n / N       next / prev match         v           graphical viewer           ␣t          edit tags                 App                                   │         
+         │                                       e           edit XML ($EDITOR)         ␣b          boot order                ?           this help                 │         
+         │ Modes                                 X           undefine                                                         ,           settings                  │         
+         │ i / a       edit field (INSERT)                                              Monitor                               C-r         force refresh             │         
+         │ ⎋           back to NORMAL            Yank                                   t           60s · 5m · 1h             C-l         redraw                    │         
+         │ V           visual select             yy          name                       o           cycle sort                ZZ / :qa    quit                      │         
+         │ m           mark / unmark             yu          uuid                       f / F       cycle filter chips                                              │         
          │ :           ex command                yi          ip address                                                                                             │         
          │ : ⇥         complete in : line        yc          last virsh command                                                                                     │         
          │ C-p         command palette                                                                                                                              │         

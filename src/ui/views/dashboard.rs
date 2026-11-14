@@ -130,6 +130,8 @@ pub struct DashboardState {
     pub configs: std::collections::HashMap<String, crate::model::DomainConfig>,
     /// First IP address per domain (`domifaddr`), fetched lazily per selection.
     pub ips: std::collections::HashMap<String, String>,
+    /// Tags per domain (libvirt metadata, see `app::tags`).
+    pub tags: std::collections::HashMap<String, Vec<String>>,
     /// Most recent libvirt events (newest last) for the Events panel.
     pub recent_events: Vec<crate::model::LibvirtEvent>,
     /// Host panel gauges: (label, fraction, value).
@@ -203,6 +205,11 @@ impl DashboardState {
             metrics: Default::default(),
             configs: Default::default(),
             ips: Default::default(),
+            tags: fixtures::DOMAINS
+                .iter()
+                .filter(|d| d.0.starts_with("k8s-"))
+                .map(|d| (d.0.to_string(), vec![String::from("k8s")]))
+                .collect(),
             recent_events: Vec::new(),
             host_gauges: Vec::new(),
             host_pools: Vec::new(),
@@ -248,6 +255,7 @@ impl DashboardState {
             metrics: Default::default(),
             configs: Default::default(),
             ips: Default::default(),
+            tags: Default::default(),
             recent_events: Vec::new(),
             host_gauges: Vec::new(),
             host_pools: Vec::new(),
@@ -350,9 +358,17 @@ impl DashboardState {
             return order.iter().filter_map(|&i| self.rows.get(i)).collect();
         }
         let filter = self.filter.to_lowercase();
+        // `#tag`: domains with a tag that starts with it (`#` alone: any tag).
+        let tag = filter.strip_prefix('#');
         let mut order: Vec<usize> = (0..self.rows.len())
             .filter(|&i| self.chip.matches(self.rows[i].state))
-            .filter(|&i| filter.is_empty() || contains_ignore_case(&self.rows[i].name, &filter))
+            .filter(|&i| match tag {
+                Some(tag) => self
+                    .tags
+                    .get(&self.rows[i].name)
+                    .is_some_and(|tags| tags.iter().any(|t| t.to_lowercase().starts_with(tag))),
+                None => filter.is_empty() || contains_ignore_case(&self.rows[i].name, &filter),
+            })
             .collect();
         let r = |i: &usize| &self.rows[*i];
         match self.sort {
@@ -390,14 +406,29 @@ impl DashboardState {
         (self.chip as u8).hash(&mut h);
         (self.sort as u8).hash(&mut h);
         self.rows.len().hash(&mut h);
+        let tagged = self.filter.starts_with('#');
         for row in &self.rows {
             row.name.hash(&mut h);
+            if tagged {
+                self.tags.get(&row.name).hash(&mut h);
+            }
             (row.state as u8).hash(&mut h);
             row.cpu_frac.to_bits().hash(&mut h);
             row.mem_sort_mib.hash(&mut h);
             row.uptime_secs.hash(&mut h);
         }
         h.finish()
+    }
+
+    /// `name · #a #b` when the domain has tags.
+    pub fn title_with_tags(&self, name: &str) -> String {
+        match self.tags.get(name).filter(|t| !t.is_empty()) {
+            Some(tags) => format!(
+                "{name} · {}",
+                tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" ")
+            ),
+            None => name.to_string(),
+        }
     }
 
     /// Selected domain (defaults to arch-dev).
@@ -1289,7 +1320,8 @@ fn render_overview(frame: &mut Frame, theme: &Theme, state: &DashboardState, are
         lines.push(Line::from(""));
     }
     lines.extend(chips);
-    let block = crate::ui::widgets::panel::block(theme, false, &sel.name, Some(title_right), None, None);
+    let title = state.title_with_tags(&sel.name);
+    let block = crate::ui::widgets::panel::block(theme, false, &title, Some(title_right), None, None);
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
 }
 

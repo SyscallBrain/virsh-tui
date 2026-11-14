@@ -101,6 +101,12 @@ pub fn step_writes(step: &CommandStep) -> bool {
                 // `--period` sets the balloon stats period on the guest.
                 return step.argv.iter().any(|a| a.starts_with("--period"));
             }
+            if sub == "metadata" {
+                return step
+                    .argv
+                    .iter()
+                    .any(|a| matches!(a.as_str(), "--set" | "--remove" | "--edit"));
+            }
             if sub == "snapshot-current" {
                 // With `--name` it prints; otherwise it may set the current one.
                 return !step.argv.iter().any(|a| a == "--name");

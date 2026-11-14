@@ -1484,3 +1484,64 @@ async fn guest_info_lands_in_the_open_detail_and_stale_results_are_dropped() {
     );
     crate::config::set_runtime(&Config::default());
 }
+
+#[tokio::test]
+async fn tag_command_submits_metadata_and_updates_the_list_after_the_job() {
+    let mut app = fixture_app();
+    let name = app.dash.selected().name.clone();
+    run_ex(&mut app, &format!("tag {name} +web +db"));
+    let job = app.active_job.as_ref().expect("tagging runs as a job");
+    let argv = &job.plans[0].1.steps[0].argv;
+    assert_eq!(argv[0], "metadata");
+    assert!(argv.contains(&String::from("<tags>web db</tags>")), "{argv:?}");
+    assert_eq!(
+        job.tags_after,
+        Some((name.clone(), vec!["web".into(), "db".into()]))
+    );
+    // Success: the tags show at once, and #web filters to the domain.
+    let success = tokio::spawn(async {
+        crate::command::job::BatchOutcome {
+            failures: Vec::new(),
+            started_steps: vec![],
+            completed_steps: vec![],
+            outputs: vec![],
+            completed_targets: vec![],
+            result: crate::command::job::BatchResult::Success,
+        }
+    });
+    let task = std::mem::replace(&mut app.active_job.as_mut().unwrap().task, success);
+    task.abort();
+    let task = std::mem::replace(
+        &mut app.active_job.as_mut().unwrap().task,
+        tokio::spawn(std::future::pending()),
+    );
+    let outcome = task.await;
+    app.finish_job(outcome);
+    assert_eq!(
+        app.dash.tags.get(&name),
+        Some(&vec!["web".to_string(), "db".to_string()])
+    );
+    app.dash.set_filter("#we");
+    let visible: Vec<String> = app.dash.visible_rows().iter().map(|r| r.name.clone()).collect();
+    assert_eq!(visible, vec![name.clone()]);
+    assert_eq!(app.dash.title_with_tags(&name), format!("{name} · #web #db"));
+    // Bad tags are refused without a job.
+    run_ex(&mut app, &format!("tag {name} +'a b'"));
+    assert!(app.dash.message.starts_with("✗ bad tag"), "{}", app.dash.message);
+    assert!(app.active_job.is_none());
+    run_ex(&mut app, "tag nope +x");
+    assert_eq!(app.dash.message, "✗ no domain named nope");
+}
+
+#[test]
+fn space_t_prefills_the_tag_command() {
+    let mut app = fixture_app();
+    let name = app.dash.selected().name.clone();
+    for c in [' ', 't'] {
+        app.handle_key_event(plain(c));
+    }
+    assert_eq!(
+        app.ex_line.as_ref().map(|l| l.value().to_string()),
+        Some(format!("tag {name} +"))
+    );
+}

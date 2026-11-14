@@ -210,6 +210,12 @@ Counts (`3j`) and `.` (repeat last action on the current/marked selection) work 
 - Bold only for: titles, selected names, mode pills, keys in hints, active tab.
 - Glyph vocabulary: `◆ ● ○ ‖ ✗ ◌ ▌ ◎ ◫ ▣ ▤ ⏻ ⇄ ▭ ▢ ⌨ ⛨ ⇢ ⌁ ⟳ ❯ ✓ ⚠ ↓ ↑ ━ ─ ░ █ ▁…█ ⠀…⣿`.
 
+### Tags
+
+Stored as `<vt:tags xmlns:vt="https://syscallbrain.github.io/virsh-tui/xmlns/tags/1">a b</vt:tags>`.
+The dashboard Overview panel title reads `<name> · #a #b`; `/#a` filters by tag
+prefix. `␣t` prefills `:tag <name> +`. Demo: every `k8s-*` domain is tagged `k8s`.
+
 ### Detail Overview › Guest (qemu-ga)
 
 Running domain with an agent channel: a blank line, `Guest (qemu-ga)` (fg2), then

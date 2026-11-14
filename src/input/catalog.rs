@@ -90,6 +90,7 @@ pub const CATALOG: &[ActionInfo] = &[
     info(A::NicAttach, "Leader", "attach NIC"),
     info(A::NicLink, "Leader", "toggle NIC link"),
     info(A::ExportXml, "Leader", "export XML"),
+    info(A::Tags, "Leader", "edit tags"),
     info(A::BootOrder, "Leader", "boot order"),
     info(A::WindowCycle, "Monitor", "chart window 60s · 5m · 1h"),
     info(A::SortCycle, "Monitor", "cycle sort"),

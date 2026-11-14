@@ -20,6 +20,7 @@ mod settings;
 mod settings_doctor;
 mod settings_keys;
 mod storage;
+mod tags;
 mod wizard;
 
 #[cfg(test)]
@@ -295,6 +296,8 @@ pub async fn run_with_shutdown(
         ex_history,
         ex_history_pos: None,
         ex_history_path,
+        tags_rx: None,
+        tags_names: Vec::new(),
         events_rx,
         view,
         pending_quit_z,
@@ -545,6 +548,9 @@ struct App {
     ex_history_pos: Option<usize>,
     /// Where `:` lines are saved (None: demo or `history_size = 0`).
     ex_history_path: Option<std::path::PathBuf>,
+    /// Domain tags read in flight, and the names they were read for.
+    tags_rx: Option<tags::TagsRx>,
+    tags_names: Vec<String>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
@@ -1124,6 +1130,7 @@ impl App {
             }
         }
         self.poll_domain_job();
+        self.poll_tags();
         self.enter_view_if_changed();
     }
 
@@ -1302,6 +1309,9 @@ impl App {
         self.dash.marks.clear();
         self.dash.configs.clear();
         self.dash.ips.clear();
+        self.dash.tags.clear();
+        self.tags_names.clear();
+        self.tags_rx = None;
         self.dash.selection = 0;
         self.dash.shutdowns.clear();
         self.dash.visual_anchor = None;
@@ -1859,6 +1869,12 @@ impl App {
                         self.submit_hardware();
                         return false;
                     }
+                    if let Ok(crate::input::ex::ExCommand::Tag(domain, words)) =
+                        crate::input::ex::parse(&line)
+                    {
+                        self.run_tag(domain, words);
+                        return false;
+                    }
                     if let Ok(crate::input::ex::ExCommand::Run(action, domain)) =
                         crate::input::ex::parse(&line)
                     {
@@ -2396,6 +2412,19 @@ impl App {
             use crate::input::engine::KeyAction as A;
             if resolved.action == A::Refresh {
                 self.request_refresh();
+                continue;
+            }
+            if resolved.action == A::Tags && !crate::config::read_only() {
+                let domain = self
+                    .current_detail()
+                    .map(|d| d.domain.clone())
+                    .unwrap_or_else(|| self.dash.selected().name.clone());
+                if !domain.is_empty() {
+                    let quoted = shlex::try_quote(&domain).map_or(domain.clone(), |q| q.into_owned());
+                    self.ex_line = Some(crate::input::textinput::TextInput::with(&format!(
+                        "tag {quoted} +"
+                    )));
+                }
                 continue;
             }
             if let A::Custom(i) = resolved.action {
@@ -2950,6 +2979,7 @@ fn read_only_refusal(action: crate::input::engine::KeyAction) -> Option<&'static
         A::DiskAttach | A::NicAttach => "attach",
         A::DiskResize => "blockresize",
         A::NicLink => "domif-setlink",
+        A::Tags => "tags",
         _ => return None,
     })
 }
@@ -3080,6 +3110,8 @@ mod tests {
             ex_history: Vec::new(),
             ex_history_pos: None,
             ex_history_path: None,
+            tags_rx: None,
+            tags_names: Vec::new(),
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,

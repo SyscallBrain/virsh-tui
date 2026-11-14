@@ -29,6 +29,8 @@ pub enum ExCommand {
     Sort(String),
     /// `:run <action> [domain]`: a `[[actions]]` entry.
     Run(String, Option<String>),
+    /// `:tag <domain> [+a -b | a b | --clear]`.
+    Tag(String, Vec<String>),
     Jump(u32),
     RawVirsh(String),
     Shell(String),
@@ -59,6 +61,13 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
         "w" => Ok(ExCommand::Write),
         "messages" => Ok(ExCommand::Messages),
         "doctor" => Ok(ExCommand::Doctor),
+        "tag" => match words.split_first() {
+            Some((d, rest)) => Ok(ExCommand::Tag(
+                d.to_string(),
+                rest.iter().map(|w| w.to_string()).collect(),
+            )),
+            None => Err(String::from(":tag needs <domain> [+tag -tag | tags | --clear]")),
+        },
         "run" => match words.as_slice() {
             [a] => Ok(ExCommand::Run(a.to_string(), None)),
             [a, d] => Ok(ExCommand::Run(a.to_string(), Some(d.to_string()))),

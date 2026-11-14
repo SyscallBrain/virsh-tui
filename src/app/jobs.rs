@@ -46,6 +46,8 @@ pub(super) struct ActiveJob {
         Option<tokio::sync::oneshot::Receiver<Option<crate::backend::virsh::parse_jobinfo::DomainJob>>>,
     /// `domjobabort` was sent for this domain (C-c).
     pub abort_sent: Option<String>,
+    /// `:tag`: the domain's new tags, shown once the job succeeds.
+    pub tags_after: Option<(String, Vec<String>)>,
 }
 
 impl Drop for ActiveJob {
@@ -90,6 +92,7 @@ impl ActiveJob {
             domain_job: None,
             jobinfo_rx: None,
             abort_sent: None,
+            tags_after: None,
         }
     }
 
@@ -1217,6 +1220,16 @@ impl App {
                 .is_some_and(|detail| detail.domain == draft.target)
         {
             self.hardware_reload_required = Some(draft.target.clone());
+        }
+        if job_success
+            && job.uri == self.uri
+            && let Some((domain, tags)) = job.tags_after.clone()
+        {
+            if tags.is_empty() {
+                self.dash.tags.remove(&domain);
+            } else {
+                self.dash.tags.insert(domain, tags);
+            }
         }
         if job_success && let Some(domain) = job.viewer_after.clone() {
             self.request_viewer(job.uri.clone(), domain);
