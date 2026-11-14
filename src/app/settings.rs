@@ -137,6 +137,7 @@ pub(super) fn change_option(cat: ui::views::settings::Category, idx: usize, conf
             g.shutdown_timeout_secs = next(&g.shutdown_timeout_secs, &[30, 60, 90, 180, 300]);
         }
         (C::General, 7) => g.history_size = next(&g.history_size, &[0, 200, 500, 1000, 5000]),
+        (C::General, 8) => g.read_only = !g.read_only,
         (C::Connections, i) => {
             if let Some(u) = config.connections.uris.get(i) {
                 g.default_uri = u.clone();
@@ -275,6 +276,7 @@ pub(super) fn apply_setting(
             "gradient" => next.appearance.gradient = boolean()?,
             "dim_modals" => next.appearance.dim_modals = boolean()?,
             "key_hints" => next.general.key_hints = boolean()?,
+            "read_only" => next.general.read_only = boolean()?,
             "default_uri" if !v.is_empty() => next.general.default_uri = v.to_string(),
             "editor" if !v.is_empty() => next.general.editor = v.to_string(),
             "start_view" => {

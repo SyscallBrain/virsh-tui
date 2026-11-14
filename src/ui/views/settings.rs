@@ -202,6 +202,7 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
                 },
                 true,
             ),
+            row("Safety", "read-only", on_off(g.read_only), true),
             row(
                 "Editor",
                 "editor",
@@ -225,7 +226,12 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
                 } else {
                     "make default"
                 };
-                row("Saved URIs", u, mark, true)
+                row(
+                    "Saved URIs",
+                    u,
+                    format!("{mark}{}", profile_summary(config, u)),
+                    true,
+                )
             })
             .collect(),
         Category::Monitoring => vec![
@@ -276,6 +282,31 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
     }
 }
 
+/// `  · prod · read-only · 5s` for a URI with a profile (empty without).
+fn profile_summary(config: &Config, uri: &str) -> String {
+    let Some(p) = config.connections.profiles.get(uri) else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(label) = &p.label {
+        parts.push(label.clone());
+    }
+    if p.read_only == Some(true) {
+        parts.push(String::from("read-only"));
+    }
+    if let Some(n) = p.refresh_interval_secs {
+        parts.push(format!("{n}s"));
+    }
+    if let Some(v) = &p.viewer {
+        parts.push(v.clone());
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("  · {}", parts.join(" · "))
+    }
+}
+
 /// Number of selectable options in a category.
 pub fn option_count(cat: Category, config: &Config) -> usize {
     if cat == Category::Appearance {
@@ -300,6 +331,10 @@ fn option_hint(cat: Category, idx: usize) -> &'static str {
         (Category::General, 4 | 5) => "Applied at start; o and f change the list for this session.",
         (Category::General, 6) => {
             "After an ACPI shutdown (S), how long to wait before saying the guest ignored it."
+        }
+        (Category::General, 8) => {
+            "On: virsh connects read-only (-r) and nothing that changes libvirt objects runs. \
+             --read-only does the same for one run; a connection profile can override it."
         }
         (Category::General, 7) => {
             "`:` lines kept in ~/.local/state/virsh-tui/history. Lines that start with a space are never saved."

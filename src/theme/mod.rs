@@ -161,6 +161,35 @@ impl Theme {
             .unwrap_or("?")
     }
 
+    /// A colour named in the config: an accent token (`red`, `green`,
+    /// `yellow`, `blue`, `magenta`, `cyan`, `orange`, `teal`) or `#rrggbb`.
+    pub fn named_color(&self, name: &str) -> Option<Color> {
+        let t = &self.tokens;
+        let name = name.trim();
+        Some(match name {
+            "red" => t.red,
+            "green" => t.green,
+            "yellow" => t.yellow,
+            "blue" => t.blue,
+            "magenta" => t.magenta,
+            "cyan" => t.cyan,
+            "orange" => t.orange,
+            "teal" => t.teal,
+            hex if hex.len() == 7
+                && hex.starts_with('#')
+                && hex[1..].chars().all(|c| c.is_ascii_hexdigit()) =>
+            {
+                let c = rgb(hex);
+                if truecolor() {
+                    c
+                } else {
+                    Color::Indexed(xterm256(c))
+                }
+            }
+            _ => return None,
+        })
+    }
+
     pub fn bg_hex(&self) -> String {
         color_hex(self.tokens.bg)
     }

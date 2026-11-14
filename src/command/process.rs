@@ -51,6 +51,8 @@ pub enum RunError {
     Io(#[from] std::io::Error),
     #[error("output reader failed: {0}")]
     Reader(#[from] tokio::task::JoinError),
+    #[error("read-only connection: {0} not run")]
+    ReadOnly(String),
 }
 
 #[cfg(unix)]
@@ -225,8 +227,17 @@ async fn run_step_inner(
     if *control.borrow() {
         return Err(RunError::Cancelled);
     }
+    let read_only = crate::config::read_only();
+    // virsh is opened with `-r` below, so libvirt refuses its changes; other
+    // programs (virt-install, virt-clone) are stopped here.
+    if read_only && step.program != "virsh" && super::readonly::step_writes(step) {
+        return Err(RunError::ReadOnly(step.program.clone()));
+    }
     let mut command = Command::new(&step.program);
     if step.program == "virsh" {
+        if read_only {
+            command.arg("-r");
+        }
         command.arg("-c").arg(uri);
     }
     command

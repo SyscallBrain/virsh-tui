@@ -76,6 +76,7 @@ const SET_KEYS: &[&str] = &[
     "shutdown_timeout_secs=",
     "bulk_threshold=",
     "log_level=",
+    "read_only=",
 ];
 
 /// App commands whose first argument is a domain.

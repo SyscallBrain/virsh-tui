@@ -86,6 +86,30 @@ impl ActiveJob {
 
 impl App {
     /// One job at a time: say so (and flash the job line) when busy.
+    /// Refuse `what` on a read-only connection, saying why. True: refused.
+    pub(super) fn refuse_if_read_only(&mut self, what: &str) -> bool {
+        let Some(reason) = crate::config::read_only_reason() else {
+            return false;
+        };
+        self.show_message(format!("✗ read-only connection ({reason}): {what} not run"));
+        true
+    }
+
+    /// Refuse plans with a step that may change something (read-only only).
+    pub(super) fn refuse_writes_if_read_only(&mut self, plans: &[(String, CommandPlan)]) -> bool {
+        if !crate::config::read_only() {
+            return false;
+        }
+        let Some(step) = plans
+            .iter()
+            .find_map(|(_, plan)| crate::command::readonly::first_write(plan))
+        else {
+            return false;
+        };
+        let what = crate::command::display::display(step);
+        self.refuse_if_read_only(&what)
+    }
+
     pub(super) fn refuse_if_busy(&mut self) -> bool {
         let Some(job) = &self.active_job else {
             return false;
@@ -116,6 +140,9 @@ impl App {
     }
 
     pub(super) fn begin_domain_editor(&mut self) {
+        if self.refuse_if_read_only("edit XML (the XML tab shows it)") {
+            return;
+        }
         let Some(detail) = self.detail.as_ref() else {
             return;
         };
@@ -386,6 +413,9 @@ impl App {
     }
 
     pub(super) fn submit_plans(&mut self, plans: Vec<(String, CommandPlan)>) -> bool {
+        if self.refuse_writes_if_read_only(&plans) {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }
@@ -416,6 +446,9 @@ impl App {
     }
 
     pub(super) fn submit_network_create(&mut self, name: String, xml: String) -> bool {
+        if self.refuse_if_read_only("network create") {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }
@@ -475,6 +508,9 @@ impl App {
     }
 
     pub(super) fn submit_wizard(&mut self, draft: ui::overlays::wizard::WizardState) -> bool {
+        if self.refuse_if_read_only("virt-install") {
+            return false;
+        }
         let mut plan = crate::command::builders::install::virt_install(&draft);
         plan.steps[0].argv.insert(0, self.uri.clone());
         plan.steps[0].argv.insert(0, "--connect".into());
@@ -638,6 +674,9 @@ impl App {
     }
 
     pub(super) fn submit_media_eject(&mut self) -> bool {
+        if self.refuse_if_read_only("eject") {
+            return false;
+        }
         let (domain, running) = if self.view == View::Detail {
             match self.detail.as_ref() {
                 Some(detail) => (
@@ -657,6 +696,9 @@ impl App {
     }
 
     pub(super) fn submit_description(&mut self, domain: String, description: String) -> bool {
+        if self.refuse_if_read_only("description change") {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }
@@ -705,6 +747,9 @@ impl App {
     }
 
     pub(super) fn submit_hostdev(&mut self, domain: String, node: String) -> bool {
+        if self.refuse_if_read_only("attach-device") {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }
@@ -750,6 +795,9 @@ impl App {
     }
 
     pub(super) fn submit_hardware(&mut self) -> bool {
+        if self.refuse_if_read_only("hardware changes (:w)") {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }
@@ -898,6 +946,9 @@ impl App {
     }
 
     pub(super) fn submit_xml_editor(&mut self, draft: EditorDraft) -> bool {
+        if self.refuse_if_read_only("define") {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }
@@ -950,6 +1001,9 @@ impl App {
     }
 
     pub(super) fn submit_media_change(&mut self, domain: String, iso: Option<String>, running: bool) -> bool {
+        if self.refuse_if_read_only("change-media") {
+            return false;
+        }
         if self.refuse_if_busy() {
             return false;
         }

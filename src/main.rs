@@ -23,6 +23,9 @@ fn main() -> Result<()> {
     if cli.connect.is_empty() {
         cli.connect = config.general.default_uri.clone();
     }
+    virsh_tui::config::set_read_only_flag(cli.read_only);
+    virsh_tui::config::set_active_uri(&cli.connect);
+    virsh_tui::config::set_runtime(&config);
 
     if cli.doctor {
         let runtime = tokio::runtime::Builder::new_current_thread()

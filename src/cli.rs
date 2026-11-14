@@ -18,6 +18,11 @@ pub struct Cli {
     #[arg(long = "dry-run", default_value_t = false)]
     pub dry_run: bool,
 
+    /// Never change anything: virsh opens read-only connections and actions
+    /// that would change libvirt objects are refused.
+    #[arg(short = 'r', long = "read-only", default_value_t = false)]
+    pub read_only: bool,
+
     /// Theme name (built-in or custom file name); overrides the config.
     #[arg(long = "theme")]
     pub theme: Option<String>,

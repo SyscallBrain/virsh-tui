@@ -57,7 +57,7 @@ renders `bg` as `Color::Reset` (inherit terminal).
 ## 3. Global layout (every screen)
 
 ```
-┌ row 0  (1 line)  TOP BAR   bg2: [▤ virsh-tui](fg=blue,bold)│(gutter) [1 Domains](active: bg=blue,fg=bg2,bold)  2 Host  3 Networks  4 Storage  5 Events ……  ⌁ uri │ host │ ⟳ 1s │ HH:MM:SS
+┌ row 0  (1 line)  TOP BAR   bg2: [▤ virsh-tui](fg=blue,bold)│(gutter) [1 Domains](active: bg=blue,fg=bg2,bold)  2 Host  3 Networks  4 Storage  5 Events ……  [ label ](profile colour, fg=bg2,bold) [ read-only ](bg=yellow,fg=bg2,bold) ⌁ uri │ host │ ⟳ 1s │ HH:MM:SS
 │ row 1… (fill)    BODY      panels, 1 cell gap, 1 blank line above first row of panels (room for titles)
 │ row n-1 (1 line) STATUS    bg2: [MODE pill] [breadcrumb (bg=hl)]  key hints (keys orange, text comment) …… [counters (bg=hl)] [extra pill]
 └ row n  (1 line)  MESSAGE   last result: "✓ Started k8s-worker-02  ── virsh start k8s-worker-02" / "-- INSERT --" / errors in red
@@ -178,6 +178,7 @@ History windows: `t` cycles 60 s → 5 min → 1 h (ring buffers per domain per 
 - Categories: General, Appearance, Keybindings, Connections, Monitoring, Confirmations, Console & viewer, Doctor (`⛨`).
 - General › Help › "key hints" (`[x]` by default, `general.key_hints`): off drops every key hint — status bars, domain action rows, the not-running start hint, panel footers, palette/ISO picker/wizard/hardware key lines. Mode pill, breadcrumb, counters, dialog buttons and the which-key popup stay; `?` still lists the keys.
 - General also has Domain list › "default sort" (`state`) and "default state filter" (`all`), Shutdown › "report ignored after" (`90s`), History › "command history" (`500 lines`, `not saved` at 0). Monitoring › Graphs › "history window at start" (`60s`). Confirmations › Bulk › "always ask from" (`off`, or `N domains`).
+- General › Safety › "read-only" (`[ ]`). Connections rows append the profile: `● default  · prod · read-only · 5s`. Refusals read `✗ read-only connection (--read-only | read_only in config.toml): <what> not run`.
 - Theme list with 8-colour swatch strip; `j/k` previews **live** (whole app re-themes), `⏎` applies, `⎋` reverts.
 - Appearance options: borders (rounded/plain/double/thick), icons (unicode/nerd/ascii), graphs (braille/block/tty + gradient), transparent background, dim behind modals.
 - Preview panel: 16-token palette + sample rows + gauge + chart.

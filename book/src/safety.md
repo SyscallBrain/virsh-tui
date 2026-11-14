@@ -25,6 +25,32 @@ and undefine, volume delete and wipe, and snapshot revert. Each toggle
 affects only its own action: pool and network destroy, detach and raw
 destructive commands always confirm.
 
+Settings › Confirmations › Bulk (`confirmations.bulk_threshold`) brings the
+dialog back for those actions when they would act on that many marked
+domains or more.
+
+## Read-only connections
+
+`virsh-tui --read-only` (`-r`), `general.read_only = true` or a connection
+profile with `read_only = true` (see
+[Configuration](configuration.md#per-connection-settings)) make the session
+look-only, and the top bar shows a yellow `read-only` pill. Three layers
+keep it that way:
+
+- Keys and commands that would change something are refused before any
+  dialog, with the reason: `✗ read-only connection (--read-only): destroy
+  not run`. Typed `virsh` subcommands run only if they are known to just
+  read (`dominfo`, `domstats`, `dumpxml`, `net-dhcp-leases`, …); anything
+  else, unknown commands included, is refused.
+- `virsh` is started with `-r`, so libvirt itself refuses any change that
+  would get through.
+- `virt-install` and `virt-clone` are never started (except
+  `virt-install --print-xml`).
+
+The memory stats period (`monitoring.balloon_on`) is not set on a
+read-only connection, because it changes the running guests. The serial
+console needs a read-write connection; the graphical viewer works.
+
 ## Sizes and hardware edits
 
 Sizes need a unit (`512M`, `8G`, `1.5T`): virsh reads a bare number as KiB,

@@ -1248,3 +1248,33 @@ fn start_preferences_set_the_sort_chip_and_window() {
         "unknown values change nothing"
     );
 }
+
+#[tokio::test]
+async fn read_only_refuses_changes_before_asking_and_lets_reads_run() {
+    let mut config = Config::default();
+    config.general.read_only = true;
+    crate::config::set_runtime(&config);
+    let mut app = fixture_app();
+    app.dash.marks.clear();
+    app.handle_key_event(shift('D'));
+    assert!(app.confirm.is_none(), "no confirmation for a refused action");
+    assert!(app.active_job.is_none());
+    assert!(
+        app.dash.message.contains("read-only connection") && app.dash.message.contains("destroy"),
+        "{}",
+        app.dash.message
+    );
+    // Typed commands: the confirmation is dropped, the raw write refused.
+    let target = app.dash.selected().name.clone();
+    run_ex(&mut app, &format!("destroy {target}"));
+    assert!(app.confirm.is_none());
+    assert!(app.active_job.is_none());
+    run_ex(&mut app, &format!("setmem {target} 1G --live"));
+    assert!(app.active_job.is_none(), "raw write refused");
+    assert!(app.dash.message.contains("virsh setmem"), "{}", app.dash.message);
+    run_ex(&mut app, &format!("dominfo {target}"));
+    let job = app.active_job.take().expect("reads still run");
+    assert_eq!(job.plans[0].1.steps[0].argv[0], "dominfo");
+    job.task.abort();
+    crate::config::set_runtime(&Config::default());
+}

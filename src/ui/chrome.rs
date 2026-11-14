@@ -21,7 +21,6 @@ use crate::theme::Theme;
 #[derive(Debug, Clone)]
 pub struct LiveChrome {
     pub hostname: String,
-    pub refresh_secs: u64,
 }
 
 static LIVE: OnceLock<LiveChrome> = OnceLock::new();
@@ -116,14 +115,15 @@ pub fn topbar(
                 .ok()
                 .and_then(|h| h.clone())
                 .unwrap_or_else(|| l.hostname.clone()),
-            format!("{}s", l.refresh_secs),
+            format!("{}s", crate::config::refresh_interval_secs()),
             now_hms(),
         ),
         None => (String::from("forge"), String::from("1s"), demo_time.to_string()),
     };
     let dim = Style::default().fg(t.comment).bg(t.bg2);
     let val = Style::default().fg(t.fg2).bg(t.bg2);
-    let mut right = vec![Span::styled("⌁ ", dim)];
+    let mut right = connection_badges(theme);
+    right.push(Span::styled("⌁ ", dim));
     if connected {
         right.push(Span::styled(uri.to_string(), val));
     } else {
@@ -138,6 +138,35 @@ pub fn topbar(
     }
     right.push(Span::styled("  ", dim));
     render_split(frame, area, left, right, bar);
+}
+
+/// Pills before the URI: the connection's profile label (in its colour)
+/// and `read-only`.
+fn connection_badges(theme: &Theme) -> Vec<Span<'static>> {
+    let t = &theme.tokens;
+    let mut out = Vec::new();
+    if let Some((label, color)) = crate::config::badge() {
+        let bg = color
+            .as_deref()
+            .and_then(|c| theme.named_color(c))
+            .unwrap_or(t.blue);
+        out.push(Span::styled(
+            format!(" {label} "),
+            Style::default().fg(t.bg2).bg(bg).add_modifier(Modifier::BOLD),
+        ));
+        out.push(Span::styled(" ", Style::default().bg(t.bg2)));
+    }
+    if crate::config::read_only() {
+        out.push(Span::styled(
+            " read-only ",
+            Style::default()
+                .fg(t.bg2)
+                .bg(t.yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+        out.push(Span::styled(" ", Style::default().bg(t.bg2)));
+    }
+    out
 }
 
 /// Settings variant of the top bar (`⚙ settings │ time` on the right).
@@ -281,6 +310,39 @@ fn styled_hints(theme: &Theme, hints: &str) -> Vec<Span<'static>> {
 mod tests {
     use super::styled_hints as hint_spans;
     use crate::theme::builtin::by_name;
+
+    #[test]
+    fn topbar_shows_the_profile_label_and_read_only() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let uri = "qemu+ssh://admin@hv01/system";
+        let mut cfg = crate::config::Config::default();
+        cfg.connections.profiles.insert(
+            uri.to_string(),
+            crate::config::Profile {
+                label: Some(String::from("prod")),
+                color: Some(String::from("red")),
+                read_only: Some(true),
+                ..Default::default()
+            },
+        );
+        crate::config::set_active_uri(uri);
+        crate::config::set_runtime(&cfg);
+        let theme = by_name("tokyonight");
+        let mut terminal = Terminal::new(TestBackend::new(174, 1)).unwrap();
+        terminal
+            .draw(|f| super::topbar(f, &theme, f.area(), Some(0), uri, true, "14:40:03"))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let text: String = (0..174).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+        assert!(
+            text.contains(" prod   read-only  ⌁ qemu+ssh://admin@hv01/system"),
+            "{text}"
+        );
+        let x = text.chars().position(|c| c == 'p').unwrap() as u16;
+        assert_eq!(buf[(x, 0)].bg, theme.tokens.red);
+        crate::config::set_active_uri("");
+        crate::config::set_runtime(&crate::config::Config::default());
+    }
 
     #[test]
     fn hint_keys_use_the_key_style() {

@@ -164,6 +164,9 @@ async fn stream_once_with_program(
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
     let mut command = Command::new(program);
+    if crate::config::read_only() {
+        command.arg("-r");
+    }
     command
         .arg("-c")
         .arg(uri)

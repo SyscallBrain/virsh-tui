@@ -22,6 +22,7 @@ default_filter = "all"           # all, running, paused, crashed, off
 history_size = 500               # `:` lines kept across sessions; 0: not saved
 shutdown_timeout_secs = 90       # wait this long after S before warning
 log_level = "info"               # error, warn, info, debug, trace, off
+read_only = false                # change nothing (also: --read-only)
 
 [appearance]
 theme = "tokyo-night"            # built-in name or a file in themes/
@@ -39,6 +40,15 @@ uris = [                         # offered by :connect completion and Settings
   # add remote hosts here, e.g. "qemu+ssh://admin@server/system"
 ]
 default = "qemu:///system"
+
+# Optional, one table per URI (see "Per-connection settings" below)
+[connections.profiles."qemu+ssh://admin@hv01/system"]
+label = "prod"                   # pill in the top bar
+color = "red"                    # red, green, yellow, blue, magenta, cyan, orange, teal or #rrggbb
+read_only = true
+refresh_interval_secs = 5
+thread_sampling = false
+viewer = "remote-viewer"
 
 [monitoring]
 balloon_on = false               # set a balloon stats period on running guests
@@ -64,6 +74,20 @@ escape = "C-]"                   # key that leaves the serial console
 iso_dirs = []                    # folders the ISO picker scans; empty: the
                                  # XDG download folder, e.g. ["~/Downloads", "/srv/isos"]
 ```
+
+## Per-connection settings
+
+A `[connections.profiles."<uri>"]` table changes some settings for one
+connection only: `read_only`, `refresh_interval_secs`, `thread_sampling` and
+`viewer` replace the global values while that URI is active (at start or
+after `:connect`), and `label` puts a pill in the top bar in `color`, so a
+production host never looks like your laptop. Keys left out use the global
+value, and the file keeps the global values: Settings and `:set` change
+those, not the profile. Settings › Connections shows each profile next to
+its URI.
+
+A remote host over SSH is a good candidate for a longer refresh interval:
+every refresh opens an SSH session.
 
 ## Notes on some settings
 
@@ -180,8 +204,8 @@ wizard and hardware editor. The mode pill, breadcrumb and dialog buttons
 Supported keys: `theme`, `transparent`, `borders`, `icons`, `graphs`,
 `gradient`, `dim_modals`, `key_hints`, `default_uri`, `editor`, `start_view`, `viewer`,
 `escape`, `refresh_interval_secs`, `default_sort`, `default_filter`,
-`history_size`, `history_window`, `shutdown_timeout_secs`, `bulk_threshold`
-and `log_level`. `Tab` completes them. Values are checked
+`history_size`, `history_window`, `shutdown_timeout_secs`, `bulk_threshold`,
+`log_level` and `read_only`. `Tab` completes them. Values are checked
 (booleans take `true`/`false`, `refresh_interval_secs` 1-60, `viewer`
 `virt-viewer` or `remote-viewer`, …); a rejected value changes nothing. A new
 value takes effect at once: a new refresh interval restarts sampling, and the

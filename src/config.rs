@@ -47,6 +47,9 @@ pub struct General {
     /// Log level of the log file: error, warn, info, debug, trace
     /// (`RUST_LOG` overrides it).
     pub log_level: String,
+    /// Never change anything: virsh opens read-only connections (`-r`) and
+    /// actions that would change libvirt objects are refused.
+    pub read_only: bool,
 }
 
 impl Default for General {
@@ -62,6 +65,7 @@ impl Default for General {
             history_size: 500,
             shutdown_timeout_secs: crate::ui::views::dashboard::SHUTDOWN_TIMEOUT_SECS,
             log_level: String::from("info"),
+            read_only: false,
         }
     }
 }
@@ -99,6 +103,31 @@ impl Default for Appearance {
 pub struct Connections {
     pub uris: Vec<String>,
     pub default: String,
+    /// Per-connection overrides, keyed by URI:
+    /// `[connections.profiles."qemu+ssh://admin@hv01/system"]`.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub profiles: std::collections::BTreeMap<String, Profile>,
+}
+
+/// Settings for one connection; unset fields use the global value.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct Profile {
+    /// Name shown in the top bar, e.g. `prod`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Colour of the label: a theme colour (`red`, `green`, `yellow`,
+    /// `blue`, `magenta`, `cyan`, `orange`, `teal`) or `#rrggbb`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_interval_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_sampling: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub viewer: Option<String>,
 }
 
 impl Default for Connections {
@@ -108,6 +137,7 @@ impl Default for Connections {
             // `qemu+ssh://user@host/system` would just fail when picked.
             uris: vec![String::from("qemu:///system"), String::from("qemu:///session")],
             default: String::from("qemu:///system"),
+            profiles: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -152,12 +182,98 @@ static REFRESH_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 /// Status-bar key hints on (read every frame: no clone).
 static KEY_HINTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+/// Read-only for the active connection (checked before every process spawn).
+static READ_ONLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `--read-only` was given: read-only whatever the config says.
+static READ_ONLY_FLAG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// URI whose profile is applied by [`set_runtime`].
+static ACTIVE_URI: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
+
+/// Top-bar badge of the active connection: (label, colour).
+static BADGE: std::sync::RwLock<Option<(String, Option<String>)>> = std::sync::RwLock::new(None);
+
 // Unit tests run in parallel threads of one process: each test thread gets
 // its own runtime config so `:set` / Settings tests cannot see each other's
 // values. The binary uses the process-wide statics above.
 #[cfg(test)]
 thread_local! {
     static TEST_RUNTIME: std::cell::RefCell<Option<Config>> = const { std::cell::RefCell::new(None) };
+    static TEST_URI: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    static TEST_RO_FLAG: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Select the connection whose profile [`set_runtime`] applies. Call
+/// [`set_runtime`] afterwards to publish the merged values.
+pub fn set_active_uri(uri: &str) {
+    #[cfg(test)]
+    TEST_URI.with(|u| *u.borrow_mut() = uri.to_string());
+    if let Ok(mut g) = ACTIVE_URI.write() {
+        *g = uri.to_string();
+    }
+}
+
+fn active_uri() -> String {
+    #[cfg(test)]
+    {
+        return TEST_URI.with(|u| u.borrow().clone());
+    }
+    #[allow(unreachable_code)]
+    ACTIVE_URI.read().map(|g| g.clone()).unwrap_or_default()
+}
+
+/// `--read-only`: force read-only for every connection of this run.
+pub fn set_read_only_flag(on: bool) {
+    #[cfg(test)]
+    TEST_RO_FLAG.with(|f| f.set(on));
+    READ_ONLY_FLAG.store(on, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Whether the active connection is read-only (`--read-only`,
+/// `general.read_only` or the connection's profile).
+pub fn read_only() -> bool {
+    #[cfg(test)]
+    {
+        return TEST_RO_FLAG.with(|f| f.get())
+            || TEST_RUNTIME.with(|r| r.borrow().as_ref().is_some_and(|c| c.general.read_only));
+    }
+    #[allow(unreachable_code)]
+    {
+        READ_ONLY_FLAG.load(std::sync::atomic::Ordering::SeqCst)
+            || READ_ONLY.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// Why the connection is read-only, for messages (`None`: it is not).
+pub fn read_only_reason() -> Option<&'static str> {
+    #[cfg(test)]
+    let flag = TEST_RO_FLAG.with(|f| f.get());
+    #[cfg(not(test))]
+    let flag = READ_ONLY_FLAG.load(std::sync::atomic::Ordering::SeqCst);
+    if flag {
+        Some("--read-only")
+    } else if read_only() {
+        Some("read_only in config.toml")
+    } else {
+        None
+    }
+}
+
+/// Label and colour of the active connection's profile, if it has a label.
+pub fn badge() -> Option<(String, Option<String>)> {
+    #[cfg(test)]
+    {
+        let uri = active_uri();
+        return TEST_RUNTIME.with(|r| {
+            r.borrow().as_ref().and_then(|c| {
+                let p = c.connections.profiles.get(&uri)?;
+                Some((p.label.clone()?, p.color.clone()))
+            })
+        });
+    }
+    #[allow(unreachable_code)]
+    BADGE.read().ok().and_then(|g| g.clone())
 }
 
 /// Whether the status bars show key hints.
@@ -181,6 +297,7 @@ pub fn refresh_interval_secs() -> u64 {
 /// Publish the active config (the one loaded from `--config` or the default
 /// path, plus Settings changes) for code that has no handle to it.
 pub fn set_runtime(c: &Config) {
+    let c = &c.effective_for(&active_uri());
     #[cfg(test)]
     {
         TEST_RUNTIME.with(|r| *r.borrow_mut() = Some(c.clone()));
@@ -188,6 +305,14 @@ pub fn set_runtime(c: &Config) {
     }
     #[allow(unreachable_code)]
     {
+        READ_ONLY.store(c.general.read_only, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut b) = BADGE.write() {
+            *b = c
+                .connections
+                .profiles
+                .get(&active_uri())
+                .and_then(|p| Some((p.label.clone()?, p.color.clone())));
+        }
         REFRESH_SECS.store(
             c.general.refresh_interval_secs.max(1),
             std::sync::atomic::Ordering::Relaxed,
@@ -262,6 +387,28 @@ impl Default for Console {
 }
 
 impl Config {
+    /// This config with the profile of `uri` applied (what the app runs
+    /// with; the file keeps the global values).
+    pub fn effective_for(&self, uri: &str) -> Self {
+        let mut c = self.clone();
+        let Some(p) = self.connections.profiles.get(uri) else {
+            return c;
+        };
+        if let Some(v) = p.read_only {
+            c.general.read_only = v;
+        }
+        if let Some(v) = p.refresh_interval_secs {
+            c.general.refresh_interval_secs = v.clamp(1, 60);
+        }
+        if let Some(v) = p.thread_sampling {
+            c.monitoring.thread_sampling = v;
+        }
+        if let Some(v) = &p.viewer {
+            c.console.viewer.clone_from(v);
+        }
+        c
+    }
+
     /// Config file path.
     pub fn path() -> Option<std::path::PathBuf> {
         directories::ProjectDirs::from("", "", "virsh-tui").map(|d| d.config_dir().join("config.toml"))
@@ -339,6 +486,64 @@ mod tests {
             cfg.source,
             Some(path),
             "save() writes back to the file it came from"
+        );
+    }
+
+    #[test]
+    fn profiles_override_the_active_connection_only() {
+        let text = r#"
+[general]
+refresh_interval_secs = 1
+
+[connections.profiles."qemu+ssh://admin@hv01/system"]
+label = "prod"
+color = "red"
+read_only = true
+refresh_interval_secs = 5
+viewer = "remote-viewer"
+"#;
+        let cfg: Config = toml::from_str(text).unwrap();
+        let remote = "qemu+ssh://admin@hv01/system";
+        let eff = cfg.effective_for(remote);
+        assert!(eff.general.read_only);
+        assert_eq!(eff.general.refresh_interval_secs, 5);
+        assert_eq!(eff.console.viewer, "remote-viewer");
+        assert_eq!(cfg.effective_for("qemu:///system"), cfg, "other URIs: unchanged");
+
+        super::set_active_uri(remote);
+        super::set_runtime(&cfg);
+        assert!(super::read_only());
+        assert_eq!(super::read_only_reason(), Some("read_only in config.toml"));
+        assert_eq!(super::refresh_interval_secs(), 5);
+        assert_eq!(
+            super::badge(),
+            Some((String::from("prod"), Some(String::from("red"))))
+        );
+        super::set_active_uri("qemu:///system");
+        super::set_runtime(&cfg);
+        assert!(!super::read_only());
+        assert_eq!(super::badge(), None);
+        super::set_read_only_flag(true);
+        assert_eq!(super::read_only_reason(), Some("--read-only"));
+        super::set_read_only_flag(false);
+        super::set_active_uri("");
+        super::set_runtime(&Config::default());
+
+        // Saving keeps the profile and writes no empty fields.
+        let saved = toml::to_string_pretty(&cfg).unwrap();
+        assert!(
+            saved.contains("[connections.profiles.\"qemu+ssh://admin@hv01/system\"]"),
+            "{saved}"
+        );
+        let profile = saved.split("[connections.profiles.").nth(1).unwrap();
+        let profile = profile.split("\n[").next().unwrap();
+        assert!(
+            !profile.contains("thread_sampling"),
+            "unset fields are omitted: {profile}"
+        );
+        assert_eq!(
+            toml::from_str::<Config>(&saved).unwrap().connections,
+            cfg.connections
         );
     }
 

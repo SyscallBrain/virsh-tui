@@ -9,6 +9,7 @@ virsh-tui [OPTIONS]
 | `-c`, `--connect <URI>` | libvirt connection URI, e.g. `qemu:///system`. Defaults to `general.default_uri` |
 | `--demo` | use the in-memory demo backend; nothing is executed |
 | `--dry-run` | show the commands that actions would run, without running them |
+| `-r`, `--read-only` | change nothing: virsh connects read-only and actions that would change libvirt objects are refused (see [Safety](safety.md#read-only-connections)) |
 | `--theme <NAME>` | theme for this session (built-in or custom), overriding the config |
 | `--config <PATH>` | use this config file instead of `~/.config/virsh-tui/config.toml` |
 | `--screen <NAME>` | open on a given screen (see below) |
@@ -36,6 +37,9 @@ virsh-tui -c qemu+ssh://admin@hv01/system
 
 # See what the keys would do, without changing anything
 virsh-tui --dry-run
+
+# Look at a production host without any risk of changing it
+virsh-tui -r -c qemu+ssh://admin@prod01/system
 
 # Check the environment before reporting a problem
 virsh-tui --doctor

@@ -113,10 +113,12 @@ pub async fn run_with_shutdown(
         config.appearance.theme = theme.clone();
     }
     crate::command::exec::set_demo(cli.demo);
+    crate::config::set_read_only_flag(cli.read_only);
+    crate::config::set_active_uri(&cli.connect);
+    crate::config::set_runtime(&config);
     if !cli.demo {
         crate::ui::chrome::set_live(crate::ui::chrome::LiveChrome {
             hostname: connection_hostname(&cli.connect),
-            refresh_secs: config.general.refresh_interval_secs.max(1),
         });
     }
     let theme: Theme = current_theme(&config);
@@ -747,6 +749,20 @@ impl App {
     /// Settings › Confirmations: skip the modal for actions the user turned off,
     /// and drop the type-the-name step when that is disabled.
     fn apply_confirm_settings(&mut self) {
+        if self.confirm.is_none() {
+            return;
+        }
+        if crate::config::read_only() {
+            let plans: Vec<(String, crate::command::plan::CommandPlan)> = self
+                .confirm
+                .as_ref()
+                .map(|(_, build, targets)| targets.iter().map(|t| (t.clone(), build(t))).collect())
+                .unwrap_or_default();
+            if self.refuse_writes_if_read_only(&plans) {
+                self.confirm = None;
+                return;
+            }
+        }
         let Some((c, _, targets)) = self.confirm.as_mut() else {
             return;
         };
@@ -987,8 +1003,9 @@ impl App {
             self.cancel_all_reads();
             self.poller = Some(poller::spawn(
                 &self.uri,
-                self.config.general.refresh_interval_secs.max(1),
-                (!self.dry_run && self.config.monitoring.balloon_on)
+                crate::config::refresh_interval_secs(),
+                // The stats period changes the guests: never on a read-only connection.
+                (!self.dry_run && !crate::config::read_only() && self.config.monitoring.balloon_on)
                     .then_some(self.config.monitoring.balloon_period_secs.max(1)),
             ));
             self.poller_uri.clone_from(&self.uri);
@@ -1025,7 +1042,7 @@ impl App {
         }
         if self.view == View::Host {
             self.host.apply_live(&self.dash);
-            if !self.config.monitoring.thread_sampling {
+            if !crate::config::runtime().monitoring.thread_sampling {
                 self.host.threads.clear();
             }
         }
@@ -1247,6 +1264,9 @@ impl App {
             self.network_retries.push((self.uri.clone(), draft));
         }
         self.uri = uri;
+        // The new connection's profile (label, read-only, refresh, …).
+        crate::config::set_active_uri(&self.uri);
+        crate::config::set_runtime(&self.config);
         self.dash.uri.clone_from(&self.uri);
         self.dash.connected = false;
         self.dash.rows.clear();
@@ -2106,6 +2126,7 @@ impl App {
                 &mut self.engine,
                 &mut self.keymap_file,
             ) && (self.config.general.refresh_interval_secs != before.general.refresh_interval_secs
+                || self.config.general.read_only != before.general.read_only
                 || self.config.monitoring != before.monitoring)
             {
                 // Restart the poller with the new interval / memory-stats option.
@@ -2340,6 +2361,11 @@ impl App {
             use crate::input::engine::KeyAction as A;
             if resolved.action == A::Refresh {
                 self.request_refresh();
+                continue;
+            }
+            if let Some(what) = read_only_refusal(resolved.action)
+                && self.refuse_if_read_only(what)
+            {
                 continue;
             }
             if self.detail_loading
@@ -2857,6 +2883,38 @@ fn remote_host_label(uri: &str) -> String {
 }
 
 /// True for the `1`-`5` view switches.
+/// What a key would change, for the read-only refusal (`None`: it only
+/// reads, navigates or opens something to look at).
+fn read_only_refusal(action: crate::input::engine::KeyAction) -> Option<&'static str> {
+    use crate::input::engine::KeyAction as A;
+    Some(match action {
+        A::Start => "start",
+        A::Shutdown => "shutdown",
+        A::Destroy => "destroy",
+        A::Reboot => "reboot",
+        A::Reset => "reset",
+        A::Pause => "suspend / resume",
+        A::ManagedSave => "managedsave",
+        A::ManagedSaveRemove => "managedsave-remove",
+        A::Autostart => "autostart",
+        A::Console => "console (needs a read-write connection)",
+        A::EditXml => "edit XML",
+        A::Undefine => "undefine",
+        A::Rename => "rename",
+        A::Clone => "clone",
+        A::Migrate => "migrate",
+        A::SendKey => "send-key",
+        A::NewDomain => "new domain",
+        A::LeasePin | A::LeaseUnpin => "net-update",
+        A::SnapshotNew | A::SnapshotRevert | A::SnapshotDelete => "snapshot change",
+        A::InsertMedia | A::EjectMedia => "change-media",
+        A::DiskAttach | A::NicAttach => "attach",
+        A::DiskResize => "blockresize",
+        A::NicLink => "domif-setlink",
+        _ => return None,
+    })
+}
+
 fn is_view_switch(action: crate::input::engine::KeyAction) -> bool {
     use crate::input::engine::KeyAction as A;
     matches!(

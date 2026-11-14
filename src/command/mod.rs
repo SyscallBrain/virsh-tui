@@ -8,4 +8,5 @@ pub mod history;
 pub mod job;
 pub mod plan;
 pub mod process;
+pub mod readonly;
 pub mod tempxml;
