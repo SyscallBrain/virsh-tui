@@ -140,7 +140,11 @@ and a digit followed by more keys is a count (a single digit is fine).
 file below (or press `d` to get the defaults back).
 
 Changes apply at once and are saved to `keymap.toml`. Only the changed
-entries are rewritten: your comments and other tables stay. Reset all keeps
+entries are rewritten: your comments, other tables and keys virsh-tui does not
+understand stay (replacing an action's keys drops its old ones, of course).
+The file is read again before each change, so edits you make in an editor
+while virsh-tui runs are kept. A symlinked `keymap.toml` is written through
+the link, keeping its permissions. Reset all keeps
 a copy of the old file in `keymap.toml.bak`. In `--demo` nothing is saved.
 While a job runs you can look and filter but not change keys. If
 `keymap.toml` has a syntax error, fix it first: the settings refuse to edit

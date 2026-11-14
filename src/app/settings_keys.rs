@@ -3,9 +3,10 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::input::catalog::{info_of, seq_text};
+use crate::input::catalog::{info_of, keys_of, seq_text};
 use crate::input::engine::{KeyAction, KeyEngine};
 use crate::input::key::KeySeq;
+use crate::input::keymap::{Keymap, default_map};
 use crate::input::keymap_file::{Conflict, Edit, KeymapFile, Outcome};
 use crate::input::textinput::TextInput;
 use crate::ui::views::settings_keys::{Capture, KeyRow, KeysState, PendingEdit, visible_rows};
@@ -17,20 +18,51 @@ fn label(action: KeyAction) -> &'static str {
     info_of(action).map_or(action.name(), |i| i.label)
 }
 
-/// `D is bound to destroy (force off). Replace? destroy (force off) will lose it.`
-fn conflict_question(conflicts: &[Conflict]) -> String {
-    let clauses: Vec<String> = conflicts
-        .iter()
-        .map(|c| format!("{} is bound to {}.", seq_text(&c.seq), label(c.action)))
-        .collect();
-    let mut losers: Vec<&str> = conflicts.iter().map(|c| label(c.action)).collect();
-    losers.dedup();
-    let tail = if losers.len() == 1 {
-        format!("{} will lose it.", losers[0])
-    } else {
-        String::from("They will lose those keys.")
-    };
-    format!("{} Replace? {tail}", clauses.join(" "))
+/// Sequences `edit` binds (compared with conflicts: equal → "is bound to",
+/// otherwise → "would hide").
+fn new_seqs(edit: &Edit) -> Vec<Vec<String>> {
+    match edit {
+        Edit::Replace(_, seq) | Edit::Add(_, seq) => vec![seq.clone()],
+        Edit::Default(a) => keys_of(&default_map(), *a),
+        Edit::ResetAll => Vec::new(),
+    }
+}
+
+/// `D is bound to destroy (force off). Replace? destroy (force off) will have no key.`
+/// `g would hide g g (top), g x (go to XML tab). Replace? …`
+fn conflict_question(edit: &Edit, conflicts: &[Conflict], map: &Keymap) -> String {
+    let named = |c: &Conflict| format!("{} ({})", seq_text(&c.seq), label(c.action));
+    let mut clauses = Vec::new();
+    for seq in new_seqs(edit) {
+        let exact: Vec<&Conflict> = conflicts.iter().filter(|c| c.seq == seq).collect();
+        let hidden: Vec<String> = conflicts.iter().filter(|c| c.seq != seq).map(named).collect();
+        for c in exact {
+            clauses.push(format!("{} is bound to {}.", seq_text(&seq), label(c.action)));
+        }
+        if !hidden.is_empty() {
+            clauses.push(format!("{} would hide {}.", seq_text(&seq), hidden.join(", ")));
+        }
+    }
+    let mut losers: Vec<KeyAction> = Vec::new();
+    for c in conflicts {
+        if !losers.contains(&c.action) {
+            losers.push(c.action);
+        }
+    }
+    let (empty, partial): (Vec<KeyAction>, Vec<KeyAction>) = losers.into_iter().partition(|a| {
+        keys_of(map, *a)
+            .iter()
+            .all(|k| conflicts.iter().any(|c| c.action == *a && c.seq == *k))
+    });
+    let names = |v: &[KeyAction]| v.iter().map(|a| label(*a)).collect::<Vec<_>>().join(" and ");
+    let mut tail = Vec::new();
+    if !empty.is_empty() {
+        tail.push(format!("{} will have no key.", names(&empty)));
+    }
+    if !partial.is_empty() {
+        tail.push(format!("{} will lose those keys.", names(&partial)));
+    }
+    format!("{} Replace? {}", clauses.join(" "), tail.join(" "))
 }
 
 /// Preview `edit`: apply it, ask about conflicts, or report the refusal.
@@ -40,7 +72,7 @@ fn submit(edit: Edit, st: &mut KeysState, engine: &mut KeyEngine, file: &mut Key
         Outcome::NeedsConfirm(conflicts) => {
             st.message = None;
             st.pending = Some(PendingEdit {
-                question: conflict_question(&conflicts),
+                question: conflict_question(&edit, &conflicts, engine.map()),
                 edit,
             });
         }
@@ -53,9 +85,28 @@ fn apply(edit: &Edit, st: &mut KeysState, engine: &mut KeyEngine, file: &mut Key
         Outcome::Applied(m) => {
             engine.set_map(file.map());
             st.message = Some(m);
+            if let Edit::Replace(a, _) | Edit::Add(a, _) | Edit::Default(a) = edit {
+                follow(st, *a, engine.map());
+            }
         }
         Outcome::Rejected(m) => st.message = Some(m),
         Outcome::NeedsConfirm(_) => {}
+    }
+}
+
+/// Keep the edited action selected; if it no longer matches the filter,
+/// drop the filter so `d` / `⏎` never act on a neighbour by surprise.
+fn follow(st: &mut KeysState, action: KeyAction, map: &Keymap) {
+    let find = |q: &str| {
+        visible_rows(q, map)
+            .iter()
+            .position(|r| matches!(r, KeyRow::Action(i) if i.action == action))
+    };
+    if let Some(i) = find(&st.query) {
+        st.sel = i;
+    } else {
+        st.query.clear();
+        st.sel = find("").unwrap_or(0);
     }
 }
 
@@ -355,5 +406,45 @@ mod tests {
         assert!(keys(&app).capture.is_none());
         press(&mut app, &[code(KeyCode::Esc)]).await;
         assert!(app.settings.is_none());
+    }
+
+    #[tokio::test]
+    async fn conflict_question_says_when_an_action_is_left_without_keys() {
+        let mut app = fixture_app();
+        on_action(&mut app, KeyAction::Shutdown).await;
+        press(&mut app, &[code(KeyCode::Enter), k('D'), code(KeyCode::Enter)]).await;
+        let q = keys(&app).pending.as_ref().unwrap().question.clone();
+        assert_eq!(
+            q,
+            "D is bound to destroy (force off). Replace? destroy (force off) will have no key."
+        );
+    }
+
+    #[tokio::test]
+    async fn prefix_conflict_question_says_hide() {
+        let mut app = fixture_app();
+        on_action(&mut app, KeyAction::Start).await;
+        press(&mut app, &[code(KeyCode::Enter), k('g'), code(KeyCode::Enter)]).await;
+        let q = keys(&app).pending.as_ref().unwrap().question.clone();
+        assert_eq!(
+            q,
+            "g would hide g g (top), g x (go to XML tab). Replace? top and go to XML tab will have no key."
+        );
+    }
+
+    #[tokio::test]
+    async fn selection_follows_the_edited_action_under_a_filter() {
+        let mut app = fixture_app();
+        on_action(&mut app, KeyAction::Shutdown).await;
+        press(&mut app, &[k('/'), k('C'), k('-'), code(KeyCode::Enter)]).await;
+        // First match of "C-" is half page down (C-d).
+        press(&mut app, &[code(KeyCode::Enter), k('x'), code(KeyCode::Enter)]).await;
+        assert_eq!(app.engine.map().get(&s(&["x"])), Some(&KeyAction::HalfDown));
+        let st = keys(&app);
+        let rows = visible_rows(&st.query, app.engine.map());
+        assert!(
+            matches!(rows[st.sel], KeyRow::Action(i) if i.action == KeyAction::HalfDown),
+            "selection moved off the edited action"
+        );
     }
 }

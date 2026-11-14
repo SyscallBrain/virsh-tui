@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use toml_edit::{Array, DocumentMut, Item, Table, Value};
+use toml_edit::{Array, DocumentMut, Item, TableLike, Value};
 
 use super::catalog::{keys_of, seq_text, validate};
 use super::engine::KeyAction;
@@ -153,6 +153,10 @@ impl KeymapFile {
         for (action, keys) in &writes {
             self.write_entry(*action, keys.as_deref());
         }
+        if self.doc.to_string() == before_text {
+            // Nothing to change (`d` on an action that was never remapped).
+            return Outcome::Applied(message);
+        }
         match self.save(edit, &before_text) {
             Ok(()) => Outcome::Applied(message),
             Err(e) => {
@@ -196,6 +200,7 @@ impl KeymapFile {
                     return Err(format!("✗ already bound to {}", a.name()));
                 }
                 own.push(seq.clone());
+                own.extend(self.invalid_keys(*a));
                 (None, vec![seq.clone()], vec![(*a, Some(own))])
             }
             Edit::Default(a) => (Some(*a), keys_of(&default_map(), *a), vec![(*a, None)]),
@@ -227,7 +232,11 @@ impl KeymapFile {
         for (action, gone) in lost {
             let keys = match writes.iter().position(|(a, _)| *a == action) {
                 Some(i) => writes[i].1.take().unwrap_or_default(),
-                None => keys_of(&map, action),
+                None => {
+                    let mut keys = keys_of(&map, action);
+                    keys.extend(self.invalid_keys(action));
+                    keys
+                }
             };
             let kept: Vec<Vec<String>> = keys.into_iter().filter(|k| !gone.contains(k)).collect();
             writes.retain(|(a, _)| *a != action);
@@ -236,20 +245,20 @@ impl KeymapFile {
         Ok((conflicts, writes))
     }
 
-    /// `[normal]` and its sub-tables.
-    fn tables(&self) -> Vec<&Table> {
-        let Some(normal) = self.doc.get("normal").and_then(Item::as_table) else {
+    /// `[normal]` and its sub-tables (standard or inline).
+    fn tables(&self) -> Vec<&dyn TableLike> {
+        let Some(normal) = self.doc.get("normal").and_then(Item::as_table_like) else {
             return Vec::new();
         };
         let mut out = vec![normal];
-        out.extend(normal.iter().filter_map(|(_, v)| v.as_table()));
+        out.extend(normal.iter().filter_map(|(_, v)| v.as_table_like()));
         out
     }
 
     /// Tables holding `name`, in the order `apply_overrides` reads them
     /// (`[normal]` is `None`, sub-tables `Some(key)`): the last one wins.
     fn holders(&self, name: &str) -> Vec<Option<String>> {
-        let Some(normal) = self.doc.get("normal").and_then(Item::as_table) else {
+        let Some(normal) = self.doc.get("normal").and_then(Item::as_table_like) else {
             return Vec::new();
         };
         let mut out = Vec::new();
@@ -259,18 +268,48 @@ impl KeymapFile {
         out.extend(
             normal
                 .iter()
-                .filter(|(_, v)| v.as_table().is_some_and(|t| t.contains_key(name)))
+                .filter(|(_, v)| v.as_table_like().is_some_and(|t| t.contains_key(name)))
                 .map(|(k, _)| Some(k.to_string())),
         );
         out
     }
 
-    fn table_mut(&mut self, holder: &Option<String>) -> Option<&mut Table> {
-        let normal = self.doc.get_mut("normal")?.as_table_mut()?;
+    fn table(&self, holder: &Option<String>) -> Option<&dyn TableLike> {
+        let normal = self.doc.get("normal")?.as_table_like()?;
         match holder {
             None => Some(normal),
-            Some(sub) => normal.get_mut(sub)?.as_table_mut(),
+            Some(sub) => normal.get(sub)?.as_table_like(),
         }
+    }
+
+    fn table_mut(&mut self, holder: &Option<String>) -> Option<&mut dyn TableLike> {
+        let normal = self.doc.get_mut("normal")?.as_table_like_mut()?;
+        match holder {
+            None => Some(normal),
+            Some(sub) => normal.get_mut(sub)?.as_table_like_mut(),
+        }
+    }
+
+    /// Keys of the action's effective entry that the loader rejects (`F5`):
+    /// kept as written when the entry is rewritten for another reason.
+    fn invalid_keys(&self, action: KeyAction) -> Vec<Vec<String>> {
+        let name = action.name();
+        let Some(holder) = self.holders(name).pop() else {
+            return Vec::new();
+        };
+        let Some(array) = self
+            .table(&holder)
+            .and_then(|t| t.get(name))
+            .and_then(Item::as_array)
+        else {
+            return Vec::new();
+        };
+        array
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|k| k.split_whitespace().map(String::from).collect::<Vec<_>>())
+            .filter(|t| t.iter().any(|tok| !super::key::KeySeq::parse(tok).is_valid()))
+            .collect()
     }
 
     /// Remove `action` from every table, then write `keys` once (into the
@@ -292,6 +331,12 @@ impl KeymapFile {
         if !self.doc.contains_key("normal") {
             self.doc["normal"] = toml_edit::table();
         }
+        if target.is_none()
+            && let Some(t) = self.doc.get_mut("normal").and_then(Item::as_table_mut)
+        {
+            // `[normal]` only implied by `[normal.<sub>]` headers: show it.
+            t.set_implicit(false);
+        }
         let Some(table) = self.table_mut(&target) else {
             return;
         };
@@ -300,13 +345,17 @@ impl KeymapFile {
         if let Some(d) = decor {
             *value.decor_mut() = d;
         }
-        table.set_implicit(false);
         table.insert(name, Item::Value(value));
     }
 
     fn save(&self, edit: &Edit, before_text: &str) -> std::io::Result<()> {
         let Some(path) = &self.path else { return Ok(()) };
-        let dir = path
+        // A symlinked keymap.toml (dotfile managers) is written through.
+        let target = match std::fs::symlink_metadata(path) {
+            Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path)?,
+            _ => path.clone(),
+        };
+        let dir = target
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
@@ -316,8 +365,11 @@ impl KeymapFile {
         }
         let mut file = tempfile::NamedTempFile::new_in(&dir)?;
         std::io::Write::write_all(&mut file, self.doc.to_string().as_bytes())?;
+        if let Ok(meta) = std::fs::metadata(&target) {
+            file.as_file().set_permissions(meta.permissions())?;
+        }
         file.as_file().sync_all()?;
-        file.persist(path).map_err(|e| e.error)?;
+        file.persist(&target).map_err(|e| e.error)?;
         Ok(())
     }
 }
@@ -564,5 +616,61 @@ mod tests {
         f.apply(&Edit::Default(KeyAction::Console));
         assert!(!f.is_custom(KeyAction::Console));
         assert_eq!(f.map().get(&s(&["c"])), Some(&KeyAction::Console));
+    }
+
+    #[test]
+    fn unchanged_document_is_not_saved() {
+        let (_d, path, mut f) = file_with("");
+        assert!(matches!(
+            f.apply(&Edit::Default(KeyAction::Start)),
+            Outcome::Applied(_)
+        ));
+        assert!(!path.exists(), "nothing to restore: no file created");
+    }
+
+    #[test]
+    fn inline_normal_table_is_edited() {
+        let (_d, path, mut f) = file_with("normal = { console = [\"C-t\"] }\n");
+        assert!(f.is_custom(KeyAction::Console));
+        f.apply(&Edit::Replace(KeyAction::Console, s(&["C-y"])));
+        assert_eq!(f.map().get(&s(&["C-y"])), Some(&KeyAction::Console));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("C-t"), "{text}");
+    }
+
+    #[test]
+    fn add_keeps_invalid_keys_already_in_the_file() {
+        let (_d, path, mut f) = file_with("[normal]\nconsole = [\"c\", \"F5\"]\n");
+        f.apply(&Edit::Add(KeyAction::Console, s(&["C-t"])));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(r#"console = ["c", "C-t", "F5"]"#), "{text}");
+    }
+
+    #[test]
+    fn replace_drops_invalid_keys() {
+        let (_d, path, mut f) = file_with("[normal]\nconsole = [\"c\", \"F5\"]\n");
+        f.apply(&Edit::Replace(KeyAction::Console, s(&["C-t"])));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(r#"console = ["C-t"]"#), "{text}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_follows_symlink_and_keeps_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("dotfiles");
+        std::fs::create_dir(&real).unwrap();
+        let target = real.join("keymap.toml");
+        std::fs::write(&target, "[normal]\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let link = dir.path().join("keymap.toml");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let mut f = KeymapFile::load(Some(link.clone()), None);
+        f.apply(&Edit::Replace(KeyAction::Start, s(&["C-s"])));
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(std::fs::read_to_string(&target).unwrap().contains("start"));
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o644);
     }
 }
