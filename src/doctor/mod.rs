@@ -138,6 +138,8 @@ impl Check {
 pub enum UriSource {
     Flag,
     Config,
+    /// Switched in the running app (`:connect`).
+    Session,
 }
 
 impl UriSource {
@@ -145,6 +147,7 @@ impl UriSource {
         match self {
             Self::Flag => "from -c",
             Self::Config => "config default_uri",
+            Self::Session => "this session",
         }
     }
 }
@@ -226,21 +229,34 @@ pub fn ctx_from(
     uri_was_flag: bool,
     term_size: Option<(u16, u16)>,
 ) -> Ctx {
-    let dirs = directories::ProjectDirs::from("", "", "virsh-tui");
-    Ctx {
-        uri: cli.connect.clone(),
-        uri_source: if uri_was_flag {
-            UriSource::Flag
-        } else {
-            UriSource::Config
-        },
-        config: config.clone(),
-        config_path: config.source.clone().or_else(crate::config::Config::path),
-        keymap_path: crate::input::keymap::path(),
-        themes_dir: dirs.as_ref().map(|d| d.config_dir().join("themes")),
-        log_path: dirs
-            .as_ref()
-            .and_then(|d| d.state_dir().map(|s| s.join("virsh-tui.log"))),
-        term_size,
+    let source = if uri_was_flag {
+        UriSource::Flag
+    } else {
+        UriSource::Config
+    };
+    Ctx::new(&cli.connect, source, config, term_size)
+}
+
+impl Ctx {
+    /// Context with the real config, keymap, themes and log paths.
+    pub fn new(
+        uri: &str,
+        uri_source: UriSource,
+        config: &crate::config::Config,
+        term_size: Option<(u16, u16)>,
+    ) -> Self {
+        let dirs = directories::ProjectDirs::from("", "", "virsh-tui");
+        Self {
+            uri: uri.to_string(),
+            uri_source,
+            config: config.clone(),
+            config_path: config.source.clone().or_else(crate::config::Config::path),
+            keymap_path: crate::input::keymap::path(),
+            themes_dir: dirs.as_ref().map(|d| d.config_dir().join("themes")),
+            log_path: dirs
+                .as_ref()
+                .and_then(|d| d.state_dir().map(|s| s.join("virsh-tui.log"))),
+            term_size,
+        }
     }
 }

@@ -7,5 +7,6 @@ pub mod host;
 pub mod minimal;
 pub mod networks;
 pub mod settings;
+pub mod settings_doctor;
 pub mod settings_keys;
 pub mod storage;

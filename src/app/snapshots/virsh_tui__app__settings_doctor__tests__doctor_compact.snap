@@ -1,0 +1,44 @@
+---
+source: src/app/settings_doctor.rs
+expression: "render(&app, 120, 40)"
+---
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                              ⚙ settings  │  14:40:03
+ Doctor › Options · h/l pane
+ ╭ Doctor ────────────────────────────────────────────────────────────────────────────── 13 ok · 2 warnings · 1 error ╮
+ │ Connection                                                                                                         │
+ │   ✓ virsh            11.6.0 (/usr/bin/virsh)                                                                       │
+ │   · URI              qemu:///system                                                                                │
+ │   ✓ connection       libvirt 11.6.0 · QEMU 10.1.0                                                                  │
+ │ ❯ ⚠ permissions      not in group libvirt  f fix · y copy                                                          │
+ │   ✓ events           event stream available                                                                        │
+ │   ⚠ networks         none active  f fix                                                                            │
+ │   ✓ UEFI firmware    OVMF found                                                                                    │
+ │                                                                                                                    │
+ │ Tools                                                                                                              │
+ │   ✓ graphical viewer /usr/bin/virt-viewer                                                                          │
+ │   ✓ virt-install     /usr/bin/virt-install                                                                         │
+ │   ✗ virt-clone       not found  y copy                                                                             │
+ │   ✓ editor           nvim                                                                                          │
+ │   ✓ clipboard        available                                                                                     │
+ │                                                                                                                    │
+ │ Files                                                                                                              │
+ │   ✓ config.toml      ~/.config/virsh-tui/config.toml                                                               │
+ │   · keymap.toml      defaults (no file)                                                                            │
+ │   ✓ theme            tokyo-night                                                                                   │
+ │   ✓ log              ~/.local/state/virsh-tui/virsh-tui.log                                                        │
+ │                                                                                                                    │
+ │ Terminal                                                                                                           │
+ │   ✓ size             174×43                                                                                        │
+ │   ✓ colours          truecolor                                                                                     │
+ │   · glyphs           icons unicode · graphs braille                                                                │
+ │                                                                                                                    │
+ │ → add your user to the libvirt group and log in again, or use -c qemu:///session                                   │
+ │ fix: connect to qemu:///session                                                                                    │
+ │ run: sudo usermod -aG libvirt demo                                                                                 │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+h/l pane · j/k move · Enter · Esc close
+checks are read-only · f applies a fix after asking

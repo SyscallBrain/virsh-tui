@@ -15,6 +15,7 @@ mod palette;
 mod render;
 mod requests;
 mod settings;
+mod settings_doctor;
 mod settings_keys;
 mod storage;
 mod wizard;
@@ -330,6 +331,7 @@ pub async fn run_with_shutdown(
         editor_retries: Vec::new(),
         editor_generation: 0,
         network_retries: Vec::new(),
+        doctor_task: None,
     };
     if !cli.demo {
         for view in [View::Host, View::Networks, View::Storage] {
@@ -367,6 +369,20 @@ pub async fn run_with_shutdown(
                 }
             } => app.on_live(msg),
             Some(loaded) = loads_rx.recv() => app.on_loaded(loaded),
+            (serial, report) = async {
+                match app.doctor_task.as_mut() {
+                    Some((serial, task)) => {
+                        let serial = *serial;
+                        (serial, task.await)
+                    }
+                    None => std::future::pending().await,
+                }
+            } => {
+                app.doctor_task = None;
+                if let Ok(report) = report {
+                    app.on_doctor(serial, report);
+                }
+            }
             help = async {
                 match app.help_task.as_mut() {
                     Some(task) => (&mut task.task).await,
@@ -556,6 +572,8 @@ struct App {
     editor_retries: Vec<EditorDraft>,
     editor_generation: u64,
     network_retries: Vec<(String, crate::ui::widgets::form::Form)>,
+    /// Settings › Doctor run in progress: its serial and task.
+    doctor_task: Option<(u64, tokio::task::JoinHandle<crate::doctor::Report>)>,
 }
 
 /// Active Tab completion: the line before the token, candidates, selection.
@@ -835,6 +853,20 @@ impl App {
                     self.engine.map(),
                     &self.keymap_file,
                 );
+            }
+            // A doctor fix asks from inside Settings: keep its modal on top.
+            if self.settings.is_some()
+                && let Some((c, _, _)) = &self.confirm
+            {
+                crate::ui::widgets::modal::dim_background(f, &self.theme);
+                let max = crate::ui::overlays::confirm::render_scrolled(
+                    f,
+                    &self.theme,
+                    f.area(),
+                    c,
+                    self.confirm_scroll.get(),
+                );
+                self.confirm_scroll.set(self.confirm_scroll.get().min(max));
             }
             if let Some(filter) = &self.help_filter {
                 crate::ui::overlays::help::render_page(
@@ -1155,6 +1187,76 @@ impl App {
         })
     }
 
+    /// `:connect <uri>`: switch connection (refused with pending hardware edits).
+    pub(super) fn connect_to(&mut self, uri: String) {
+        if self.uri == uri {
+            self.request_refresh();
+            return;
+        }
+        if self
+            .detail
+            .as_ref()
+            .is_some_and(|detail| detail.hw.pending_count() > 0)
+        {
+            self.show_message("⚠ Unsaved hardware changes: use :w or :q! before connecting".into());
+            return;
+        }
+        if self.view == View::Detail {
+            self.view = View::Dashboard;
+        }
+        self.detail = None;
+        if let Some(draft) = self.nets.new_form.take() {
+            self.network_retries.push((self.uri.clone(), draft));
+        }
+        self.uri = uri;
+        self.dash.uri.clone_from(&self.uri);
+        self.dash.connected = false;
+        self.dash.rows.clear();
+        self.dash.marks.clear();
+        self.dash.configs.clear();
+        self.dash.ips.clear();
+        self.dash.selection = 0;
+        self.dash.shutdowns.clear();
+        self.dash.visual_anchor = None;
+        self.dash.recent_events.clear();
+        // Nothing of the previous host may survive the switch:
+        // gauges, title, pools, metrics, the Events top bar.
+        self.dash.host_gauges.clear();
+        self.dash.host_pools.clear();
+        self.dash.host_title.clear();
+        self.dash.metrics = Default::default();
+        self.dash.node = None;
+        self.dash.hostname = connection_hostname(&self.uri);
+        if !self.demo {
+            crate::ui::chrome::set_hostname(&self.dash.hostname);
+        }
+        self.events_state.events.clear();
+        self.events_state.selected = 0;
+        self.events_state.uri.clone_from(&self.uri);
+        self.events_state.connected = true;
+        self.host = ui::views::host::HostState {
+            uri: self.uri.clone(),
+            connected: true,
+            ..Default::default()
+        };
+        self.nets.uri.clone_from(&self.uri);
+        self.store.uri.clone_from(&self.uri);
+        self.nets.networks.clear();
+        self.nets.leases.clear();
+        self.nets.attached.clear();
+        self.nets.selected = 0;
+        self.store.pools.clear();
+        self.store.volumes.clear();
+        self.store.isos.clear();
+        self.store.pool_selected = 0;
+        self.store.vol_selected = 0;
+        self.dash.message = "loading…".into();
+        self.sync_poller();
+        if !self.demo {
+            self.request_view_load(self.view);
+        }
+    }
+
     /// Stage an always-asked confirmation for ready-made plans.
     pub(super) fn confirm_plans(
         &mut self,
@@ -1287,6 +1389,7 @@ impl App {
                 match crate::input::ex::parse(&line) {
                     Ok(crate::input::ex::ExCommand::Messages) => self.messages_view = Some(0),
                     Ok(crate::input::ex::ExCommand::Help(topic)) => self.help_filter = Some(topic),
+                    Ok(crate::input::ex::ExCommand::Doctor) => self.open_doctor(),
                     Ok(crate::input::ex::ExCommand::Quit | crate::input::ex::ExCommand::QuitAll) => self
                         .show_message(format!(
                             "⚠ Job #{id} is running; press C-c to cancel before quitting"
@@ -1326,6 +1429,10 @@ impl App {
             // Typing in the Keybindings filter changes nothing: allowed.
             let settings_input = self.settings.as_ref().is_some_and(|st| {
                 (key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('h' | 'l')))
+                    // Doctor: re-run, copy, answer or refuse a fix (it checks the job itself).
+                    || (st.category() == ui::views::settings::Category::Doctor
+                        && st.pane == ui::views::settings::SettingsPane::Options
+                        && matches!(key.code, KeyCode::Char('r' | 'y' | 'Y' | 'f' | 'n')))
                     || (st.keys.filter.is_some()
                         && matches!(
                             key.code,
@@ -1640,75 +1747,15 @@ impl App {
                         self.messages_view = Some(0);
                         return false;
                     }
+                    if matches!(
+                        crate::input::ex::parse(&line),
+                        Ok(crate::input::ex::ExCommand::Doctor)
+                    ) {
+                        self.open_doctor();
+                        return false;
+                    }
                     if let Ok(crate::input::ex::ExCommand::Connect(uri)) = crate::input::ex::parse(&line) {
-                        if self.uri == uri {
-                            self.request_refresh();
-                            return false;
-                        }
-                        if self
-                            .detail
-                            .as_ref()
-                            .is_some_and(|detail| detail.hw.pending_count() > 0)
-                        {
-                            self.show_message(
-                                "⚠ Unsaved hardware changes: use :w or :q! before connecting".into(),
-                            );
-                            return false;
-                        }
-                        if self.view == View::Detail {
-                            self.view = View::Dashboard;
-                        }
-                        self.detail = None;
-                        if let Some(draft) = self.nets.new_form.take() {
-                            self.network_retries.push((self.uri.clone(), draft));
-                        }
-                        self.uri = uri;
-                        self.dash.uri.clone_from(&self.uri);
-                        self.dash.connected = false;
-                        self.dash.rows.clear();
-                        self.dash.marks.clear();
-                        self.dash.configs.clear();
-                        self.dash.ips.clear();
-                        self.dash.selection = 0;
-                        self.dash.shutdowns.clear();
-                        self.dash.visual_anchor = None;
-                        self.dash.recent_events.clear();
-                        // Nothing of the previous host may survive the switch:
-                        // gauges, title, pools, metrics, the Events top bar.
-                        self.dash.host_gauges.clear();
-                        self.dash.host_pools.clear();
-                        self.dash.host_title.clear();
-                        self.dash.metrics = Default::default();
-                        self.dash.node = None;
-                        self.dash.hostname = connection_hostname(&self.uri);
-                        if !self.demo {
-                            crate::ui::chrome::set_hostname(&self.dash.hostname);
-                        }
-                        self.events_state.events.clear();
-                        self.events_state.selected = 0;
-                        self.events_state.uri.clone_from(&self.uri);
-                        self.events_state.connected = true;
-                        self.host = ui::views::host::HostState {
-                            uri: self.uri.clone(),
-                            connected: true,
-                            ..Default::default()
-                        };
-                        self.nets.uri.clone_from(&self.uri);
-                        self.store.uri.clone_from(&self.uri);
-                        self.nets.networks.clear();
-                        self.nets.leases.clear();
-                        self.nets.attached.clear();
-                        self.nets.selected = 0;
-                        self.store.pools.clear();
-                        self.store.volumes.clear();
-                        self.store.isos.clear();
-                        self.store.pool_selected = 0;
-                        self.store.vol_selected = 0;
-                        self.dash.message = "loading…".into();
-                        self.sync_poller();
-                        if !self.demo {
-                            self.request_view_load(self.view);
-                        }
+                        self.connect_to(uri);
                         return false;
                     }
                     if self.view == View::Detail
@@ -2005,6 +2052,9 @@ impl App {
             }
         }
         // Settings captures navigation while open.
+        if self.settings.is_some() && self.doctor_key(key) {
+            return false;
+        }
         if self.settings.is_some() {
             let before = self.config.clone();
             if handle_settings_key(
@@ -2020,6 +2070,7 @@ impl App {
                 // Restart the poller with the new interval / memory-stats option.
                 self.poller_uri.clear();
             }
+            self.maybe_start_doctor();
             if !ctrl_c {
                 return false;
             }
@@ -2940,6 +2991,7 @@ mod tests {
             editor_retries: Vec::new(),
             editor_generation: 0,
             network_retries: Vec::new(),
+            doctor_task: None,
         }
     }
 

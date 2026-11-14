@@ -23,6 +23,8 @@ pub enum ExCommand {
     Set(String, String),
     Help(String),
     Connect(String),
+    /// Open Settings › Doctor.
+    Doctor,
     Theme(String),
     Sort(String),
     Jump(u32),
@@ -54,6 +56,7 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
         "qa" | "qall" => Ok(ExCommand::QuitAll),
         "w" => Ok(ExCommand::Write),
         "messages" => Ok(ExCommand::Messages),
+        "doctor" => Ok(ExCommand::Doctor),
         "start" => req_arg(word, &words, ExCommand::Start),
         // With extra flags (`--mode agent`) these go straight to virsh.
         "shutdown" | "destroy" if words.len() > 1 => Ok(ExCommand::RawVirsh(line.to_string())),

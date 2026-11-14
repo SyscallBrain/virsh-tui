@@ -90,7 +90,7 @@ impl KeymapFile {
     }
 
     /// Re-read the saved file so edits made outside the app are kept.
-    fn refresh(&mut self) {
+    pub(crate) fn refresh(&mut self) {
         if let Some(path) = self.path.clone() {
             *self = Self::load(Some(path), None);
         }

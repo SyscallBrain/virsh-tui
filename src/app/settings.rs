@@ -61,7 +61,8 @@ pub(super) fn move_settings(
     use ui::views::settings::SettingsPane;
     match st.pane {
         SettingsPane::Categories => {
-            st.cat = (st.cat as i32 + delta).rem_euclid(7) as usize;
+            st.cat =
+                (st.cat as i32 + delta).rem_euclid(ui::views::settings::Category::ALL.len() as i32) as usize;
             st.opt_idx = 0;
         }
         SettingsPane::List => {
@@ -95,7 +96,7 @@ pub(super) fn cycle_pane(st: &mut ui::views::settings::SettingsState, delta: i32
 
 /// Selected settings category.
 pub(super) fn category(st: &ui::views::settings::SettingsState) -> ui::views::settings::Category {
-    ui::views::settings::Category::ALL[st.cat.min(6)].0
+    st.category()
 }
 
 /// Change option `idx` of a non-Appearance category and save.

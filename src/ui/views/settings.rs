@@ -22,10 +22,11 @@ pub enum Category {
     Monitoring,
     Confirmations,
     Console,
+    Doctor,
 }
 
 impl Category {
-    pub const ALL: [(Self, &'static str, &'static str); 7] = [
+    pub const ALL: [(Self, &'static str, &'static str); 8] = [
         (Self::General, "⚙", "General"),
         (Self::Appearance, "◐", "Appearance"),
         (Self::Keybindings, "⌨", "Keybindings"),
@@ -33,6 +34,7 @@ impl Category {
         (Self::Monitoring, "∿", "Monitoring"),
         (Self::Confirmations, "⚠", "Confirmations"),
         (Self::Console, "▭", "Console & viewer"),
+        (Self::Doctor, "⛨", "Doctor"),
     ];
 }
 
@@ -56,6 +58,8 @@ pub struct SettingsState {
     pub themes: Vec<String>,
     /// Keybindings category: filter, capture, pending question.
     pub keys: super::settings_keys::KeysState,
+    /// Doctor category: report, selection, pending fix.
+    pub doctor: super::settings_doctor::DoctorState,
 }
 
 impl SettingsState {
@@ -89,7 +93,22 @@ impl SettingsState {
             before_theme: config.appearance.theme.clone(),
             themes,
             keys: Default::default(),
+            doctor: Default::default(),
         }
+    }
+
+    /// Open on Doctor with the report focused (`:doctor`).
+    pub fn open_doctor(config: &Config) -> Self {
+        Self {
+            cat: Category::ALL.len() - 1,
+            pane: SettingsPane::Options,
+            ..Self::open_theme(config)
+        }
+    }
+
+    /// Selected category.
+    pub fn category(&self) -> Category {
+        Category::ALL[self.cat.min(Category::ALL.len() - 1)].0
     }
 
     /// Selected theme name.
@@ -201,7 +220,7 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
             row("Viewer", "graphical viewer", config.console.viewer.clone(), true),
             row("Console", "escape", config.console.escape.clone(), false),
         ],
-        Category::Appearance => Vec::new(),
+        Category::Appearance | Category::Doctor => Vec::new(),
     }
 }
 
@@ -339,7 +358,7 @@ fn render_body(
     let body = Rect::new(area.x + 1, area.y, area.width.saturating_sub(2), area.height);
     if area.width < 140 {
         let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(body);
-        let cat = Category::ALL[state.cat.min(6)].0;
+        let cat = Category::ALL[state.cat.min(Category::ALL.len() - 1)].0;
         let pane = match state.pane {
             SettingsPane::Categories => "Categories",
             SettingsPane::List => "Theme",
@@ -348,7 +367,7 @@ fn render_body(
         frame.render_widget(
             Paragraph::new(format!(
                 "{} › {pane}{}",
-                Category::ALL[state.cat.min(6)].2,
+                Category::ALL[state.cat.min(Category::ALL.len() - 1)].2,
                 if crate::config::key_hints() {
                     " · h/l pane"
                 } else {
@@ -368,6 +387,9 @@ fn render_body(
             }
             _ if cat == Category::Keybindings => {
                 super::settings_keys::render(frame, theme, state, map, file, rows[1])
+            }
+            _ if cat == Category::Doctor => {
+                super::settings_doctor::render(frame, theme, state, rows[1], true)
             }
             _ => render_compact_category(frame, theme, config, state, cat, rows[1]),
         }
@@ -389,6 +411,8 @@ fn render_body(
         );
         if cat == Category::Keybindings {
             super::settings_keys::render(frame, theme, state, map, file, rest);
+        } else if cat == Category::Doctor {
+            super::settings_doctor::render(frame, theme, state, rest, false);
         } else {
             render_category(frame, theme, config, state, cat, rest);
         }
@@ -575,7 +599,12 @@ fn render_compact_category(
     cat: Category,
     area: Rect,
 ) {
-    let block = panel_block(theme, true, Category::ALL[state.cat.min(6)].2, None);
+    let block = panel_block(
+        theme,
+        true,
+        Category::ALL[state.cat.min(Category::ALL.len() - 1)].2,
+        None,
+    );
     let inner = block.inner(area);
     let mut lines = Vec::new();
     let mut selected_line = 0;
@@ -847,8 +876,13 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, are
     let hints = match state.pane {
         SettingsPane::List => "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
         SettingsPane::Categories => "  j/k category  ⏎ open  h/l pane  ⎋ close",
-        SettingsPane::Options if Category::ALL[state.cat.min(6)].0 == Category::Keybindings => {
+        SettingsPane::Options
+            if Category::ALL[state.cat.min(Category::ALL.len() - 1)].0 == Category::Keybindings =>
+        {
             "  j/k action  ⏎ change  a add  d default  / filter  h/l pane  ⎋ close"
+        }
+        SettingsPane::Options if state.category() == Category::Doctor => {
+            &super::settings_doctor::status_hints(&state.doctor)
         }
         SettingsPane::Options => "  j/k option  ⏎ change  h/l pane  ⎋ close",
     };
@@ -858,7 +892,9 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, are
 
 /// `settings › general`, `settings › appearance › theme`, …
 fn breadcrumb(state: &SettingsState) -> String {
-    let name = Category::ALL[state.cat.min(6)].2.to_lowercase();
+    let name = Category::ALL[state.cat.min(Category::ALL.len() - 1)]
+        .2
+        .to_lowercase();
     if state.pane == SettingsPane::List {
         format!("settings › {name} › theme")
     } else {
@@ -869,8 +905,10 @@ fn breadcrumb(state: &SettingsState) -> String {
 fn render_message(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            if Category::ALL[state.cat.min(6)].0 == Category::Keybindings {
+            if state.category() == Category::Keybindings {
                 String::from("saved to ~/.config/virsh-tui/keymap.toml")
+            } else if state.category() == Category::Doctor {
+                super::settings_doctor::message(&state.doctor)
             } else {
                 format!(
                     "saved to ~/.config/virsh-tui/config.toml · theme = \"{}\"",

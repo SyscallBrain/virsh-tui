@@ -1013,6 +1013,7 @@ impl App {
             return;
         };
         self.job_finished_at = Some(std::time::Instant::now());
+        self.rerun_doctor_if_shown();
         let id = job.id;
         // A finished bulk job consumes its marks (they would otherwise stay
         // armed for the next, unrelated action).

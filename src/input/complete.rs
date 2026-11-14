@@ -46,6 +46,7 @@ pub const APP_COMMANDS: &[(&str, &str)] = &[
     ("set", "<option>=<value>"),
     ("help", "[topic]"),
     ("messages", "message log"),
+    ("doctor", "check the environment"),
     ("w", "apply hardware changes"),
     ("q", "close / quit"),
     ("q!", "discard changes"),
@@ -236,6 +237,12 @@ mod tests {
 
     fn no_flags(_: &str) -> Vec<(String, String)> {
         Vec::new()
+    }
+
+    #[test]
+    fn completes_doctor() {
+        let (_, items) = complete("doc", &ctx(), &no_flags);
+        assert_eq!(items[0].value, "doctor");
     }
 
     #[test]

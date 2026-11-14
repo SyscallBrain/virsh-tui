@@ -1,0 +1,47 @@
+---
+source: src/app/settings_doctor.rs
+expression: "render(&app, 174, 43)"
+---
+ ▤ virsh-tui │ 1 Domains  2 Host  3 Networks  4 Storage  5 Events                                                                                    ⚙ settings  │  14:40:03
+ ╭ Settings ─────────────────╮ ╭ Doctor ────────────────────────────────────────────────────────────────────────────────────────────────────── 13 ok · 2 warnings · 1 error ╮
+ │ ⚙ General                 │ │ Connection                                                                                                                                 │
+ │ ◐ Appearance              │ │   ✓ virsh               11.6.0 (/usr/bin/virsh)                                                                                            │
+ │ ⌨ Keybindings             │ │   · URI                 qemu:///system                                                                                                     │
+ │ ⌁ Connections             │ │   ✓ connection          libvirt 11.6.0 · QEMU 10.1.0                                                                                       │
+ │ ∿ Monitoring              │ │ ❯ ⚠ permissions         not in group libvirt  f fix · y copy                                                                               │
+ │ ⚠ Confirmations           │ │   ✓ events              event stream available                                                                                             │
+ │ ▭ Console & viewer        │ │   ⚠ networks            none active  f fix                                                                                                 │
+ │ ⛨ Doctor                  │ │   ✓ UEFI firmware       OVMF found                                                                                                         │
+ │                           │ │                                                                                                                                            │
+ │                           │ │ Tools                                                                                                                                      │
+ │                           │ │   ✓ graphical viewer    /usr/bin/virt-viewer                                                                                               │
+ │                           │ │   ✓ virt-install        /usr/bin/virt-install                                                                                              │
+ │                           │ │   ✗ virt-clone          not found  y copy                                                                                                  │
+ │                           │ │   ✓ editor              nvim                                                                                                               │
+ │                           │ │   ✓ clipboard           available                                                                                                          │
+ │                           │ │                                                                                                                                            │
+ │                           │ │ Files                                                                                                                                      │
+ │                           │ │   ✓ config.toml         ~/.config/virsh-tui/config.toml                                                                                    │
+ │                           │ │   · keymap.toml         defaults (no file)                                                                                                 │
+ │                           │ │   ✓ theme               tokyo-night                                                                                                        │
+ │                           │ │   ✓ log                 ~/.local/state/virsh-tui/virsh-tui.log                                                                             │
+ │                           │ │                                                                                                                                            │
+ │                           │ │ Terminal                                                                                                                                   │
+ │                           │ │   ✓ size                174×43                                                                                                             │
+ │                           │ │   ✓ colours             truecolor                                                                                                          │
+ │                           │ │   · glyphs              icons unicode · graphs braille                                                                                     │
+ │                           │ │                                                                                                                                            │
+ │                           │ │ → add your user to the libvirt group and log in again, or use -c qemu:///session                                                           │
+ │                           │ │ fix: connect to qemu:///session                                                                                                            │
+ │                           │ │ run: sudo usermod -aG libvirt demo                                                                                                         │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ ╰───────────────────────────╯ ╰────────────────────────────────────────────────────────────────────────────────────────────────────── r re-run · f fix · y copy · Y report ╯
+ NORMAL  settings › doctor   j/k check  r re-run  f fix  y copy command  Y copy report  h/l pane  ⎋ close
+checks are read-only · f applies a fix after asking

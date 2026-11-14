@@ -11,7 +11,7 @@ expression: text
  │ ∿ Monitoring              │ │   gruvbox-dark ████████████████                │ │ Graphs                                                                                  │ 
  │ ⚠ Confirmations           │ │   nord ████████████████                        │ │   (●) braille ⣿  ( ) block █  ( ) tty                                                   │ 
  │ ▭ Console & viewer        │ │   dracula ████████████████                     │ │   [x] vertical gradient                                                                 │ 
- │                           │ │   kanagawa ████████████████                    │ │ Background                                                                              │ 
+ │ ⛨ Doctor                  │ │   kanagawa ████████████████                    │ │ Background                                                                              │ 
  │                           │ │   everforest ████████████████                  │ │   [ ] transparent (inherit terminal)                                                    │ 
  │                           │ │                                                │ │   [x] dim behind modals                                                                 │ 
  │                           │ │ + custom: ~/.config/virsh-tui/themes/*.toml    │ ╰─────────────────────────────────────────────────────────────────────────────────────────╯ 
