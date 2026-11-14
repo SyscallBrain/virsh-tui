@@ -9,6 +9,8 @@ body:
 
         - Remove host names, addresses and other private details from what you paste.
         - For a security problem, use a [private advisory](https://github.com/SyscallBrain/virsh-tui/security/advisories/new) instead (see SECURITY.md).
+        - Run `virsh-tui --doctor` first (virsh-tui 0.3.0 or later): it checks the connection, permissions,
+          tools, config files and terminal, and says what to do about each problem.
         - Most failures come from `virsh` itself: try the same thing with `virsh -c <uri> …` first.
           [Troubleshooting](https://syscallbrain.github.io/virsh-tui/troubleshooting.html) covers connections, colours, fonts and the wizard.
   - type: input
@@ -35,6 +37,15 @@ body:
     validations:
       required: true
   - type: textarea
+    id: doctor
+    attributes:
+      label: Output of virsh-tui --doctor
+      description: |
+        virsh-tui 0.3.0 or later. Run `virsh-tui --doctor` (add `-c <uri>` if you use one), or press `Y` in Settings › Doctor to copy it.
+        It includes the versions, distribution and connection, so you can skip those fields below.
+        Check it for private details first: user names (`sudo usermod … <user>`) and host names in remote URIs.
+      render: text
+  - type: textarea
     id: what
     attributes:
       label: What happened
@@ -53,21 +64,18 @@ body:
     id: virsh
     attributes:
       label: libvirt version
-      description: The output of `virsh --version`.
+      description: The output of `virsh --version`. Not needed if you pasted the doctor report.
       placeholder: "11.9.0"
-    validations:
-      required: true
   - type: dropdown
     id: uri
     attributes:
       label: Connection
+      description: Not needed if you pasted the doctor report.
       options:
         - qemu:///system
         - qemu:///session
         - remote (qemu+ssh or other)
         - demo mode
-    validations:
-      required: true
   - type: textarea
     id: log
     attributes:
@@ -78,11 +86,11 @@ body:
     id: os
     attributes:
       label: Distribution
+      description: Not needed if you pasted the doctor report.
       placeholder: Arch Linux, Debian 13, Fedora 43 …
-    validations:
-      required: true
   - type: input
     id: terminal
     attributes:
-      label: Terminal emulator and size
-      placeholder: kitty 0.40, 174x43, inside tmux 3.5
+      label: Terminal emulator
+      description: The doctor reports the size and colours, not the emulator; say if it runs inside tmux or screen.
+      placeholder: kitty 0.40, inside tmux 3.5
