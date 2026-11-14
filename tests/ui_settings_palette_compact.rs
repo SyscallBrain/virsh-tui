@@ -26,7 +26,16 @@ fn compact_settings_shows_all_editable_appearance_values() {
     let mut st = settings::SettingsState::open_theme(&cfg);
     st.pane = settings::SettingsPane::Options;
     st.opt_idx = 5;
-    let text = draw(80, 24, |f| settings::render(f, &th, &cfg, &st));
+    let text = draw(80, 24, |f| {
+        settings::render(
+            f,
+            &th,
+            &cfg,
+            &st,
+            &virsh_tui::input::keymap::default_map(),
+            &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+        )
+    });
     for value in [
         "borders",
         "icons",
@@ -49,7 +58,16 @@ fn compact_settings_theme_selection_follows_focus() {
     let mut st = settings::SettingsState::open_theme(&cfg);
     st.themes = (0..40).map(|i| format!("custom-theme-{i:02}")).collect();
     st.theme_idx = 39;
-    let text = draw(80, 24, |f| settings::render(f, &th, &cfg, &st));
+    let text = draw(80, 24, |f| {
+        settings::render(
+            f,
+            &th,
+            &cfg,
+            &st,
+            &virsh_tui::input::keymap::default_map(),
+            &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+        )
+    });
     assert!(text.contains("❯ custom-theme-39"), "{text}");
 }
 
@@ -77,7 +95,16 @@ fn compact_settings_connection_selection_follows_focus() {
     st.cat = 3;
     st.pane = settings::SettingsPane::Options;
     st.opt_idx = 39;
-    let text = draw(80, 24, |f| settings::render(f, &th, &cfg, &st));
+    let text = draw(80, 24, |f| {
+        settings::render(
+            f,
+            &th,
+            &cfg,
+            &st,
+            &virsh_tui::input::keymap::default_map(),
+            &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+        )
+    });
     assert!(text.contains("❯ qemu+ssh://host-39/system"), "{text}");
 }
 
@@ -132,7 +159,16 @@ fn settings_open_on_the_first_category() {
         "nord",
         "Appearance still shows the current theme"
     );
-    let text = draw(174, 43, |f| settings::render(f, &th, &cfg, &st));
+    let text = draw(174, 43, |f| {
+        settings::render(
+            f,
+            &th,
+            &cfg,
+            &st,
+            &virsh_tui::input::keymap::default_map(),
+            &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+        )
+    });
     assert!(text.contains("settings › general"), "{text}");
     assert!(text.contains("default URI"), "{text}");
 }
@@ -152,7 +188,16 @@ fn appearance_cursor_highlights_the_option_row_in_place() {
         (5, "dim behind modals"),
     ] {
         st.opt_idx = idx;
-        let text = draw(174, 43, |f| settings::render(f, &th, &cfg, &st));
+        let text = draw(174, 43, |f| {
+            settings::render(
+                f,
+                &th,
+                &cfg,
+                &st,
+                &virsh_tui::input::keymap::default_map(),
+                &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+            )
+        });
         // Right-hand column only (the Theme list keeps its own cursor).
         let cursor_rows: Vec<&str> = text
             .lines()
@@ -181,7 +226,18 @@ fn theme_list_cursor_is_dim_when_another_pane_has_focus() {
         (settings::SettingsPane::Categories, false),
     ] {
         st.pane = pane;
-        terminal.draw(|f| settings::render(f, &th, &cfg, &st)).unwrap();
+        terminal
+            .draw(|f| {
+                settings::render(
+                    f,
+                    &th,
+                    &cfg,
+                    &st,
+                    &virsh_tui::input::keymap::default_map(),
+                    &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+                )
+            })
+            .unwrap();
         let cell = &terminal.backend().buffer()[(33, 2)];
         assert_eq!(cell.symbol(), "❯");
         assert_eq!(cell.bg == th.tokens.sel, highlighted, "pane {pane:?}");

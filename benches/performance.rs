@@ -199,7 +199,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     measure("settings 174x43", || {
         terminal
-            .draw(|f| settings::render(f, &th, &config, black_box(&settings)))
+            .draw(|f| {
+                settings::render(
+                    f,
+                    &th,
+                    &config,
+                    black_box(&settings),
+                    &virsh_tui::input::keymap::default_map(),
+                    &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+                )
+            })
             .unwrap();
     });
     measure("gallery 174x43", || {

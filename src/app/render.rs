@@ -184,6 +184,8 @@ pub(super) fn dump_frame(
             theme,
             &crate::config::Config::default(),
             &ui::views::settings::SettingsState::open_theme(&crate::config::Config::default()),
+            &crate::input::keymap::default_map(),
+            &crate::input::keymap_file::KeymapFile::in_memory(),
         ),
         "events" => ui::views::events::render(f, theme, &ui::views::events::EventsState::demo()),
         "wizard" => {

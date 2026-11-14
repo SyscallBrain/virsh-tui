@@ -82,7 +82,14 @@ fn settings_compact() {
     let state = SettingsState::open_theme(&cfg);
     insta::assert_snapshot!(
         "settings_120x36",
-        shot(120, 36, |f| settings::render(f, &th, &cfg, &state))
+        shot(120, 36, |f| settings::render(
+            f,
+            &th,
+            &cfg,
+            &state,
+            &virsh_tui::input::keymap::default_map(),
+            &virsh_tui::input::keymap_file::KeymapFile::in_memory()
+        ))
     );
 }
 

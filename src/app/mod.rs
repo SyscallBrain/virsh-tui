@@ -224,6 +224,15 @@ pub async fn run_with_shutdown(
     let pending_quit_z = false;
     let (keymap, keymap_warnings) = crate::input::keymap::load();
     let engine = crate::input::engine::KeyEngine::with_map(keymap);
+    // Settings › Keybindings edits this file; the demo reads it but never saves.
+    let keymap_file = crate::input::keymap_file::KeymapFile::load(
+        if cli.demo {
+            None
+        } else {
+            crate::input::keymap::path()
+        },
+        crate::input::keymap::path().as_deref(),
+    );
     let history = crate::command::history::History::new(200);
     let uri = cli.connect.clone();
     let dry_run = cli.dry_run;
@@ -275,6 +284,7 @@ pub async fn run_with_shutdown(
         pending_quit_z,
         replaying_z: false,
         engine,
+        keymap_file,
         history,
         uri,
         dry_run,
@@ -495,6 +505,8 @@ struct App {
     /// True while a timed-out lone `Z` is replayed through the engine.
     replaying_z: bool,
     engine: crate::input::engine::KeyEngine,
+    /// `keymap.toml` as edited from Settings › Keybindings.
+    keymap_file: crate::input::keymap_file::KeymapFile,
     history: crate::command::history::History,
     uri: String,
     dry_run: bool,
@@ -814,7 +826,14 @@ impl App {
                 crate::ui::overlays::palette::render(f, &self.theme, pal);
             }
             if let Some(st) = &self.settings {
-                crate::ui::views::settings::render(f, &self.theme, &self.config, st);
+                crate::ui::views::settings::render(
+                    f,
+                    &self.theme,
+                    &self.config,
+                    st,
+                    self.engine.map(),
+                    &self.keymap_file,
+                );
             }
             if let Some(filter) = &self.help_filter {
                 crate::ui::overlays::help::render_page(
@@ -2863,6 +2882,7 @@ mod tests {
             pending_quit_z: false,
             replaying_z: false,
             engine: crate::input::engine::KeyEngine::new(),
+            keymap_file: crate::input::keymap_file::KeymapFile::in_memory(),
             history: crate::command::history::History::new(200),
             uri: "test:///default".to_string(),
             dry_run: false,

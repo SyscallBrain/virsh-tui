@@ -54,6 +54,8 @@ pub struct SettingsState {
     pub opt_idx: usize,
     pub before_theme: String,
     pub themes: Vec<String>,
+    /// Keybindings category: filter, capture, pending question.
+    pub keys: super::settings_keys::KeysState,
 }
 
 impl SettingsState {
@@ -86,6 +88,7 @@ impl SettingsState {
             opt_idx: 0,
             before_theme: config.appearance.theme.clone(),
             themes,
+            keys: Default::default(),
         }
     }
 
@@ -153,16 +156,8 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
                 false,
             ),
         ],
-        Category::Keybindings => vec![
-            row("Keymap", "file", "~/.config/virsh-tui/keymap.toml", false),
-            row(
-                "Keymap",
-                "format",
-                "[normal.domains] \"shutdown\" = [\"S\"]",
-                false,
-            ),
-            row("Keymap", "reference", "? shows the live keymap", false),
-        ],
+        // Rendered from the live keymap by `settings_keys`.
+        Category::Keybindings => Vec::new(),
         Category::Connections => config
             .connections
             .uris
@@ -286,7 +281,14 @@ pub fn apply_appearance(mut theme: Theme, config: &Config) -> Theme {
 }
 
 /// Render settings (replaces the body, not a modal).
-pub fn render(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState) {
+pub fn render(
+    frame: &mut Frame,
+    theme: &Theme,
+    config: &Config,
+    state: &SettingsState,
+    map: &crate::input::keymap::Keymap,
+    file: &crate::input::keymap_file::KeymapFile,
+) {
     let area = frame.area();
     // Settings replaces the whole screen: wipe what the current view drew.
     frame.render_widget(ratatui::widgets::Clear, area);
@@ -305,7 +307,7 @@ pub fn render(frame: &mut Frame, theme: &Theme, config: &Config, state: &Setting
         ])
         .split(area);
     render_topbar(frame, theme, rows[0]);
-    render_body(frame, theme, config, state, rows[1]);
+    render_body(frame, theme, config, state, map, file, rows[1]);
     render_statusbar(frame, theme, state, rows[2]);
     render_message(frame, theme, config, state, rows[3]);
 }
@@ -325,7 +327,15 @@ fn panel_block(theme: &Theme, focused: bool, title: &str, right: Option<String>)
     )
 }
 
-fn render_body(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
+fn render_body(
+    frame: &mut Frame,
+    theme: &Theme,
+    config: &Config,
+    state: &SettingsState,
+    map: &crate::input::keymap::Keymap,
+    file: &crate::input::keymap_file::KeymapFile,
+    area: Rect,
+) {
     let body = Rect::new(area.x + 1, area.y, area.width.saturating_sub(2), area.height);
     if area.width < 140 {
         let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(body);
@@ -356,6 +366,9 @@ fn render_body(frame: &mut Frame, theme: &Theme, config: &Config, state: &Settin
             _ if cat == Category::Appearance => {
                 render_compact_appearance(frame, theme, config, state, rows[1])
             }
+            _ if cat == Category::Keybindings => {
+                super::settings_keys::render(frame, theme, state, map, file, rows[1])
+            }
             _ => render_compact_category(frame, theme, config, state, cat, rows[1]),
         }
         return;
@@ -374,7 +387,11 @@ fn render_body(frame: &mut Frame, theme: &Theme, config: &Config, state: &Settin
             cols[1].width + 1 + cols[2].width,
             cols[1].height,
         );
-        render_category(frame, theme, config, state, cat, rest);
+        if cat == Category::Keybindings {
+            super::settings_keys::render(frame, theme, state, map, file, rest);
+        } else {
+            render_category(frame, theme, config, state, cat, rest);
+        }
         return;
     }
     render_list(frame, theme, config, state, cols[1]);
@@ -830,6 +847,9 @@ fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, are
     let hints = match state.pane {
         SettingsPane::List => "  j/k preview theme  ⏎ apply  h/l pane  ⎋ revert & close",
         SettingsPane::Categories => "  j/k category  ⏎ open  h/l pane  ⎋ close",
+        SettingsPane::Options if Category::ALL[state.cat.min(6)].0 == Category::Keybindings => {
+            "  j/k action  ⏎ change  a add  d default  / filter  h/l pane  ⎋ close"
+        }
         SettingsPane::Options => "  j/k option  ⏎ change  h/l pane  ⎋ close",
     };
     spans.extend(crate::ui::chrome::hint_spans(theme, hints));
@@ -849,10 +869,14 @@ fn breadcrumb(state: &SettingsState) -> String {
 fn render_message(frame: &mut Frame, theme: &Theme, config: &Config, state: &SettingsState, area: Rect) {
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            format!(
-                "saved to ~/.config/virsh-tui/config.toml · theme = \"{}\"",
-                state.selected_theme()
-            ),
+            if Category::ALL[state.cat.min(6)].0 == Category::Keybindings {
+                String::from("saved to ~/.config/virsh-tui/keymap.toml")
+            } else {
+                format!(
+                    "saved to ~/.config/virsh-tui/config.toml · theme = \"{}\"",
+                    state.selected_theme()
+                )
+            },
             theme.secondary(),
         )))
         .style(theme.base()),

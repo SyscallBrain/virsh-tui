@@ -33,7 +33,18 @@ fn settings_174x43() {
     let state = SettingsState::open_theme(&cfg);
     let backend = TestBackend::new(174, 43);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| settings::render(f, &th, &cfg, &state)).unwrap();
+    terminal
+        .draw(|f| {
+            settings::render(
+                f,
+                &th,
+                &cfg,
+                &state,
+                &virsh_tui::input::keymap::default_map(),
+                &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+            )
+        })
+        .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let mut text = String::new();
     for y in 0..43 {
