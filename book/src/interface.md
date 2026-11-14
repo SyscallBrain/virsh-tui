@@ -63,6 +63,14 @@ the bottom-right corner lists what can follow:
 
 The same popup appears for other prefixes such as `g` and `y`.
 
+## Mouse
+
+The interface is built for the keyboard, but with `appearance.mouse = true`
+(see [Configuration](configuration.md#columns-clock-and-mouse)) you can click
+a tab to switch views, click a domain to select it, double-click it to open
+it, and scroll lists with the wheel. Hold `Shift` to select text while the
+mouse is captured.
+
 ## Every action shows its command
 
 virsh-tui builds each mutation as a plan of one or more `virsh` (or

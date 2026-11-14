@@ -6,6 +6,77 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14
+
+### Added
+
+- Doctor: `virsh-tui --doctor`, `:doctor` and Settings › Doctor check the
+  libvirt client, the connection, permissions, networks, firmware, tools,
+  the config files and the terminal, with a hint for each problem; fixes
+  that need root are printed as commands. `--doctor` prints the report and
+  exits with 1 when a check failed.
+- Migrate dialog (`Space M`): destination from the saved URIs or typed,
+  live, persistent and undefine-source options, storage copy, auto-converge
+  and compression, with the `virsh migrate` command shown as you change
+  them. Shut-off domains migrate offline.
+- `:backup <domain> <folder>` runs a push backup of every disk with
+  `virsh backup-begin` and waits for libvirt's job.
+- Snapshot diff: `=` in Snapshots shows how the current configuration
+  differs from the one saved in the selected snapshot.
+- Domain tags stored in the domain's libvirt metadata: `:tag <domain> +a -b`
+  (`Space t` prefills it), `/#tag` filters the list, and the overview title
+  shows them.
+- New pool dialog (`N` in Storage) for `dir`, `netfs`, `logical` and `fs`
+  pools, which can also build, start and autostart the pool.
+- Custom actions (`[[actions]]` in `config.toml`): your own commands with
+  `{name}`, `{uuid}`, `{ip}`, `{uri}` and `{host}` placeholders, run from a
+  key, the palette or `:run`, in the terminal or as a background job. They
+  run without a shell, so placeholders cannot inject commands.
+- Read-only mode (`--read-only`/`-r`, `general.read_only`): virsh runs with
+  `-r`, writes are refused before any dialog opens, and a pill in the top bar
+  shows it.
+- Per-connection profiles (`[connections.profiles."<uri>"]`) override
+  read-only, refresh interval, thread sampling and viewer for one connection
+  and label it in the top bar.
+- Job progress from libvirt: migrations, saves, dumps, snapshots and backups
+  show percent, size and ETA; `Ctrl-c` also sends `virsh domjobabort`.
+- Notifications (`[notifications]`) when a domain crashes or a long job
+  finishes, through `notify-send` or the terminal (OSC 9 / OSC 777).
+- Guest agent info in Detail › Overview for running domains with a qemu-ga
+  channel: OS, kernel, hostname, time zone, users and file systems.
+- Live host CPU and memory for remote connections (`qemu+ssh://`) in the
+  dashboard, the Host view and the wizard; the top bar shows the remote
+  host's name.
+- Keybindings editor in Settings: list, change and reset bindings, with
+  conflict detection. It writes `keymap.toml` and keeps changes made to the
+  file outside the app.
+- Configurable domain list columns (`appearance.columns`, adds `ip` and
+  `tags`), a 12-hour or hidden clock (`appearance.clock`) and mouse support
+  (`appearance.mouse`: click tabs and domains, double-click to open, wheel
+  to scroll).
+- New settings: start-up sort and filter, a persistent `:` history
+  (`general.history_size`), the ACPI shutdown timeout, the log level, the
+  start-up graph window, a bulk-action confirmation threshold, and
+  `general.key_hints` to hide the key hints.
+
+### Changed
+
+- Status-bar hints show their keys in the bold key colour.
+- Running domains show force off (`D`) in their action hints and in the
+  palette.
+- Settings open on General with the category list focused, and the cursor
+  is highlighted on the option's own row.
+- Bug reports ask for the `virsh-tui --doctor` output.
+
+### Fixed
+
+- `gg` and `G` extend the VISUAL selection, so `V G` marks down to the last
+  row.
+- Clone requires a shut-off source, because virt-clone refuses paused
+  domains.
+- The overview keeps the blank line between the domain info and its actions
+  on a ~35-row right column.
+
 ## [0.2.0] - 2026-11-13
 
 ### Added
@@ -117,6 +188,7 @@ page, or build from source with
 The [user guide](https://syscallbrain.github.io/virsh-tui/) covers
 requirements and setup.
 
-[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/SyscallBrain/virsh-tui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SyscallBrain/virsh-tui/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SyscallBrain/virsh-tui/releases/tag/v0.1.0

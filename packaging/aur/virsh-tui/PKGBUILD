@@ -3,7 +3,7 @@
 # AUR package built from source. scripts/aur.sh fills in pkgver and the
 # checksum of the release tarball and writes .SRCINFO; see docs/RELEASE.md.
 pkgname=virsh-tui
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="Keyboard-driven terminal UI for libvirt/virsh with vim keys and live graphs"
 arch=('x86_64' 'aarch64')

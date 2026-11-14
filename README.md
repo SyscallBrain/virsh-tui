@@ -42,15 +42,26 @@ It works with `qemu:///system`, `qemu:///session` and remote hosts over
   per-NIC rates, with 60 s, 5 min and 1 h history
 - Hardware editor that shows the XML diff and the exact commands before you
   apply with `:w`
-- Snapshot tree with create, revert and delete
+- Snapshot tree with create, revert, delete and a diff against the current
+  configuration; push backups of every disk with `:backup`
+- Migration dialog with live, offline and storage-copy options, and libvirt
+  job progress (percent, ETA) for migrations, saves and backups
+- Domain tags stored in libvirt metadata, with `/#tag` filtering
 - Host view with per-thread CPU, memory, hugepages, KSM, pools and networks
 - Networks with DHCP leases, owning domains, and pinning a lease as a static entry
 - Storage pools and volumes with backing chains, plus ISO insert and eject
-- Live libvirt event stream for domains, networks and pools
+- Live libvirt event stream for domains, networks and pools, with desktop or
+  terminal notifications when a domain crashes or a long job finishes
+- Guest agent info (OS, users, file systems) and live host CPU and memory on
+  remote `qemu+ssh://` connections
 - Six-step new domain wizard that builds and runs `virt-install`
 - `:` command line with Tab completion for commands, domains, themes, paths
   and every `virsh` flag; anything else is passed to `virsh`
-- Fuzzy command palette, which-key hints, remappable keys
+- Fuzzy command palette, which-key hints, and keys you can remap from the
+  settings screen
+- Custom actions bound to your own commands, per-connection profiles and a
+  read-only mode
+- `--doctor` checks permissions, firmware and tools and explains each fix
 - Nine themes plus custom ones, a settings screen, and a 256-colour fallback
 - `--dry-run` to see what each key would run, `--demo` to try it with no
   libvirt at all
