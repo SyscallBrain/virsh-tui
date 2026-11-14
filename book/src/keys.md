@@ -111,6 +111,43 @@ bar and on the second page of `?`: the
 
 ## Remapping keys
 
+### From the settings
+
+`,` › **Keybindings** lists every action you can remap, grouped like `?`,
+with its current keys; actions you changed are marked `● custom`.
+
+| Key | Effect |
+|-----|--------|
+| `j` / `k` | move |
+| `/` | filter by action, name (`snapshot_new`) or key (`C-p`); `Enter` keeps the filter, `Esc` clears it |
+| `Enter` | press the new keys, then `Enter`: they replace the action's keys |
+| `a` | same, but the keys are added to the action's keys |
+| `d` | back to the action's default keys |
+| `Enter` on **reset all to defaults** | every action back to its defaults |
+
+While you press the new keys, `Backspace` removes the last one and `Esc`
+cancels. A sequence has up to four keys (`Space s n`).
+
+If the keys already belong to another action, or would hide one (`g` hides
+`g g` and `g x`), virsh-tui asks first: `y` moves the keys and the other
+action loses them (it shows `—` until you give it new keys or press `d` on
+it), `n` cancels.
+
+Some keys cannot be bound here: `q`, `.` and `Ctrl-c` cannot start a
+sequence, a sequence cannot start with `Z` (`ZZ` quits; a lone `Z` is fine),
+and a digit followed by more keys is a count (a single digit is fine).
+`Enter`, `Backspace` and `Esc` end or edit the capture, so bind them in the
+file below (or press `d` to get the defaults back).
+
+Changes apply at once and are saved to `keymap.toml`. Only the changed
+entries are rewritten: your comments and other tables stay. Reset all keeps
+a copy of the old file in `keymap.toml.bak`. In `--demo` nothing is saved.
+While a job runs you can look and filter but not change keys. If
+`keymap.toml` has a syntax error, fix it first: the settings refuse to edit
+it.
+
+### In the file
+
 Create `~/.config/virsh-tui/keymap.toml`:
 
 ```toml

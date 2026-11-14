@@ -92,6 +92,9 @@ category). `j` and `k` move through the options; in the theme list they also pre
 theme live. `Enter` applies and saves, `h` and `l` switch panes, `Esc`
 reverts unsaved previews and closes.
 
+Keybindings lists every remappable action with its keys and lets you change
+them in place; see [Remapping keys](keys.md#from-the-settings).
+
 General › **key hints** turns off the key hints once you know the keys
 (`:set key_hints=false` does the same): the status bars, the actions under the
 selected domain, panel footers and the key lines of the palette, ISO picker,
