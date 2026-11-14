@@ -1545,3 +1545,13 @@ fn space_t_prefills_the_tag_command() {
         Some(format!("tag {name} +"))
     );
 }
+
+#[test]
+fn visual_mode_extends_to_the_last_row_with_capital_g() {
+    let mut app = fixture_app();
+    app.dash.marks.clear();
+    app.dash.selection = 0;
+    app.handle_key_event(shift('V'));
+    app.handle_key_event(shift('G'));
+    assert_eq!(app.dash.marks.len(), app.dash.visible_rows().len());
+}

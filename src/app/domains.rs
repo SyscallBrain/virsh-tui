@@ -178,8 +178,15 @@ pub(super) fn dispatch_action(
     match action {
         A::MoveDown => dash.move_selection(1),
         A::MoveUp => dash.move_selection(-1),
-        A::GoTop => dash.selection = 0,
-        A::GoBottom => dash.selection = dash.visible_rows().len().saturating_sub(1),
+        // In VISUAL mode `gg` / `G` extend the selection, as in vim.
+        A::GoTop => {
+            dash.selection = 0;
+            dash.update_visual();
+        }
+        A::GoBottom => {
+            dash.selection = dash.visible_rows().len().saturating_sub(1);
+            dash.update_visual();
+        }
         A::HalfDown => dash.move_selection(10),
         A::HalfUp => dash.move_selection(-10),
         A::SortCycle => dash.cycle_sort(),
