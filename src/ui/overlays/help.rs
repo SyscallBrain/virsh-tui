@@ -12,8 +12,7 @@ use crate::theme::Theme;
 
 use crate::input::engine::KeyAction as A;
 
-/// Live keymap: key sequence -> action.
-pub type Keymap = std::collections::HashMap<Vec<String>, A>;
+pub use crate::input::keymap::Keymap;
 
 /// One section: title, section colour, rows (key, description, destructive).
 #[derive(Debug, Clone)]

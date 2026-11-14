@@ -4,6 +4,9 @@ use std::collections::HashMap;
 
 use super::engine::KeyAction;
 
+/// Live keymap: key sequence -> action.
+pub type Keymap = HashMap<Vec<String>, KeyAction>;
+
 fn seq(keys: &[&str]) -> Vec<String> {
     keys.iter().map(|s| s.to_string()).collect()
 }
