@@ -231,6 +231,13 @@ impl KeyEngine {
         &self.map
     }
 
+    /// Swap in a new map (Settings › Keybindings); drops any pending input.
+    pub fn set_map(&mut self, map: HashMap<Vec<String>, KeyAction>) {
+        self.map = map;
+        self.pending.clear();
+        self.count_buf.clear();
+    }
+
     /// Create with the default keymap.
     pub fn new() -> Self {
         Self::with_map(super::keymap::default_map())
@@ -383,5 +390,24 @@ mod tests {
         assert!(eng.feed(&KeySeq::parse("s")).is_empty());
         let a = eng.feed(&KeySeq::parse("c"));
         assert_eq!(a[0].action, KeyAction::SnapshotNew);
+    }
+}
+
+#[cfg(test)]
+mod set_map_tests {
+    use super::*;
+    use crate::input::key::KeySeq;
+
+    #[test]
+    fn set_map_swaps_bindings_and_clears_pending() {
+        let mut eng = KeyEngine::new();
+        assert!(eng.feed(&KeySeq::parse("g")).is_empty());
+        assert!(eng.pending_prefix().is_some());
+        let mut map = HashMap::new();
+        map.insert(vec![String::from("x")], KeyAction::Start);
+        eng.set_map(map);
+        assert!(eng.pending_prefix().is_none());
+        assert_eq!(eng.feed(&KeySeq::parse("x"))[0].action, KeyAction::Start);
+        assert!(eng.feed(&KeySeq::parse("j")).is_empty());
     }
 }

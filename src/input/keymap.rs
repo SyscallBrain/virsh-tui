@@ -162,11 +162,14 @@ pub fn apply_overrides(
     (map, warnings)
 }
 
+/// `~/.config/virsh-tui/keymap.toml`.
+pub fn path() -> Option<std::path::PathBuf> {
+    directories::ProjectDirs::from("", "", "virsh-tui").map(|d| d.config_dir().join("keymap.toml"))
+}
+
 /// Load `~/.config/virsh-tui/keymap.toml` (if any) over the defaults.
 pub fn load() -> (HashMap<Vec<String>, KeyAction>, Vec<String>) {
-    let path =
-        directories::ProjectDirs::from("", "", "virsh-tui").map(|d| d.config_dir().join("keymap.toml"));
-    match path.and_then(|p| std::fs::read_to_string(p).ok()) {
+    match path().and_then(|p| std::fs::read_to_string(p).ok()) {
         Some(text) => apply_overrides(default_map(), &text),
         None => (default_map(), Vec::new()),
     }

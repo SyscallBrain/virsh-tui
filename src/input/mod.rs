@@ -6,4 +6,5 @@ pub mod engine;
 pub mod ex;
 pub mod key;
 pub mod keymap;
+pub mod keymap_file;
 pub mod textinput;
