@@ -106,6 +106,10 @@ fn run_tui(cli: &Cli, config: &Config) -> Result<()> {
         crossterm::terminal::EnterAlternateScreen,
         crossterm::event::EnableBracketedPaste
     )?;
+    if config.appearance.mouse {
+        crossterm::execute!(stdout, crossterm::event::EnableMouseCapture)?;
+        app::external::set_mouse(true);
+    }
     let result = runtime.block_on(app::run_with_shutdown(cli, config, shutdown));
     // A hangup can make the last draw fail before the signal task records
     // SIGHUP: give it a moment, so a closed terminal exits as 129 instead
@@ -117,6 +121,7 @@ fn run_tui(cli: &Cli, config: &Config) -> Result<()> {
     drop(runtime);
     let _ = crossterm::execute!(
         stdout,
+        crossterm::event::DisableMouseCapture,
         crossterm::event::DisableBracketedPaste,
         crossterm::terminal::LeaveAlternateScreen
     );
@@ -162,7 +167,11 @@ fn install_panic_hook() {
         // survives that: only a main-thread panic ends the TUI, so only then
         // is the terminal handed back.
         if std::thread::current().name() == Some("main") {
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::event::DisableMouseCapture,
+                crossterm::terminal::LeaveAlternateScreen
+            );
             let _ = crossterm::terminal::disable_raw_mode();
             hook(info);
         } else {

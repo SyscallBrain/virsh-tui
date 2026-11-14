@@ -82,6 +82,9 @@ const SET_KEYS: &[&str] = &[
     "log_level=",
     "read_only=",
     "notifications=",
+    "columns=",
+    "clock=",
+    "mouse=",
 ];
 
 /// App commands whose first argument is a domain.

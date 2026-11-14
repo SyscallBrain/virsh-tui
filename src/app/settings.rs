@@ -277,6 +277,23 @@ pub(super) fn apply_setting(
             "dim_modals" => next.appearance.dim_modals = boolean()?,
             "key_hints" => next.general.key_hints = boolean()?,
             "read_only" => next.general.read_only = boolean()?,
+            "clock" => next.appearance.clock = one_of(&["24h", "12h", "off"])?,
+            "mouse" => next.appearance.mouse = boolean()?,
+            "columns" => {
+                let names: Vec<String> = v
+                    .split(',')
+                    .map(|n| n.trim().to_string())
+                    .filter(|n| !n.is_empty())
+                    .collect();
+                let known: Vec<&str> = ui::views::dashboard::Col::ALL.iter().map(|c| c.name()).collect();
+                if let Some(bad) = names.iter().find(|n| !known.contains(&n.as_str())) {
+                    return Err(format!("✗ unknown column `{bad}` (use {})", known.join(", ")));
+                }
+                if names.is_empty() {
+                    return Err(format!("✗ {key} takes a comma list: {}", known.join(",")));
+                }
+                next.appearance.columns = names;
+            }
             "notifications" => {
                 next.notifications.method = one_of(&["auto", "desktop", "osc9", "osc777", "off"])?;
             }
@@ -342,7 +359,7 @@ pub(super) fn apply_setting(
     // reads the runtime copy.
     crate::config::set_runtime(config);
     let note = match key {
-        "log_level" => "  (takes effect at the next start)",
+        "log_level" | "mouse" => "  (takes effect at the next start)",
         "default_sort" | "default_filter" => "  (used at the next start; o / f change the list now)",
         _ => "",
     };

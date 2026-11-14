@@ -86,6 +86,13 @@ pub struct Appearance {
     pub graphs: String,
     pub gradient: bool,
     pub dim_modals: bool,
+    /// Domain list columns after NAME, in order: state, vcpus, memory, cpu,
+    /// uptime, autostart, ip, tags.
+    pub columns: Vec<String>,
+    /// Top-bar clock: `24h`, `12h` or `off`.
+    pub clock: String,
+    /// Mouse: click rows and tabs, scroll lists (hold Shift to select text).
+    pub mouse: bool,
 }
 
 impl Default for Appearance {
@@ -98,6 +105,12 @@ impl Default for Appearance {
             graphs: String::from("braille"),
             gradient: true,
             dim_modals: true,
+            columns: crate::ui::views::dashboard::Col::DEFAULT
+                .iter()
+                .map(|c| c.name().to_string())
+                .collect(),
+            clock: String::from("24h"),
+            mouse: false,
         }
     }
 }
@@ -248,6 +261,30 @@ static REFRESH_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 /// Status-bar key hints on (read every frame: no clone).
 static KEY_HINTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+/// Top-bar clock: 0 = 24h, 1 = 12h, 2 = off (read every frame: no clone).
+static CLOCK: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn clock_code(c: &Config) -> u8 {
+    match c.appearance.clock.as_str() {
+        "12h" => 1,
+        "off" => 2,
+        _ => 0,
+    }
+}
+
+/// The top-bar clock setting: `24h`, `12h` or `off`.
+pub fn clock() -> &'static str {
+    #[cfg(test)]
+    let code = TEST_RUNTIME.with(|r| r.borrow().as_ref().map_or(0, clock_code));
+    #[cfg(not(test))]
+    let code = CLOCK.load(std::sync::atomic::Ordering::Relaxed);
+    match code {
+        1 => "12h",
+        2 => "off",
+        _ => "24h",
+    }
+}
+
 /// Read-only for the active connection (checked before every process spawn).
 static READ_ONLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -384,6 +421,7 @@ pub fn set_runtime(c: &Config) {
             std::sync::atomic::Ordering::Relaxed,
         );
         KEY_HINTS.store(c.general.key_hints, std::sync::atomic::Ordering::Relaxed);
+        CLOCK.store(clock_code(c), std::sync::atomic::Ordering::Relaxed);
         if let Ok(mut g) = RUNTIME.write() {
             *g = Some(c.clone());
         }

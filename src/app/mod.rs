@@ -11,6 +11,7 @@ mod domains;
 mod ex;
 mod jobs;
 mod live;
+mod mouse;
 mod networks;
 mod notify;
 mod palette;
@@ -300,6 +301,7 @@ pub async fn run_with_shutdown(
         tags_names: Vec::new(),
         migrate: None,
         pool_form: None,
+        last_click: None,
         events_rx,
         view,
         pending_quit_z,
@@ -460,6 +462,11 @@ pub async fn run_with_shutdown(
                     Some(Event::Resize(..)) => terminal.clear()?,
                     // Bracketed paste: text, never keys (a pasted `D` must not destroy).
                     Some(Event::Paste(text)) => app.on_paste(&text),
+                    Some(Event::Mouse(m)) => {
+                        if app.on_mouse(m) {
+                            break;
+                        }
+                    }
                     Some(_) => {}
                     None => break,
                 }
@@ -480,6 +487,7 @@ fn apply_start_preferences(config: &Config, dash: &mut ui::views::dashboard::Das
         dash.chip = chip;
     }
     crate::metrics::store::set_window(&config.monitoring.history_window);
+    dash.columns = ui::views::dashboard::Col::parse(&config.appearance.columns);
 }
 
 #[derive(Default)]
@@ -557,6 +565,8 @@ struct App {
     migrate: Option<ui::overlays::migrate::MigrateState>,
     /// Storage › `N` dialog.
     pool_form: Option<ui::overlays::pool::PoolState>,
+    /// Last left click on a domain row (double-click opens it).
+    last_click: Option<(std::time::Instant, usize)>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
@@ -2019,6 +2029,7 @@ impl App {
                     if quit {
                         return true;
                     }
+                    self.dash.columns = ui::views::dashboard::Col::parse(&self.config.appearance.columns);
                     if self.config.general.refresh_interval_secs != interval_before {
                         // Restart the poller with the new interval.
                         self.poller_uri.clear();
@@ -3183,6 +3194,7 @@ mod tests {
             tags_names: Vec::new(),
             migrate: None,
             pool_form: None,
+            last_click: None,
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,

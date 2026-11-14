@@ -93,6 +93,86 @@ impl Sort {
     }
 }
 
+/// A column of the domain list after NAME (`appearance.columns`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Col {
+    State,
+    Vcpus,
+    Memory,
+    Cpu,
+    Uptime,
+    Autostart,
+    Ip,
+    Tags,
+}
+
+impl Col {
+    pub const ALL: [Col; 8] = [
+        Col::State,
+        Col::Vcpus,
+        Col::Memory,
+        Col::Cpu,
+        Col::Uptime,
+        Col::Autostart,
+        Col::Ip,
+        Col::Tags,
+    ];
+    /// The columns of the design.
+    pub const DEFAULT: [Col; 6] = [
+        Col::State,
+        Col::Vcpus,
+        Col::Memory,
+        Col::Cpu,
+        Col::Uptime,
+        Col::Autostart,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Col::State => "state",
+            Col::Vcpus => "vcpus",
+            Col::Memory => "memory",
+            Col::Cpu => "cpu",
+            Col::Uptime => "uptime",
+            Col::Autostart => "autostart",
+            Col::Ip => "ip",
+            Col::Tags => "tags",
+        }
+    }
+
+    /// Parse `appearance.columns`; unknown names are skipped, duplicates
+    /// kept once, and an empty result falls back to the default.
+    pub fn parse(names: &[String]) -> Vec<Col> {
+        let mut out: Vec<Col> = Vec::new();
+        for n in names {
+            if let Some(c) = Col::ALL.iter().find(|c| c.name() == n.trim())
+                && !out.contains(c)
+            {
+                out.push(*c);
+            }
+        }
+        if out.is_empty() {
+            Col::DEFAULT.to_vec()
+        } else {
+            out
+        }
+    }
+
+    /// Cells it takes.
+    fn width(self) -> usize {
+        match self {
+            Col::State => 9,
+            Col::Vcpus => 3,
+            Col::Memory => 10,
+            Col::Cpu => 21,
+            Col::Uptime => 9,
+            Col::Autostart => 1,
+            Col::Ip => 15,
+            Col::Tags => 16,
+        }
+    }
+}
+
 /// One dashboard row.
 #[derive(Debug, Clone)]
 pub struct DomainRow {
@@ -132,6 +212,8 @@ pub struct DashboardState {
     pub ips: std::collections::HashMap<String, String>,
     /// Tags per domain (libvirt metadata, see `app::tags`).
     pub tags: std::collections::HashMap<String, Vec<String>>,
+    /// Domain list columns after NAME.
+    pub columns: Vec<Col>,
     /// Most recent libvirt events (newest last) for the Events panel.
     pub recent_events: Vec<crate::model::LibvirtEvent>,
     /// Host panel gauges: (label, fraction, value).
@@ -152,6 +234,9 @@ pub struct DashboardState {
     /// Last `visible_rows` order, keyed by a fingerprint of everything it
     /// depends on (it is asked for several times per frame).
     visible_cache: std::cell::RefCell<Option<(u64, Vec<usize>)>>,
+    /// Where the last frame drew the domain rows: (first row y, x range,
+    /// index of the first row shown, rows shown). Mouse clicks map onto it.
+    pub list_geom: std::cell::Cell<Option<(u16, (u16, u16), usize, usize)>>,
 }
 
 /// A `virsh shutdown` whose outcome is not known yet.
@@ -210,6 +295,7 @@ impl DashboardState {
                 .filter(|d| d.0.starts_with("k8s-"))
                 .map(|d| (d.0.to_string(), vec![String::from("k8s")]))
                 .collect(),
+            columns: Col::DEFAULT.to_vec(),
             recent_events: Vec::new(),
             host_gauges: Vec::new(),
             host_pools: Vec::new(),
@@ -220,6 +306,7 @@ impl DashboardState {
             visual_anchor: None,
             redraw_requested: false,
             visible_cache: Default::default(),
+            list_geom: Default::default(),
         }
     }
 
@@ -256,6 +343,7 @@ impl DashboardState {
             configs: Default::default(),
             ips: Default::default(),
             tags: Default::default(),
+            columns: Col::DEFAULT.to_vec(),
             recent_events: Vec::new(),
             host_gauges: Vec::new(),
             host_pools: Vec::new(),
@@ -266,6 +354,7 @@ impl DashboardState {
             visual_anchor: None,
             redraw_requested: false,
             visible_cache: Default::default(),
+            list_geom: Default::default(),
         }
     }
 
@@ -429,6 +518,15 @@ impl DashboardState {
             ),
             None => name.to_string(),
         }
+    }
+
+    /// The visible row index under a click at (`x`, `y`), from the last frame.
+    pub fn row_at(&self, x: u16, y: u16) -> Option<usize> {
+        let (top, (left, right), start, shown) = self.list_geom.get()?;
+        if x < left || x >= right || y < top || usize::from(y - top) >= shown {
+            return None;
+        }
+        Some(start + usize::from(y - top))
     }
 
     /// Selected domain (defaults to arch-dev).
@@ -807,15 +905,22 @@ fn render_domains(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
     first.extend(chips);
     lines.push(Line::from(first));
     let mark = |col: Sort| if state.sort == col { " ▾" } else { "" };
-    let header = format!(
-        "      {:<17} {:<9} {:<3} {:<10} {:<21} {:<9} A",
-        format!("NAME{}", mark(Sort::Name)),
-        format!("STATE{}", mark(Sort::State)),
-        format!("CPU{}", if state.sort == Sort::Cpu { "▾" } else { "" }),
-        format!("MEMORY{}", mark(Sort::Mem)),
-        "CPU%",
-        format!("UPTIME{}", mark(Sort::Uptime)),
-    );
+    let mut header = format!("      {:<17}", format!("NAME{}", mark(Sort::Name)));
+    for col in &state.columns {
+        let title = match col {
+            Col::State => format!("STATE{}", mark(Sort::State)),
+            Col::Vcpus => format!("CPU{}", if state.sort == Sort::Cpu { "▾" } else { "" }),
+            Col::Memory => format!("MEMORY{}", mark(Sort::Mem)),
+            Col::Cpu => String::from("CPU%"),
+            Col::Uptime => format!("UPTIME{}", mark(Sort::Uptime)),
+            Col::Autostart => String::from("A"),
+            Col::Ip => String::from("IP"),
+            Col::Tags => String::from("TAGS"),
+        };
+        header.push(' ');
+        header.push_str(&format!("{title:<w$}", w = col.width()));
+    }
+    let header = header.trim_end().to_string();
     lines.push(Line::from(Span::styled(
         header,
         Style::default()
@@ -829,6 +934,12 @@ fn render_domains(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
     )));
     let body_h = (area.height as usize).saturating_sub(2 + lines.len());
     let start = scroll_offset(state.selection, visible.len(), body_h);
+    state.list_geom.set(Some((
+        area.y + 1 + lines.len() as u16,
+        (area.x + 1, area.right().saturating_sub(1)),
+        start,
+        body_h.min(visible.len().saturating_sub(start)),
+    )));
     for (i, r) in visible.iter().enumerate().skip(start).take(body_h) {
         let selected = i == state.selection;
         let marked = state.marks.contains(&r.name);
@@ -858,40 +969,72 @@ fn render_domains(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
                 Modifier::empty()
             });
         let st_fg = st.fg.unwrap_or(t.fg);
+        let mut spans = vec![
+            Span::styled(marker, Style::default().fg(t.blue)),
+            Span::raw(" "),
+            Span::styled(mark, Style::default().fg(t.magenta)),
+            Span::raw(" "),
+            Span::styled(format!("{}", r.state.glyph()), Style::default().fg(st_fg)),
+            Span::raw(" "),
+            Span::styled(format!("{name:17}"), name_style),
+        ];
+        let (mut fill, mut rest, mut pct) = (Some(fill), Some(rest), Some(pct));
+        for col in &state.columns {
+            spans.push(Span::raw(" "));
+            match col {
+                Col::State => spans.push(Span::styled(
+                    format!("{:9}", r.state_label),
+                    Style::default().fg(st_fg),
+                )),
+                Col::Vcpus => spans.push(Span::styled(
+                    format!("{:>3}", r.vcpus),
+                    Style::default().fg(t.fg2),
+                )),
+                Col::Memory => spans.push(Span::styled(
+                    format!("{:10}", r.mem_label),
+                    Style::default().fg(t.fg2),
+                )),
+                Col::Cpu => {
+                    let (fill, rest) = (fill.take().unwrap_or_default(), rest.take().unwrap_or_default());
+                    spans.push(Span::styled(
+                        if running { fill } else { String::new() },
+                        Style::default().fg(cpu_fg),
+                    ));
+                    spans.push(Span::styled(
+                        if running { rest } else { " ".repeat(16) },
+                        Style::default().fg(t.hl),
+                    ));
+                    spans.push(Span::styled(
+                        pct.take().unwrap_or_default(),
+                        Style::default().fg(cpu_fg),
+                    ));
+                }
+                Col::Uptime => spans.push(Span::styled(
+                    format!("{:9}", r.uptime),
+                    Style::default().fg(t.fg2),
+                )),
+                Col::Autostart => spans.push(Span::styled(
+                    if r.autostart { "✓" } else { "·" },
+                    Style::default().fg(t.green),
+                )),
+                Col::Ip => {
+                    let ip = state.ips.get(&r.name).map_or("—", String::as_str);
+                    spans.push(Span::styled(format!("{ip:15.15}"), Style::default().fg(t.cyan)));
+                }
+                Col::Tags => {
+                    let tags = state
+                        .tags
+                        .get(&r.name)
+                        .map(|t| t.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" "))
+                        .unwrap_or_default();
+                    let tags: String = tags.chars().take(16).collect();
+                    spans.push(Span::styled(format!("{tags:16}"), Style::default().fg(t.magenta)));
+                }
+            }
+        }
         // The line style carries the row background, so separators and the
         // trailing cells are filled too (no "striped" selection).
-        lines.push(
-            Line::from(vec![
-                Span::styled(marker, Style::default().fg(t.blue)),
-                Span::raw(" "),
-                Span::styled(mark, Style::default().fg(t.magenta)),
-                Span::raw(" "),
-                Span::styled(format!("{}", r.state.glyph()), Style::default().fg(st_fg)),
-                Span::raw(" "),
-                Span::styled(format!("{name:17}"), name_style),
-                Span::raw(" "),
-                Span::styled(format!("{:9}", r.state_label), Style::default().fg(st_fg)),
-                Span::raw(" "),
-                Span::styled(format!("{:>3}", r.vcpus), Style::default().fg(t.fg2)),
-                Span::raw(" "),
-                Span::styled(format!("{:10}", r.mem_label), Style::default().fg(t.fg2)),
-                Span::raw(" "),
-                Span::styled(
-                    if running { fill } else { String::new() },
-                    Style::default().fg(cpu_fg),
-                ),
-                Span::styled(
-                    if running { rest } else { " ".repeat(16) },
-                    Style::default().fg(t.hl),
-                ),
-                Span::styled(pct, Style::default().fg(cpu_fg)),
-                Span::raw(" "),
-                Span::styled(format!("{:9}", r.uptime), Style::default().fg(t.fg2)),
-                Span::raw(" "),
-                Span::styled(if r.autostart { "✓" } else { "·" }, Style::default().fg(t.green)),
-            ])
-            .style(Style::default().bg(bg)),
-        );
+        lines.push(Line::from(spans).style(Style::default().bg(bg)));
     }
     if visible.is_empty() {
         lines.push(Line::from(Span::styled(

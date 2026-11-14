@@ -32,6 +32,10 @@ icons = "unicode"                # unicode, nerd, ascii
 graphs = "braille"               # braille, block, tty
 gradient = true                  # colour bars by level (green, yellow, red)
 dim_modals = true                # dim the screen behind dialogs
+columns = ["state", "vcpus", "memory", "cpu", "uptime", "autostart"]
+                                 # domain list columns after NAME; also ip, tags
+clock = "24h"                    # top-bar clock: 24h, 12h, off
+mouse = false                    # click rows and tabs, scroll lists
 
 [connections]
 uris = [                         # offered by :connect completion and Settings
@@ -94,6 +98,21 @@ its URI.
 
 A remote host over SSH is a good candidate for a longer refresh interval:
 every refresh opens an SSH session.
+
+## Columns, clock and mouse
+
+`appearance.columns` picks the domain list's columns after NAME, in order:
+`state`, `vcpus`, `memory`, `cpu` (the bar and percentage), `uptime`,
+`autostart`, `ip` (from DHCP leases or the guest agent, once known) and
+`tags`. `:set columns=state,cpu,ip,tags` changes them at once. Wide
+columns need a wide terminal; drop some on a narrow one.
+
+`appearance.clock = "12h"` shows `02:40:03 PM`; `"off"` hides the clock.
+
+`appearance.mouse = true` (read at start) lets you click a tab to switch
+views, click a domain to select it, double-click it to open it, and scroll
+any list with the wheel. While the mouse is captured, hold `Shift` to
+select text in most terminals.
 
 ## Custom actions
 
@@ -274,7 +293,8 @@ Supported keys: `theme`, `transparent`, `borders`, `icons`, `graphs`,
 `gradient`, `dim_modals`, `key_hints`, `default_uri`, `editor`, `start_view`, `viewer`,
 `escape`, `refresh_interval_secs`, `default_sort`, `default_filter`,
 `history_size`, `history_window`, `shutdown_timeout_secs`, `bulk_threshold`,
-`log_level`, `read_only` and `notifications` (the method). `Tab` completes them. Values are checked
+`log_level`, `read_only`, `notifications` (the method), `columns` (a comma
+list), `clock` and `mouse` (next start). `Tab` completes them. Values are checked
 (booleans take `true`/`false`, `refresh_interval_secs` 1-60, `viewer`
 `virt-viewer` or `remote-viewer`, …); a rejected value changes nothing. A new
 value takes effect at once: a new refresh interval restarts sampling, and the

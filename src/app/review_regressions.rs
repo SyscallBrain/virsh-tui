@@ -1622,3 +1622,72 @@ async fn capital_n_in_storage_opens_the_pool_dialog_and_creates_the_pool() {
     assert_eq!(first[..3], ["pool-define-as", "vt-test-pool", "dir"]);
     job.task.abort();
 }
+
+#[tokio::test]
+async fn mouse_clicks_select_rows_and_tabs_and_the_wheel_moves() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let click = |column, row, kind| MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    };
+    let mut app = fixture_app();
+    let draw = |app: &App| {
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(174, 43)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+    };
+    draw(&app);
+    let (top, (left, _), start, shown) = app.dash.list_geom.get().expect("list drawn");
+    assert!(shown > 3);
+    app.on_mouse(click(left + 5, top + 2, MouseEventKind::Down(MouseButton::Left)));
+    assert_eq!(app.dash.selection, start + 2);
+    app.on_mouse(click(left + 5, top + 2, MouseEventKind::ScrollDown));
+    assert_eq!(app.dash.selection, start + 3, "the wheel moves like j");
+    // The Host tab (second) in the top bar.
+    let x = (0..174)
+        .find(|x| crate::ui::chrome::tab_at(*x) == Some(1))
+        .unwrap();
+    app.on_mouse(click(x, 0, MouseEventKind::Down(MouseButton::Left)));
+    assert_eq!(app.view, View::Host);
+}
+
+#[test]
+fn columns_setting_adds_ip_and_tags() {
+    let names: Vec<String> = ["state", "ip", "tags", "bogus", "ip"].map(String::from).to_vec();
+    assert_eq!(
+        ui::views::dashboard::Col::parse(&names),
+        [
+            ui::views::dashboard::Col::State,
+            ui::views::dashboard::Col::Ip,
+            ui::views::dashboard::Col::Tags
+        ]
+    );
+    assert_eq!(
+        ui::views::dashboard::Col::parse(&[]),
+        ui::views::dashboard::Col::DEFAULT
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = fixture_app();
+    app.config.source = Some(dir.path().join("config.toml"));
+    run_ex(&mut app, "set columns=state,nope");
+    assert!(
+        app.dash.message.contains("unknown column `nope`"),
+        "{}",
+        app.dash.message
+    );
+    run_ex(&mut app, "set columns=state,ip,tags");
+    assert_eq!(app.dash.columns.len(), 3);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(174, 43)).unwrap();
+    terminal.draw(|f| app.draw(f)).unwrap();
+    let buf = terminal.backend().buffer().clone();
+    let text: String = (0..10)
+        .map(|y| {
+            (0..174)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+                + "\n"
+        })
+        .collect();
+    assert!(text.contains("STATE ▾   IP              TAGS"), "{text}");
+}

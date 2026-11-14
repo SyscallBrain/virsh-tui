@@ -230,6 +230,13 @@ checkboxes build (dir/netfs only) · start now · autostart, blank, one
 `$ virsh …` line per command (or the yellow problem), `✗` error after a refused
 Enter, then `⎋ cancel` / `⏎ create`.
 
+### Domain list columns
+
+`appearance.columns` (default `state vcpus memory cpu uptime autostart`, the
+mockup layout). Extra columns: `IP` (15, cyan, `—` when unknown) and `TAGS`
+(16, magenta, `#a #b`, cut at 16). Header and cells keep one space between
+columns; NAME (17) is always first.
+
 ### Tags
 
 Stored as `<vt:tags xmlns:vt="https://syscallbrain.github.io/virsh-tui/xmlns/tags/1">a b</vt:tags>`.

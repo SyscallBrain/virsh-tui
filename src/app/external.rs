@@ -86,6 +86,15 @@ pub fn spawn_input_thread() -> tokio::sync::mpsc::UnboundedReceiver<crossterm::e
     rx
 }
 
+/// Mouse capture is on (`appearance.mouse`): off while another program
+/// has the terminal, on again after.
+static MOUSE: AtomicBool = AtomicBool::new(false);
+
+/// Record that mouse capture was enabled.
+pub fn set_mouse(on: bool) {
+    MOUSE.store(on, Ordering::SeqCst);
+}
+
 /// Leave the alternate screen/raw mode, run `f`, then restore the TUI and
 /// request a full repaint.
 pub fn with_suspended_terminal<T>(f: impl FnOnce() -> T) -> T {
@@ -94,6 +103,9 @@ pub fn with_suspended_terminal<T>(f: impl FnOnce() -> T) -> T {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
     while !INPUT_IDLE.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    if MOUSE.load(Ordering::SeqCst) {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
     }
     let _ = crossterm::execute!(
         std::io::stdout(),
@@ -111,6 +123,9 @@ pub fn with_suspended_terminal<T>(f: impl FnOnce() -> T) -> T {
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
         crossterm::cursor::Hide
     );
+    if MOUSE.load(Ordering::SeqCst) {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture);
+    }
     let _ = std::io::stdout().flush();
     NEEDS_FULL_REDRAW.store(true, Ordering::SeqCst);
     INPUT_PAUSED.store(false, Ordering::SeqCst);

@@ -55,7 +55,11 @@ const TABS: [(&str, &str); 5] = [
 ];
 
 fn now_hms() -> String {
-    jiff::Zoned::now().strftime("%H:%M:%S").to_string()
+    match crate::config::clock() {
+        "12h" => jiff::Zoned::now().strftime("%I:%M:%S %p").to_string(),
+        "off" => String::new(),
+        _ => jiff::Zoned::now().strftime("%H:%M:%S").to_string(),
+    }
 }
 
 /// The brand at the left of the top bar: the logo glyph `▤` (a rack of VMs,
@@ -89,6 +93,20 @@ pub fn tab_spans(theme: &Theme, n: &str, label: &str, on: bool) -> Vec<Span<'sta
         ),
         Span::styled(format!(" {label} "), Style::default().fg(t.fg2).bg(t.bg2)),
     ]
+}
+
+/// The tab (0-based) at column `x` of the top bar.
+pub fn tab_at(x: u16) -> Option<usize> {
+    // ` ▤ virsh-tui ` and `│`, then tabs of ` n label ` (same width active or not).
+    let mut left = 14u16;
+    for (i, (_, label)) in TABS.iter().enumerate() {
+        let w = 4 + label.chars().count() as u16;
+        if x >= left && x < left + w {
+            return Some(i);
+        }
+        left += w;
+    }
+    None
 }
 
 /// Top bar: brand, tabs (`active` highlighted), right-aligned
@@ -133,6 +151,9 @@ pub fn topbar(
         ));
     }
     for (sep, v) in [("  │  ", host), ("  │  ⟳ ", refresh), ("  │  ", time)] {
+        if v.is_empty() {
+            continue;
+        }
         right.push(Span::styled(sep, dim));
         right.push(Span::styled(v, val));
     }
