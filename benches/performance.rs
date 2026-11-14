@@ -90,6 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             title: title.clone(),
             key: String::new(),
             virsh_cmd: title.clone(),
+            action_command: None,
         })
         .collect();
     palette.query = "snap".into();

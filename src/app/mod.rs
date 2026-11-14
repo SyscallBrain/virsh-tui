@@ -5,6 +5,7 @@ pub mod external;
 pub mod mode;
 pub mod poller;
 
+mod custom;
 mod detail;
 mod domains;
 mod ex;
@@ -346,6 +347,7 @@ pub async fn run_with_shutdown(
         doctor_task: None,
         flag_uri: cli.uri_from_flag.then(|| cli.connect.clone()),
     };
+    app.bind_custom_actions();
     if !cli.demo {
         for view in [View::Host, View::Networks, View::Storage] {
             app.request_view_load(view);
@@ -632,6 +634,12 @@ impl App {
             themes,
             uris: self.config.connections.uris.clone(),
             virsh: self.virsh_index.clone().unwrap_or_default(),
+            actions: self
+                .config
+                .actions
+                .iter()
+                .map(|a| (a.name.clone(), a.description.clone()))
+                .collect(),
         }
     }
 
@@ -1830,6 +1838,12 @@ impl App {
                         self.submit_hardware();
                         return false;
                     }
+                    if let Ok(crate::input::ex::ExCommand::Run(action, domain)) =
+                        crate::input::ex::parse(&line)
+                    {
+                        self.run_custom_by_name(&action, domain);
+                        return false;
+                    }
                     if !self.demo
                         && !self.dry_run
                         && let Ok(crate::input::ex::ExCommand::AttachHostdev(domain, node)) =
@@ -2361,6 +2375,10 @@ impl App {
             use crate::input::engine::KeyAction as A;
             if resolved.action == A::Refresh {
                 self.request_refresh();
+                continue;
+            }
+            if let A::Custom(i) = resolved.action {
+                self.run_custom_action(usize::from(i), None);
                 continue;
             }
             if let Some(what) = read_only_refusal(resolved.action)

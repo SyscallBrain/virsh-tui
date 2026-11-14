@@ -89,6 +89,53 @@ its URI.
 A remote host over SSH is a good candidate for a longer refresh interval:
 every refresh opens an SSH session.
 
+## Custom actions
+
+`[[actions]]` tables add your own commands. Each one runs from its key, from
+the palette (`Ctrl-p`) or with `:run <name> [domain]`:
+
+```toml
+[[actions]]
+name = "ssh"
+description = "log in as root"
+command = "ssh root@{ip}"
+key = "Space u s"
+mode = "terminal"                # the default
+
+[[actions]]
+name = "guest-info"
+command = "virsh guestinfo {name}"
+key = "Space u g"
+mode = "background"
+
+[[actions]]
+name = "backup"
+command = "/usr/local/bin/backup-vm {name} {uri}"
+mode = "background"
+confirm = true
+```
+
+- `command` is split into words like a shell does (quotes work), but no
+  shell runs: write `sh -c '…'` if you need pipes or variables.
+- In each word, `{name}`, `{uuid}`, `{ip}` (from DHCP leases or the guest
+  agent), `{uri}` and `{host}` (the connection's host) are replaced. A value
+  never splits into more words, so a domain name cannot inject anything. If
+  a value is unknown (no IP yet), the action does not run and the message
+  line says why.
+- The domain is the one in the open detail view, or the selected row of the
+  domain list; `:run <name> <domain>` names it.
+- `mode = "terminal"` hands the terminal over, as the serial console does,
+  and comes back when the program exits. `mode = "background"` runs it as a
+  job: the message line shows the first line of the output and
+  `:messages` the rest. `confirm = true` asks first (background actions).
+- `virsh` commands get `-c <current URI>` like every other command. On a
+  read-only connection a `virsh` action that would change something is
+  refused; other programs are yours to judge.
+- `key` uses the [keymap notation](keys.md#in-the-file). A key that is
+  already bound, or would hide a binding (`Space s` hides `Space s c`), is
+  skipped and `:messages` says so. `Space u` is free for your own keys.
+- In `--demo` and `--dry-run`, actions only show the command.
+
 ## Notes on some settings
 
 `monitoring.balloon_on` is off by default because it runs

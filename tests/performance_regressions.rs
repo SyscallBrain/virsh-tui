@@ -25,6 +25,7 @@ fn palette_keeps_distinct_items_with_duplicate_titles() {
             title: "same title".into(),
             key: String::new(),
             virsh_cmd: cmd.into(),
+            action_command: None,
         })
         .collect();
     for query in ["", "same"] {

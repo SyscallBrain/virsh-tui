@@ -12,6 +12,10 @@ finds `dömäin`, while `dömäin` matches only the accented spelling.
 Entries with the same displayed title remain separate actions; moving the selection
 chooses the corresponding entry.
 
+Your own [actions](configuration.md#custom-actions) are listed first, with
+their command in the right-hand pane; `Enter` puts `:run <action> <domain>`
+on the command line.
+
 For entries backed by a `virsh` subcommand, the right-hand pane shows its
 synopsis and its options as check boxes, so you can add flags such as
 `--live` or `--atomic` without remembering their names.

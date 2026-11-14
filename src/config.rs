@@ -14,6 +14,10 @@ pub struct Config {
     pub confirmations: Confirmations,
     pub console: Console,
     pub wizard: Wizard,
+    /// User-defined commands (`[[actions]]`), run with their key, the
+    /// palette or `:run <name>`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<CustomAction>,
     /// File this config was loaded from (`--config` or the default path);
     /// `save` writes back to it.
     #[serde(skip)]
@@ -107,6 +111,42 @@ pub struct Connections {
     /// `[connections.profiles."qemu+ssh://admin@hv01/system"]`.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub profiles: std::collections::BTreeMap<String, Profile>,
+}
+
+/// One `[[actions]]` entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct CustomAction {
+    /// Name for `:run <name>` and the palette.
+    pub name: String,
+    /// One line shown in the palette (optional).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// Program and arguments, split like a shell does (no shell runs).
+    /// `{name}`, `{uuid}`, `{ip}`, `{uri}` and `{host}` are replaced in each
+    /// argument.
+    pub command: String,
+    /// Key sequence, tokens separated by spaces (`Space u s`). Optional.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// `terminal`: hand the terminal over (ssh, a shell) · `background`: run
+    /// as a job, output in `:messages`.
+    pub mode: String,
+    /// Ask before running (background actions).
+    pub confirm: bool,
+}
+
+impl Default for CustomAction {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: String::new(),
+            command: String::new(),
+            key: None,
+            mode: String::from("terminal"),
+            confirm: false,
+        }
+    }
 }
 
 /// Settings for one connection; unset fields use the global value.

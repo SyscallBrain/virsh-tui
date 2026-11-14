@@ -156,6 +156,7 @@ History windows: `t` cycles 60 s → 5 min → 1 h (ring buffers per domain per 
 - Left: fuzzy results (match chars orange bold), icon by category, bound key on the right; then **recent**.
 - Right: **virsh reference** for the highlighted action — SYNOPSIS + OPTIONS (each flag with a `[ ]`/`[x]` toggle via `⇥`) + the resulting command. This is the "never search for the right flag again" feature: the option list is generated from `virsh help <cmd>` (parse at startup, cache).
 - `⏎` opens the action's form pre-filled; `C-y` copies the command.
+- `[[actions]]` from config.toml come first: icon `⇢`, category `Action`, title `name: description`, their key on the right; the right pane shows `ACTION  (config.toml)` and the command template (green) with `(terminal)` / `(background)`. `⏎` prefills `:run <name> <domain>`.
 
 ### 06 · Keybindings (`?`)
 - Full-screen modal, 4 columns of sections (see §6). `/` searches. Destructive actions in red. Footer: counts, `.` repeat, keymap path.

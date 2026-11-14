@@ -27,6 +27,8 @@ pub enum ExCommand {
     Doctor,
     Theme(String),
     Sort(String),
+    /// `:run <action> [domain]`: a `[[actions]]` entry.
+    Run(String, Option<String>),
     Jump(u32),
     RawVirsh(String),
     Shell(String),
@@ -57,6 +59,11 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
         "w" => Ok(ExCommand::Write),
         "messages" => Ok(ExCommand::Messages),
         "doctor" => Ok(ExCommand::Doctor),
+        "run" => match words.as_slice() {
+            [a] => Ok(ExCommand::Run(a.to_string(), None)),
+            [a, d] => Ok(ExCommand::Run(a.to_string(), Some(d.to_string()))),
+            _ => Err(String::from(":run needs <action> [domain]")),
+        },
         "start" => req_arg(word, &words, ExCommand::Start),
         // With extra flags (`--mode agent`) these go straight to virsh.
         "shutdown" | "destroy" if words.len() > 1 => Ok(ExCommand::RawVirsh(line.to_string())),

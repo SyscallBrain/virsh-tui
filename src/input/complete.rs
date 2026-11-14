@@ -25,6 +25,8 @@ pub struct Context {
     pub uris: Vec<String>,
     /// virsh subcommands with their one-line summary.
     pub virsh: Vec<(String, String)>,
+    /// `[[actions]]` names with their description.
+    pub actions: Vec<(String, String)>,
 }
 
 /// virsh-tui's own `:` commands: (name, hint).
@@ -46,6 +48,7 @@ pub const APP_COMMANDS: &[(&str, &str)] = &[
     ("set", "<option>=<value>"),
     ("help", "[topic]"),
     ("messages", "message log"),
+    ("run", "<action> [domain]  ([[actions]] in config.toml)"),
     ("doctor", "check the environment"),
     ("w", "apply hardware changes"),
     ("q", "close / quit"),
@@ -201,6 +204,12 @@ pub fn complete(
     };
     let items: Vec<Item> = match (cmd, arg) {
         ("theme", 0) => ctx.themes.iter().map(|t| item(t.clone(), "")).collect(),
+        ("run", 0) => ctx
+            .actions
+            .iter()
+            .map(|(n, d)| item(n.clone(), d.clone()))
+            .collect(),
+        ("run", 1) => domains(),
         ("connect", 0) => ctx.uris.iter().map(|u| item(u.clone(), "")).collect(),
         ("sort", 0) => ["name", "state", "cpu", "mem", "uptime"]
             .iter()
@@ -240,6 +249,7 @@ mod tests {
             themes: vec!["tokyo-night".into(), "tokyo-night-day".into(), "nord".into()],
             uris: vec!["qemu:///system".into()],
             virsh: vec![("snapshot-create-as".into(), "create a snapshot".into())],
+            actions: vec![("ssh".into(), "log in".into())],
         }
     }
 

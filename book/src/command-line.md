@@ -13,7 +13,8 @@ knows about:
 - domain names, with their state, after commands that take a domain
 - network names after `net-…` commands, pool names after `pool-…` commands
 - theme names after `:theme`, with a colour preview
-- connection URIs after `:connect`, setting names after `:set`
+- connection URIs after `:connect`, setting names after `:set`, action names
+  after `:run`
 - `--flags` of any `virsh` subcommand, read from `virsh help <command>`
 - file paths for words that start with `/`, `~/` or `./`
 
@@ -49,6 +50,7 @@ reject extra words instead of ignoring them.
 | `:theme <name>` | switch theme (saved to the config) |
 | `:sort name\|state\|cpu\|mem\|uptime` | sort the domain list |
 | `:set <key>=<value>` | change a setting, validated, applied at once and saved |
+| `:run <action> [domain]` | run one of your [actions](configuration.md#custom-actions); without a domain, the selected one |
 | `:42` | jump to row 42 |
 | `:messages` | open the message history (job output included; `j`/`k` scroll) |
 | `:doctor` | open Settings › Doctor (environment checks and fixes) |

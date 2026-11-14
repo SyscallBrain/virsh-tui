@@ -91,6 +91,8 @@ pub enum KeyAction {
     ViewStorage,
     ViewEvents,
     Noop,
+    /// `[[actions]]` entry N of config.toml.
+    Custom(u8),
 }
 
 impl KeyAction {
@@ -173,6 +175,9 @@ impl KeyAction {
 
     /// keymap.toml name (`shutdown`, `snapshot_new`, …).
     pub fn name(self) -> &'static str {
+        if matches!(self, Self::Custom(_)) {
+            return "custom_action";
+        }
         Self::NAMES
             .iter()
             .find(|(a, _)| *a == self)
@@ -220,6 +225,8 @@ pub struct ResolvedAction {
 #[derive(Clone)]
 pub struct KeyEngine {
     map: HashMap<Vec<String>, KeyAction>,
+    /// Keys of `[[actions]]`, merged into `map` where they clash with nothing.
+    custom: Vec<(Vec<String>, KeyAction)>,
     pending: Vec<String>,
     count_buf: String,
     last_mutating: Option<(KeyAction, u32)>,
@@ -236,6 +243,36 @@ impl KeyEngine {
         self.map = map;
         self.pending.clear();
         self.count_buf.clear();
+        let custom = std::mem::take(&mut self.custom);
+        self.set_custom(custom);
+    }
+
+    /// Bind custom actions on top of the map. A sequence that is already
+    /// bound, or is a prefix of a binding (or has one as its prefix), is
+    /// skipped; the returned warnings name them.
+    pub fn set_custom(&mut self, binds: Vec<(Vec<String>, KeyAction)>) -> Vec<String> {
+        self.map.retain(|_, a| !matches!(a, KeyAction::Custom(_)));
+        let mut warnings = Vec::new();
+        for (seq, action) in &binds {
+            let clash = self.map.iter().find(|(k, _)| {
+                let n = k.len().min(seq.len());
+                k[..n] == seq[..n]
+            });
+            match clash {
+                Some((k, a)) => warnings.push(format!(
+                    "`{}` not bound: it clashes with `{}` ({})",
+                    seq.join(" "),
+                    k.join(" "),
+                    a.name()
+                )),
+                None if seq.is_empty() => {}
+                None => {
+                    self.map.insert(seq.clone(), *action);
+                }
+            }
+        }
+        self.custom = binds;
+        warnings
     }
 
     /// Create with the default keymap.
@@ -247,6 +284,7 @@ impl KeyEngine {
     pub fn with_map(map: HashMap<Vec<String>, KeyAction>) -> Self {
         Self {
             map,
+            custom: Vec::new(),
             pending: Vec::new(),
             count_buf: String::new(),
             last_mutating: None,
@@ -409,5 +447,35 @@ mod set_map_tests {
         assert!(eng.pending_prefix().is_none());
         assert_eq!(eng.feed(&KeySeq::parse("x"))[0].action, KeyAction::Start);
         assert!(eng.feed(&KeySeq::parse("j")).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod custom_tests {
+    use super::*;
+    use crate::input::key::KeySeq;
+
+    fn seq(s: &str) -> Vec<String> {
+        s.split(' ').map(String::from).collect()
+    }
+
+    #[test]
+    fn custom_keys_bind_where_free_and_survive_a_new_map() {
+        let mut eng = KeyEngine::new();
+        let warnings = eng.set_custom(vec![
+            (seq("Space u s"), KeyAction::Custom(0)),
+            (seq("D"), KeyAction::Custom(1)),
+            (seq("Space s"), KeyAction::Custom(2)),
+        ]);
+        assert_eq!(warnings.len(), 2, "D is bound, Space s is a prefix: {warnings:?}");
+        for k in ["Space", "u"] {
+            assert!(eng.feed(&KeySeq::parse(k)).is_empty());
+        }
+        assert_eq!(eng.feed(&KeySeq::parse("s"))[0].action, KeyAction::Custom(0));
+        assert_eq!(eng.feed(&KeySeq::parse("D"))[0].action, KeyAction::Destroy);
+        // Settings › Keybindings swaps the map: the custom key stays.
+        eng.set_map(super::super::keymap::default_map());
+        assert_eq!(eng.map().get(&seq("Space u s")), Some(&KeyAction::Custom(0)));
+        assert_eq!(KeyAction::Custom(0).name(), "custom_action");
     }
 }

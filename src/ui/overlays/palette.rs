@@ -79,6 +79,8 @@ pub struct PaletteItem {
     pub title: String,
     pub key: String,
     pub virsh_cmd: String,
+    /// `[[actions]]` entries: the command template, shown instead of virsh help.
+    pub action_command: Option<String>,
 }
 
 /// Curated app actions.
@@ -103,8 +105,36 @@ pub fn curated() -> Vec<PaletteItem> {
         title: title.to_string(),
         key: key.to_string(),
         virsh_cmd: virsh_cmd.to_string(),
+        action_command: None,
     })
     .collect()
+}
+
+/// `[[actions]]` from the config, first in the list (Enter prefills
+/// `:run <name> <domain>`).
+pub fn custom_items() -> Vec<PaletteItem> {
+    crate::config::runtime()
+        .actions
+        .into_iter()
+        .filter(|a| !a.name.is_empty())
+        .map(|a| PaletteItem {
+            icon: "⇢",
+            category: String::from("Action"),
+            title: if a.description.is_empty() {
+                a.name.clone()
+            } else {
+                format!("{}: {}", a.name, a.description)
+            },
+            key: a
+                .key
+                .clone()
+                .unwrap_or_default()
+                .replace("Space ", "␣")
+                .replace(' ', ""),
+            virsh_cmd: format!("run {}", a.name),
+            action_command: Some(format!("{}  ({})", a.command, a.mode)),
+        })
+        .collect()
 }
 
 /// Palette state.
@@ -158,7 +188,8 @@ impl PaletteState {
 
     /// Open with live help index entries appended as raw commands.
     pub fn open_live(context: &str, index: &[crate::backend::virsh::parse_help::HelpEntry]) -> Self {
-        let mut items = curated();
+        let mut items = custom_items();
+        items.extend(curated());
         let curated_commands: std::collections::HashSet<_> =
             items.iter().map(|i| i.virsh_cmd.clone()).collect();
         for e in index {
@@ -171,6 +202,7 @@ impl PaletteState {
                 title: e.name.clone(),
                 key: String::new(),
                 virsh_cmd: e.name.clone(),
+                action_command: None,
             });
         }
         Self {
@@ -204,8 +236,10 @@ impl PaletteState {
     /// virsh command whose help still has to be loaded for the reference pane.
     pub fn needs_doc(&self) -> Option<String> {
         let item = self.selected_item()?;
-        (!item.virsh_cmd.is_empty() && !self.docs.iter().any(|d| d.name == item.virsh_cmd))
-            .then(|| item.virsh_cmd.clone())
+        (item.action_command.is_none()
+            && !item.virsh_cmd.is_empty()
+            && !self.docs.iter().any(|d| d.name == item.virsh_cmd))
+        .then(|| item.virsh_cmd.clone())
     }
 
     /// Move the selection; flags staged for the previous command are dropped.
@@ -565,10 +599,16 @@ pub fn render(frame: &mut Frame, theme: &Theme, st: &PaletteState) {
             }
             v
         }
-        None if selected.is_some() => {
-            vec![Line::from(Span::styled("loading virsh help…", theme.secondary()))]
-        }
-        None => Vec::new(),
+        None => match selected.and_then(|item| item.action_command.clone()) {
+            Some(command) => vec![
+                Line::from(Span::styled("ACTION  (config.toml)", heading)),
+                Line::from(Span::styled(command, Style::default().fg(t.green))),
+            ],
+            None if selected.is_some() => {
+                vec![Line::from(Span::styled("loading virsh help…", theme.secondary()))]
+            }
+            None => Vec::new(),
+        },
     };
     frame.render_widget(
         Paragraph::new(ref_lines)

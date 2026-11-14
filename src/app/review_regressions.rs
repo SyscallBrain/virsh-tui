@@ -1278,3 +1278,82 @@ async fn read_only_refuses_changes_before_asking_and_lets_reads_run() {
     job.task.abort();
     crate::config::set_runtime(&Config::default());
 }
+
+fn action(name: &str, command: &str, key: Option<&str>, mode: &str) -> crate::config::CustomAction {
+    crate::config::CustomAction {
+        name: name.into(),
+        command: command.into(),
+        key: key.map(String::from),
+        mode: mode.into(),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn custom_action_key_runs_a_background_job_for_the_selected_domain() {
+    let mut app = fixture_app();
+    app.config.actions = vec![action(
+        "info",
+        "virsh dominfo {name}",
+        Some("Space u i"),
+        "background",
+    )];
+    app.bind_custom_actions();
+    let target = app.dash.selected().name.clone();
+    for c in [' ', 'u', 'i'] {
+        app.handle_key_event(plain(c));
+    }
+    let job = app.active_job.take().expect("the action runs as a job");
+    assert_eq!(job.plans[0].1.steps[0].program, "virsh");
+    assert_eq!(job.plans[0].1.steps[0].argv, ["dominfo", target.as_str()]);
+    assert!(job.raw, "output goes to :messages like a typed command");
+    job.task.abort();
+}
+
+#[tokio::test]
+async fn run_command_reports_unknown_actions_and_missing_values() {
+    let mut app = fixture_app();
+    run_ex(&mut app, "run ssh");
+    assert!(
+        app.dash.message.contains("add [[actions]]"),
+        "{}",
+        app.dash.message
+    );
+    app.config.actions = vec![
+        action("ssh", "ssh root@{ip}", None, "terminal"),
+        action("off", "virsh destroy {name}", None, "background"),
+    ];
+    run_ex(&mut app, "run nope");
+    assert_eq!(app.dash.message, "✗ no action named nope");
+    app.dash.ips.clear();
+    let target = app.dash.selected().name.clone();
+    run_ex(&mut app, &format!("run ssh {target}"));
+    assert!(app.dash.message.contains("{ip} unknown"), "{}", app.dash.message);
+    assert!(app.active_job.is_none());
+    // Read-only: a virsh action that writes is refused.
+    let mut config = app.config.clone();
+    config.general.read_only = true;
+    crate::config::set_runtime(&config);
+    run_ex(&mut app, &format!("run off {target}"));
+    assert!(
+        app.dash.message.contains("read-only connection"),
+        "{}",
+        app.dash.message
+    );
+    assert!(app.active_job.is_none());
+    crate::config::set_runtime(&Config::default());
+}
+
+#[test]
+fn run_completes_action_names_then_domains() {
+    let ctx = crate::input::complete::Context {
+        actions: vec![("ssh".into(), "log in".into())],
+        domains: vec![("web".into(), "running".into())],
+        ..Default::default()
+    };
+    let none = |_: &str| Vec::new();
+    let (_, items) = crate::input::complete::complete("run s", &ctx, &none);
+    assert_eq!(items[0].value, "ssh");
+    let (_, items) = crate::input::complete::complete("run ssh ", &ctx, &none);
+    assert_eq!(items[0].value, "web");
+}
