@@ -63,10 +63,17 @@ impl KeymapFile {
     /// Load the file at `read_from` (or `path`); edits are saved to `path`.
     pub fn load(path: Option<PathBuf>, read_from: Option<&Path>) -> Self {
         let source = read_from.map(Path::to_path_buf).or_else(|| path.clone());
-        let raw = source
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .unwrap_or_default();
-        match raw.parse::<DocumentMut>() {
+        let raw = match source.map(std::fs::read_to_string) {
+            None => Ok(String::new()),
+            Some(Ok(text)) => Ok(text),
+            Some(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            // Unreadable (permissions, not UTF-8): never overwrite it.
+            Some(Err(e)) => Err(format!("cannot read keymap.toml: {e}")),
+        };
+        let parsed = raw
+            .clone()
+            .and_then(|text| text.parse::<DocumentMut>().map_err(|e| e.to_string()));
+        match parsed {
             Ok(doc) => Self {
                 path,
                 doc,
@@ -76,9 +83,16 @@ impl KeymapFile {
             Err(e) => Self {
                 path,
                 doc: DocumentMut::new(),
-                error: Some(e.to_string().lines().next().unwrap_or_default().to_string()),
-                raw,
+                error: Some(e.lines().next().unwrap_or_default().to_string()),
+                raw: raw.unwrap_or_default(),
             },
+        }
+    }
+
+    /// Re-read the saved file so edits made outside the app are kept.
+    fn refresh(&mut self) {
+        if let Some(path) = self.path.clone() {
+            *self = Self::load(Some(path), None);
         }
     }
 
@@ -116,7 +130,8 @@ impl KeymapFile {
     }
 
     /// What `edit` would do, without writing.
-    pub fn preview(&self, edit: &Edit) -> Outcome {
+    pub fn preview(&mut self, edit: &Edit) -> Outcome {
+        self.refresh();
         match self.plan(edit) {
             Err(m) => Outcome::Rejected(m),
             Ok((conflicts, _)) if !conflicts.is_empty() => Outcome::NeedsConfirm(conflicts),
@@ -127,6 +142,7 @@ impl KeymapFile {
     /// Apply `edit` (conflicting sequences are taken from their actions)
     /// and save.
     pub fn apply(&mut self, edit: &Edit) -> Outcome {
+        self.refresh();
         let writes = match self.plan(edit) {
             Err(m) => return Outcome::Rejected(m),
             Ok((_, writes)) => writes,
@@ -230,48 +246,62 @@ impl KeymapFile {
         out
     }
 
-    /// The table holding `name`: `[normal]` itself (`None`) or a sub-table.
-    fn holder(&self, name: &str) -> Option<Option<String>> {
-        let normal = self.doc.get("normal").and_then(Item::as_table)?;
+    /// Tables holding `name`, in the order `apply_overrides` reads them
+    /// (`[normal]` is `None`, sub-tables `Some(key)`): the last one wins.
+    fn holders(&self, name: &str) -> Vec<Option<String>> {
+        let Some(normal) = self.doc.get("normal").and_then(Item::as_table) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
         if normal.contains_key(name) {
-            return Some(None);
+            out.push(None);
         }
-        normal
-            .iter()
-            .find(|(_, v)| v.as_table().is_some_and(|t| t.contains_key(name)))
-            .map(|(k, _)| Some(k.to_string()))
+        out.extend(
+            normal
+                .iter()
+                .filter(|(_, v)| v.as_table().is_some_and(|t| t.contains_key(name)))
+                .map(|(k, _)| Some(k.to_string())),
+        );
+        out
     }
 
+    fn table_mut(&mut self, holder: &Option<String>) -> Option<&mut Table> {
+        let normal = self.doc.get_mut("normal")?.as_table_mut()?;
+        match holder {
+            None => Some(normal),
+            Some(sub) => normal.get_mut(sub)?.as_table_mut(),
+        }
+    }
+
+    /// Remove `action` from every table, then write `keys` once (into the
+    /// table that held the effective entry, else `[normal]`).
     fn write_entry(&mut self, action: KeyAction, keys: Option<&[Vec<String>]>) {
         let name = action.name();
-        let holder = self.holder(name);
+        let holders = self.holders(name);
+        let target = holders.last().cloned().unwrap_or(None);
+        let mut decor = None;
+        for h in &holders {
+            if let Some(t) = self.table_mut(h)
+                && let Some(old) = t.remove(name)
+                && *h == target
+            {
+                decor = old.as_value().map(|v| v.decor().clone());
+            }
+        }
+        let Some(keys) = keys else { return };
         if !self.doc.contains_key("normal") {
             self.doc["normal"] = toml_edit::table();
         }
-        let Some(normal) = self.doc["normal"].as_table_mut() else {
+        let Some(table) = self.table_mut(&target) else {
             return;
         };
-        let table = match &holder {
-            Some(Some(sub)) => match normal.get_mut(sub).and_then(Item::as_table_mut) {
-                Some(t) => t,
-                None => return,
-            },
-            _ => normal,
-        };
-        match keys {
-            None => {
-                table.remove(name);
-            }
-            Some(keys) => {
-                let array: Array = keys.iter().map(|k| seq_text(k)).collect();
-                let mut value = Value::Array(array);
-                if let Some(old) = table.get(name).and_then(Item::as_value) {
-                    *value.decor_mut() = old.decor().clone();
-                }
-                table.set_implicit(false);
-                table.insert(name, Item::Value(value));
-            }
+        let array: Array = keys.iter().map(|k| seq_text(k)).collect();
+        let mut value = Value::Array(array);
+        if let Some(d) = decor {
+            *value.decor_mut() = d;
         }
+        table.set_implicit(false);
+        table.insert(name, Item::Value(value));
     }
 
     fn save(&self, edit: &Edit, before_text: &str) -> std::io::Result<()> {
@@ -344,7 +374,7 @@ mod tests {
 
     #[test]
     fn prefix_conflicts_both_ways() {
-        let (_d, _p, f) = file_with("");
+        let (_d, _p, mut f) = file_with("");
         let Outcome::NeedsConfirm(mut c) = f.preview(&Edit::Replace(KeyAction::Start, s(&["g"]))) else {
             panic!("expected conflicts")
         };
@@ -373,7 +403,7 @@ mod tests {
 
     #[test]
     fn adding_own_key_is_rejected() {
-        let (_d, _p, f) = file_with("");
+        let (_d, _p, mut f) = file_with("");
         assert_eq!(
             f.preview(&Edit::Add(KeyAction::MoveDown, s(&["j"]))),
             Outcome::Rejected(String::from("✗ already bound to move_down"))
@@ -393,7 +423,7 @@ mod tests {
 
     #[test]
     fn invalid_sequence_is_rejected() {
-        let (_d, _p, f) = file_with("");
+        let (_d, _p, mut f) = file_with("");
         assert_eq!(
             f.preview(&Edit::Replace(KeyAction::Start, s(&["q"]))),
             Outcome::Rejected(String::from("✗ q is a fixed key and cannot start a binding"))
@@ -489,5 +519,50 @@ mod tests {
         );
         assert_eq!(f.map().get(&s(&["C-s"])), Some(&KeyAction::Start));
         assert_eq!(KeymapFile::in_memory().map(), default_map());
+    }
+
+    #[test]
+    fn file_changed_on_disk_after_load_is_kept() {
+        let (_d, path, mut f) = file_with("[normal]\n");
+        std::fs::write(&path, "# added in editor\n[normal]\nconsole = [\"C-t\"]\n").unwrap();
+        assert!(matches!(
+            f.apply(&Edit::Replace(KeyAction::Start, s(&["C-s"]))),
+            Outcome::Applied(_)
+        ));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# added in editor"), "{text}");
+        assert!(text.contains(r#"console = ["C-t"]"#), "{text}");
+        assert!(text.contains(r#"start = ["C-s"]"#), "{text}");
+    }
+
+    #[test]
+    fn unreadable_file_refuses_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("keymap.toml");
+        let bytes = b"# caf\xe9\n[normal]\nconsole = [\"C-t\"]\n".to_vec();
+        std::fs::write(&path, &bytes).unwrap();
+        let mut f = KeymapFile::load(Some(path.clone()), None);
+        assert!(f.error().is_some());
+        assert!(matches!(
+            f.apply(&Edit::Replace(KeyAction::Start, s(&["C-s"]))),
+            Outcome::Rejected(_)
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn action_in_two_tables_is_edited_everywhere() {
+        let (_d, path, mut f) =
+            file_with("[normal]\nconsole = [\"C-t\"]\n\n[normal.domains]\nconsole = [\"C-u\"]\n");
+        f.apply(&Edit::Replace(KeyAction::Console, s(&["C-y"])));
+        let map = f.map();
+        assert_eq!(map.get(&s(&["C-y"])), Some(&KeyAction::Console));
+        assert_ne!(map.get(&s(&["C-u"])), Some(&KeyAction::Console));
+        assert_ne!(map.get(&s(&["C-t"])), Some(&KeyAction::Console));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.matches("console =").count(), 1, "{text}");
+        f.apply(&Edit::Default(KeyAction::Console));
+        assert!(!f.is_custom(KeyAction::Console));
+        assert_eq!(f.map().get(&s(&["c"])), Some(&KeyAction::Console));
     }
 }
