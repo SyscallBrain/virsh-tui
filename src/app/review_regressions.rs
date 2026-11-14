@@ -1415,3 +1415,28 @@ async fn libvirt_job_progress_and_abort_show_on_the_job_line() {
         line(&app)
     );
 }
+
+#[tokio::test]
+async fn long_jobs_notify_when_they_finish() {
+    super::notify::SENT.with(|s| s.borrow_mut().clear());
+    let mut app = fixture_app();
+    app.config.notifications.job_min_secs = 5;
+    let plan = crate::command::plan::CommandPlan::single("sh", vec!["-c", "exit 0"], "Saved");
+    assert!(app.submit_plans(vec![("vt-test-vm".into(), plan.clone())]));
+    // Pretend it started a minute ago.
+    let job = app.active_job.as_mut().unwrap();
+    job.started -= std::time::Duration::from_secs(60);
+    let task = std::mem::replace(&mut job.task, tokio::spawn(std::future::pending()));
+    let outcome = task.await;
+    app.finish_job(outcome);
+    let sent = super::notify::SENT.with(|s| s.borrow().clone());
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert!(sent[0].0.starts_with("Job #1 finished after 6"), "{sent:?}");
+    // A short job stays quiet.
+    assert!(app.submit_plans(vec![("vt-test-vm".into(), plan)]));
+    let job = app.active_job.as_mut().unwrap();
+    let task = std::mem::replace(&mut job.task, tokio::spawn(std::future::pending()));
+    let outcome = task.await;
+    app.finish_job(outcome);
+    assert_eq!(super::notify::SENT.with(|s| s.borrow().len()), 1);
+}

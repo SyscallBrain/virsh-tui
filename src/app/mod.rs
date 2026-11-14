@@ -12,6 +12,7 @@ mod ex;
 mod jobs;
 mod live;
 mod networks;
+mod notify;
 mod palette;
 mod render;
 mod requests;
@@ -1108,6 +1109,13 @@ impl App {
         if let Some(rx) = self.events_rx.as_mut() {
             for _ in 0..512 {
                 let Ok(ev) = rx.try_recv() else { break };
+                if self.config.notifications.on_crash && notify::is_crash(&ev) {
+                    notify::send(
+                        &self.config.notifications,
+                        &format!("{} crashed", ev.object),
+                        &format!("{} · {}", ev.detail, self.uri),
+                    );
+                }
                 self.dash.recent_events.push(ev.clone());
                 if self.dash.recent_events.len() > 50 {
                     self.dash.recent_events.remove(0);

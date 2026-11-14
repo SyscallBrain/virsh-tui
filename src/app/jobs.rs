@@ -1158,6 +1158,7 @@ impl App {
         let Some(job) = self.active_job.take() else {
             return;
         };
+        let job_elapsed = job.started.elapsed();
         self.job_finished_at = Some(std::time::Instant::now());
         self.rerun_doctor_if_shown();
         let id = job.id;
@@ -1425,7 +1426,16 @@ impl App {
             }
             self.store_editor_draft(draft);
         }
-        self.show_message(last_message.unwrap_or_else(|| "✓ done".into()));
+        let message = last_message.unwrap_or_else(|| "✓ done".into());
+        let n = &self.config.notifications;
+        if n.on_job_done && !self.demo && job_elapsed.as_secs() >= n.job_min_secs.max(1) {
+            notify::send(
+                n,
+                &format!("Job #{id} finished after {}s", job_elapsed.as_secs()),
+                &message,
+            );
+        }
+        self.show_message(message);
         // Reads that started before the job finished may hold stale state:
         // drop them and restart the ones the user is waiting for.
         let reading_networks = self.selection_task.contains_key(&ReadKind::Networks);

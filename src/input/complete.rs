@@ -80,6 +80,7 @@ const SET_KEYS: &[&str] = &[
     "bulk_threshold=",
     "log_level=",
     "read_only=",
+    "notifications=",
 ];
 
 /// App commands whose first argument is a domain.

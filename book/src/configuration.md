@@ -70,6 +70,12 @@ bulk_threshold = 0               # always ask from this many marked domains; 0: 
 viewer = "virt-viewer"           # or "remote-viewer"
 escape = "C-]"                   # key that leaves the serial console
 
+[notifications]
+method = "auto"                  # auto, desktop, osc9, osc777, off
+on_crash = true                  # a domain crashed
+on_job_done = true               # a long job finished…
+job_min_secs = 30                # …after at least this many seconds
+
 [wizard]
 iso_dirs = []                    # folders the ISO picker scans; empty: the
                                  # XDG download folder, e.g. ["~/Downloads", "/srv/isos"]
@@ -135,6 +141,22 @@ confirm = true
   already bound, or would hide a binding (`Space s` hides `Space s c`), is
   skipped and `:messages` says so. `Space u` is free for your own keys.
 - In `--demo` and `--dry-run`, actions only show the command.
+
+## Notifications
+
+virsh-tui can tell you when a domain crashes (a libvirt `Crashed` event)
+and when a job that took at least `job_min_secs` finishes (a migration, a
+snapshot with memory, a clone), so you can look elsewhere while it runs.
+
+- `desktop` runs `notify-send` (libnotify).
+- `osc9` writes the terminal's notification sequence (`ESC ] 9`): iTerm2,
+  WezTerm, kitty, Ghostty, Windows Terminal and others show it, also over
+  SSH. In tmux, enable `set -g allow-passthrough on`.
+- `osc777` is the variant foot, urxvt and Ghostty understand.
+- `auto` uses `desktop` on a local graphical session with `notify-send`
+  installed, `osc9` otherwise (over SSH, on a console).
+
+`:set notifications=off` silences them. The demo never notifies.
 
 ## Notes on some settings
 
@@ -252,7 +274,7 @@ Supported keys: `theme`, `transparent`, `borders`, `icons`, `graphs`,
 `gradient`, `dim_modals`, `key_hints`, `default_uri`, `editor`, `start_view`, `viewer`,
 `escape`, `refresh_interval_secs`, `default_sort`, `default_filter`,
 `history_size`, `history_window`, `shutdown_timeout_secs`, `bulk_threshold`,
-`log_level` and `read_only`. `Tab` completes them. Values are checked
+`log_level`, `read_only` and `notifications` (the method). `Tab` completes them. Values are checked
 (booleans take `true`/`false`, `refresh_interval_secs` 1-60, `viewer`
 `virt-viewer` or `remote-viewer`, …); a rejected value changes nothing. A new
 value takes effect at once: a new refresh interval restarts sampling, and the

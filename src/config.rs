@@ -14,6 +14,7 @@ pub struct Config {
     pub confirmations: Confirmations,
     pub console: Console,
     pub wizard: Wizard,
+    pub notifications: Notifications,
     /// User-defined commands (`[[actions]]`), run with their key, the
     /// palette or `:run <name>`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -111,6 +112,31 @@ pub struct Connections {
     /// `[connections.profiles."qemu+ssh://admin@hv01/system"]`.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub profiles: std::collections::BTreeMap<String, Profile>,
+}
+
+/// Desktop / terminal notifications.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct Notifications {
+    /// `auto` (notify-send on a local desktop, else the terminal), `desktop`,
+    /// `osc9`, `osc777` or `off`.
+    pub method: String,
+    /// A domain crashed (libvirt event).
+    pub on_crash: bool,
+    /// A job that ran at least `job_min_secs` finished.
+    pub on_job_done: bool,
+    pub job_min_secs: u64,
+}
+
+impl Default for Notifications {
+    fn default() -> Self {
+        Self {
+            method: String::from("auto"),
+            on_crash: true,
+            on_job_done: true,
+            job_min_secs: 30,
+        }
+    }
 }
 
 /// One `[[actions]]` entry.
