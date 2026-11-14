@@ -1638,8 +1638,9 @@ async fn mouse_clicks_select_rows_and_tabs_and_the_wheel_moves() {
         terminal.draw(|f| app.draw(f)).unwrap();
     };
     draw(&app);
-    let (top, (left, _), start, shown) = app.dash.list_geom.get().expect("list drawn");
-    assert!(shown > 3);
+    let g = app.dash.list_geom.get().expect("list drawn");
+    let (top, left, start) = (g.top, g.left, g.start);
+    assert!(g.shown > 3);
     app.on_mouse(click(left + 5, top + 2, MouseEventKind::Down(MouseButton::Left)));
     assert_eq!(app.dash.selection, start + 2);
     app.on_mouse(click(left + 5, top + 2, MouseEventKind::ScrollDown));

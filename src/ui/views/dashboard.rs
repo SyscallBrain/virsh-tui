@@ -173,6 +173,20 @@ impl Col {
     }
 }
 
+/// Where the domain rows were drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListGeom {
+    /// Screen row of the first domain row.
+    pub top: u16,
+    /// Columns `left..right` of the rows.
+    pub left: u16,
+    pub right: u16,
+    /// Index (among the visible rows) of the first row shown.
+    pub start: usize,
+    /// Rows shown.
+    pub shown: usize,
+}
+
 /// One dashboard row.
 #[derive(Debug, Clone)]
 pub struct DomainRow {
@@ -234,9 +248,8 @@ pub struct DashboardState {
     /// Last `visible_rows` order, keyed by a fingerprint of everything it
     /// depends on (it is asked for several times per frame).
     visible_cache: std::cell::RefCell<Option<(u64, Vec<usize>)>>,
-    /// Where the last frame drew the domain rows: (first row y, x range,
-    /// index of the first row shown, rows shown). Mouse clicks map onto it.
-    pub list_geom: std::cell::Cell<Option<(u16, (u16, u16), usize, usize)>>,
+    /// Where the last frame drew the domain rows (mouse clicks map onto it).
+    pub list_geom: std::cell::Cell<Option<ListGeom>>,
 }
 
 /// A `virsh shutdown` whose outcome is not known yet.
@@ -522,11 +535,11 @@ impl DashboardState {
 
     /// The visible row index under a click at (`x`, `y`), from the last frame.
     pub fn row_at(&self, x: u16, y: u16) -> Option<usize> {
-        let (top, (left, right), start, shown) = self.list_geom.get()?;
-        if x < left || x >= right || y < top || usize::from(y - top) >= shown {
+        let g = self.list_geom.get()?;
+        if x < g.left || x >= g.right || y < g.top || usize::from(y - g.top) >= g.shown {
             return None;
         }
-        Some(start + usize::from(y - top))
+        Some(g.start + usize::from(y - g.top))
     }
 
     /// Selected domain (defaults to arch-dev).
@@ -934,12 +947,13 @@ fn render_domains(frame: &mut Frame, theme: &Theme, state: &DashboardState, area
     )));
     let body_h = (area.height as usize).saturating_sub(2 + lines.len());
     let start = scroll_offset(state.selection, visible.len(), body_h);
-    state.list_geom.set(Some((
-        area.y + 1 + lines.len() as u16,
-        (area.x + 1, area.right().saturating_sub(1)),
+    state.list_geom.set(Some(ListGeom {
+        top: area.y + 1 + lines.len() as u16,
+        left: area.x + 1,
+        right: area.right().saturating_sub(1),
         start,
-        body_h.min(visible.len().saturating_sub(start)),
-    )));
+        shown: body_h.min(visible.len().saturating_sub(start)),
+    }));
     for (i, r) in visible.iter().enumerate().skip(start).take(body_h) {
         let selected = i == state.selection;
         let marked = state.marks.contains(&r.name);
