@@ -302,6 +302,7 @@ pub async fn run_with_shutdown(
         migrate: None,
         pool_form: None,
         last_click: None,
+        snap_diff: None,
         events_rx,
         view,
         pending_quit_z,
@@ -567,6 +568,8 @@ struct App {
     pool_form: Option<ui::overlays::pool::PoolState>,
     /// Last left click on a domain row (double-click opens it).
     last_click: Option<(std::time::Instant, usize)>,
+    /// Snapshot vs now (`=` in Snapshots).
+    snap_diff: Option<ui::overlays::messages::DiffView>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
@@ -930,6 +933,9 @@ impl App {
             }
             if let Some(p) = &self.pool_form {
                 crate::ui::overlays::pool::render(f, &self.theme, p);
+            }
+            if let Some(d) = &self.snap_diff {
+                crate::ui::overlays::messages::render_diff(f, &self.theme, d);
             }
             if let Some(pal) = &self.palette {
                 crate::ui::overlays::palette::render(f, &self.theme, pal);
@@ -1891,6 +1897,12 @@ impl App {
                         self.submit_hardware();
                         return false;
                     }
+                    if let Ok(crate::input::ex::ExCommand::Backup(domain, dir)) =
+                        crate::input::ex::parse(&line)
+                    {
+                        self.submit_backup(domain, dir);
+                        return false;
+                    }
                     if let Ok(crate::input::ex::ExCommand::Tag(domain, words)) =
                         crate::input::ex::parse(&line)
                     {
@@ -2102,6 +2114,31 @@ impl App {
             && wizard.problems().is_empty()
         {
             self.submit_wizard(wizard.clone());
+            return false;
+        }
+        if let Some(view) = self.snap_diff.as_mut() {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('=') => self.snap_diff = None,
+                KeyCode::Char('j') | KeyCode::Down => view.scroll = view.scroll.saturating_add(1),
+                KeyCode::Char('k') | KeyCode::Up => view.scroll = view.scroll.saturating_sub(1),
+                KeyCode::PageDown | KeyCode::Char('d') => view.scroll = view.scroll.saturating_add(15),
+                KeyCode::PageUp | KeyCode::Char('u') => view.scroll = view.scroll.saturating_sub(15),
+                KeyCode::Char('g') | KeyCode::Home => view.scroll = 0,
+                KeyCode::Char('G') | KeyCode::End => view.scroll = view.lines.len(),
+                _ => {}
+            }
+            return false;
+        }
+        if key.code == KeyCode::Char('=')
+            && key.modifiers.is_empty()
+            && self.view == View::Detail
+            && self.ex_line.is_none()
+            && self.detail.as_ref().is_some_and(|d| {
+                d.tab == ui::views::detail::DetailTab::Snapshots
+                    && d.snap_modal == ui::views::detail::SnapModal::None
+            })
+        {
+            self.request_snapshot_diff();
             return false;
         }
         if let Some(dialog) = self.pool_form.as_mut() {
@@ -3195,6 +3232,7 @@ mod tests {
             migrate: None,
             pool_form: None,
             last_click: None,
+            snap_diff: None,
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,

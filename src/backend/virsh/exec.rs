@@ -25,6 +25,7 @@ pub fn timeout_for(program: &str, sub: &str) -> std::time::Duration {
         "dump",
         "pool-build",
         "pool-delete",
+        "backup-begin",
     ];
     if program != "virsh" || LONG.contains(&sub) {
         std::time::Duration::from_secs(24 * 3600)

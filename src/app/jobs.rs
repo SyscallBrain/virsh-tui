@@ -102,6 +102,7 @@ impl ActiveJob {
     pub(super) fn libvirt_job_domain(&self, known: impl Fn(&str) -> bool) -> Option<String> {
         const JOBS: &[&str] = &[
             "migrate",
+            "backup-begin",
             "managedsave",
             "save",
             "dump",
@@ -110,10 +111,18 @@ impl ActiveJob {
             "snapshot-revert",
         ];
         let progress = self.progress.as_ref()?;
+        if progress.program == crate::command::process::WAIT_JOB {
+            return progress.argv.last().filter(|d| known(d)).cloned();
+        }
         if progress.program != "virsh" {
             return None;
         }
-        let mut words = progress.argv.iter().map(String::as_str);
+        // The argv starts with `-c <uri>` (the batch adds it).
+        let mut words = progress.argv.iter().map(String::as_str).peekable();
+        if words.peek() == Some(&"-c") {
+            words.next();
+            words.next();
+        }
         let sub = words.find(|a| !a.starts_with('-'))?;
         if !JOBS.contains(&sub) {
             return None;
@@ -454,6 +463,15 @@ impl App {
     }
 
     pub(super) fn submit_plans(&mut self, plans: Vec<(String, CommandPlan)>) -> bool {
+        self.submit_plans_with_files(plans, Vec::new())
+    }
+
+    /// [`Self::submit_plans`], keeping `temporary_files` until the job ends.
+    pub(super) fn submit_plans_with_files(
+        &mut self,
+        plans: Vec<(String, CommandPlan)>,
+        temporary_files: Vec<tempfile::NamedTempFile>,
+    ) -> bool {
         if self.refuse_writes_if_read_only(&plans) {
             return false;
         }
@@ -469,7 +487,7 @@ impl App {
             demo: self.demo,
             dry_run: self.dry_run,
             plans: plans.clone(),
-            temporary_files: vec![],
+            temporary_files,
         };
         let (task, started_ledger) = crate::command::job::spawn_tracked(run_batch(batch, control, events));
         self.busy_feedback = None;
@@ -624,6 +642,64 @@ impl App {
         {
             job.refresh_storage = true;
         }
+    }
+
+    /// `:backup <domain> <folder>`: every disk of a running domain to qcow2.
+    pub(super) fn submit_backup(&mut self, domain: String, dir: String) {
+        let dir = match dir.strip_prefix("~/") {
+            Some(rest) => format!("{}/{rest}", std::env::var("HOME").unwrap_or_default()),
+            None => dir,
+        };
+        let Some(row) = self.dash.rows.iter().find(|r| r.name == domain) else {
+            self.show_message(format!("✗ no domain named {domain}"));
+            return;
+        };
+        if row.state != crate::model::DomainState::Running {
+            self.show_message(format!(
+                "✗ {domain} is not running: libvirt backs up running domains (copy a shut-off domain's images instead)"
+            ));
+            return;
+        }
+        let disks = match self.current_detail().filter(|d| d.domain == domain) {
+            Some(d) => d.config.disks.clone(),
+            None => match self.dash.configs.get(&domain) {
+                Some(c) => c.disks.clone(),
+                None => {
+                    self.show_message(format!(
+                        "✗ the configuration of {domain} is not loaded yet: select it first"
+                    ));
+                    return;
+                }
+            },
+        };
+        let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
+        let xml = match crate::command::builders::backup::xml(&domain, &disks, &dir, &stamp) {
+            Ok(xml) => xml,
+            Err(e) => {
+                self.show_message(format!("✗ {e}"));
+                return;
+            }
+        };
+        if self.demo || self.dry_run {
+            let plan = crate::command::builders::backup::plan(&domain, "<backup.xml>", &dir);
+            let shown = crate::command::display::display_plan(&plan.steps);
+            let prefix = if self.demo { "✓" } else { "[dry-run]" };
+            self.show_message(format!("{prefix} {}  ── {shown}", plan.summary));
+            return;
+        }
+        if self.refuse_if_read_only("backup-begin") || self.refuse_if_busy() {
+            return;
+        }
+        let file = match crate::command::tempxml::write("backup", &xml) {
+            Ok(file) => file,
+            Err(e) => {
+                self.show_message(format!("✗ cannot write the backup XML: {e}"));
+                return;
+            }
+        };
+        let path = crate::command::tempxml::path_arg(&file);
+        let plan = crate::command::builders::backup::plan(&domain, &path, &dir);
+        self.submit_plans_with_files(vec![(domain, plan)], vec![file]);
     }
 
     /// Run the migrate dialog's command.

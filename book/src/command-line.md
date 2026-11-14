@@ -50,6 +50,7 @@ reject extra words instead of ignoring them.
 | `:theme <name>` | switch theme (saved to the config) |
 | `:sort name\|state\|cpu\|mem\|uptime` | sort the domain list |
 | `:set <key>=<value>` | change a setting, validated, applied at once and saved |
+| `:backup <domain> <folder>` | back up every disk of a running domain ([Backups](views/detail.md#backups)) |
 | `:tag <domain> [+tag -tag \| tags \| --clear]` | edit the domain's [tags](views/domains.md#tags) |
 | `:run <action> [domain]` | run one of your [actions](configuration.md#custom-actions); without a domain, the selected one |
 | `:42` | jump to row 42 |

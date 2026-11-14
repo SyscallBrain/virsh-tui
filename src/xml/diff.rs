@@ -24,6 +24,13 @@ fn normalize(text: &str) -> String {
     }
 }
 
+/// The `<domain>` saved in a `virsh snapshot-dumpxml` document.
+pub fn snapshot_domain(snapshot_xml: &str) -> Option<String> {
+    let root = xmltree::Element::parse(snapshot_xml.as_bytes()).ok()?;
+    let domain = root.get_child("domain")?;
+    Some(super::edit::pretty(domain))
+}
+
 /// Diff two texts (XML-aware): returns hunked lines with 1 line of context.
 pub fn diff_lines(before: &str, after: &str) -> Vec<DiffLine> {
     let before = normalize(before);
@@ -110,5 +117,17 @@ mod tests {
         let d = diff_lines("<a>1</a>\n", "<a>2</a>\n");
         assert!(d.iter().any(|l| l.kind == DiffKind::Minus));
         assert!(d.iter().any(|l| l.kind == DiffKind::Plus));
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    #[test]
+    fn snapshot_domain_is_extracted() {
+        let xml = "<domainsnapshot><name>s1</name><domain type='kvm'><name>vm</name><vcpu>2</vcpu></domain></domainsnapshot>";
+        let domain = super::snapshot_domain(xml).unwrap();
+        assert!(domain.contains("<vcpu>2</vcpu>"), "{domain}");
+        assert!(!domain.contains("domainsnapshot"));
+        assert_eq!(super::snapshot_domain("<x/>"), None);
     }
 }

@@ -55,6 +55,66 @@ pub enum RunError {
     ReadOnly(String),
 }
 
+/// Program of the internal step that waits for a domain's libvirt job
+/// (`backup-begin` returns at once; the job goes on in libvirt). Shown as a
+/// shell comment: `# wait for the backup job of <domain>`.
+pub const WAIT_JOB: &str = "#";
+
+fn exit_status(code: i32) -> ExitStatus {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(code << 8)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = code;
+        unreachable!("virsh-tui runs on unix")
+    }
+}
+
+/// Poll `virsh domjobinfo` once a second until the domain has no active job,
+/// then read how it ended (`--completed`).
+async fn wait_libvirt_job(
+    uri: &str,
+    domain: &str,
+    control: &mut watch::Receiver<bool>,
+) -> Result<StepOutput, RunError> {
+    let output = |code: i32, stderr: String| StepOutput {
+        status: exit_status(code),
+        stdout: Vec::new(),
+        stderr: stderr.into_bytes(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    };
+    loop {
+        tokio::select! {
+            _ = control.changed() => {}
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+        }
+        if *control.borrow() {
+            return Err(RunError::Cancelled);
+        }
+        match crate::backend::virsh::exec::run(uri, &["domjobinfo", domain]).await {
+            Ok(text) if crate::backend::virsh::parse_jobinfo::parse(&text).is_none() => break,
+            Ok(_) => {}
+            Err(e) => return Ok(output(1, format!("error: {e}"))),
+        }
+    }
+    let done = crate::backend::virsh::exec::run(uri, &["domjobinfo", "--completed", domain])
+        .await
+        .unwrap_or_default();
+    let kind = done
+        .lines()
+        .find_map(|l| l.strip_prefix("Job type:"))
+        .map(str::trim)
+        .unwrap_or("Completed");
+    Ok(match kind {
+        "Failed" | "Cancelled" => output(1, format!("error: the libvirt job of {domain} ended: {kind}")),
+        _ => output(0, String::new()),
+    })
+}
+
 #[cfg(unix)]
 pub(crate) struct ProcessGroup {
     id: Option<u32>,
@@ -226,6 +286,16 @@ async fn run_step_inner(
 ) -> Result<StepOutput, RunError> {
     if *control.borrow() {
         return Err(RunError::Cancelled);
+    }
+    if step.program == WAIT_JOB {
+        started();
+        // Boxed: the wait runs `virsh domjobinfo` through this function again.
+        return Box::pin(wait_libvirt_job(
+            uri,
+            step.argv.last().map_or("", String::as_str),
+            control,
+        ))
+        .await;
     }
     let read_only = crate::config::read_only();
     // virsh is opened with `-r` below, so libvirt refuses its changes; other

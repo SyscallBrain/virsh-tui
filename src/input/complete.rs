@@ -50,6 +50,10 @@ pub const APP_COMMANDS: &[(&str, &str)] = &[
     ("messages", "message log"),
     ("run", "<action> [domain]  ([[actions]] in config.toml)"),
     ("tag", "<domain> [+tag -tag | tags | --clear]"),
+    (
+        "backup",
+        "<domain> <folder>  (running domain: every disk to qcow2)",
+    ),
     ("doctor", "check the environment"),
     ("w", "apply hardware changes"),
     ("q", "close / quit"),
@@ -90,6 +94,7 @@ const SET_KEYS: &[&str] = &[
 /// App commands whose first argument is a domain.
 const DOMAIN_FIRST: &[&str] = &[
     "tag",
+    "backup",
     "start",
     "shutdown",
     "destroy",
@@ -224,7 +229,7 @@ pub fn complete(
         ("set", 0) => SET_KEYS.iter().map(|k| item(*k, "")).collect(),
         ("help", 0) => APP_COMMANDS.iter().map(|(n, h)| item(*n, *h)).collect(),
         (c, 0) if DOMAIN_FIRST.contains(&c) => domains(),
-        ("attach-iso", 1) | ("attach-disk", 1) => paths(current),
+        ("attach-iso", 1) | ("attach-disk", 1) | ("backup", 1) => paths(current),
         (c, 0) if c.starts_with("net-") => ctx.networks.iter().map(|n| item(n.clone(), "network")).collect(),
         (c, 0) if c.starts_with("pool-") => ctx.pools.iter().map(|p| item(p.clone(), "pool")).collect(),
         (c, 0) if ctx.virsh.iter().any(|(n, _)| n == c) => domains(),

@@ -1365,7 +1365,10 @@ async fn libvirt_job_progress_and_abort_show_on_the_job_line() {
     let plan = crate::command::plan::CommandPlan::single("sh", vec!["-c", "exit 0"], "Migrated");
     assert!(app.submit_plans(vec![("vt-test-vm".into(), plan)]));
     app.active_job.as_ref().unwrap().task.abort();
+    // As the batch reports it: `-c <uri>` first.
     let argv: Vec<String> = [
+        "-c",
+        "qemu:///system",
         "migrate",
         "--live",
         "--timeout",
@@ -1390,6 +1393,17 @@ async fn libvirt_job_progress_and_abort_show_on_the_job_line() {
         "flag values (30) are not domains"
     );
     assert_eq!(job.libvirt_job_domain(|_| false), None);
+    let mut wait = job.progress.clone().unwrap();
+    wait.program = crate::command::process::WAIT_JOB.to_string();
+    wait.argv = ["wait", "for", "the", "backup", "job", "of", "vt-test-vm"]
+        .map(String::from)
+        .to_vec();
+    let migrate = job.progress.replace(wait);
+    assert_eq!(
+        job.libvirt_job_domain(|n| n == "vt-test-vm").as_deref(),
+        Some("vt-test-vm")
+    );
+    job.progress = migrate;
     job.domain_job = crate::backend::virsh::parse_jobinfo::parse(
         "Job type: Unbounded\nTime elapsed: 10000 ms\nData remaining: 3 GiB\nData total: 4 GiB\n",
     );
@@ -1691,4 +1705,66 @@ fn columns_setting_adds_ip_and_tags() {
         })
         .collect();
     assert!(text.contains("STATE ▾   IP              TAGS"), "{text}");
+}
+
+#[tokio::test]
+async fn equals_in_snapshots_shows_the_diff_against_now() {
+    let mut app = fixture_app();
+    app.demo = true;
+    let name = app.dash.selected().name.clone();
+    let mut detail = DetailState::demo(&name);
+    detail.tab = DetailTab::Snapshots;
+    app.detail = Some(detail);
+    app.view = View::Detail;
+    app.handle_key_event(plain('='));
+    let view = app.snap_diff.as_ref().expect("diff shown");
+    assert!(view.title.contains("→ now"), "{}", view.title);
+    assert!(
+        view.lines
+            .iter()
+            .any(|l| l.kind == crate::xml::diff::DiffKind::Minus && l.text.contains("4"))
+    );
+    assert!(
+        view.lines
+            .iter()
+            .any(|l| l.kind == crate::xml::diff::DiffKind::Plus && l.text.contains("8"))
+    );
+    app.handle_key_event(plain('j'));
+    assert_eq!(app.snap_diff.as_ref().unwrap().scroll, 1);
+    app.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(app.snap_diff.is_none());
+    assert_eq!(app.view, View::Detail, "Esc only closes the diff");
+}
+
+#[tokio::test]
+async fn backup_refuses_shut_off_domains_and_unknown_configs() {
+    let mut app = fixture_app();
+    let off = app
+        .dash
+        .rows
+        .iter()
+        .find(|r| r.state != DomainState::Running)
+        .map(|r| r.name.clone())
+        .unwrap();
+    run_ex(&mut app, &format!("backup {off} /srv/backup"));
+    assert!(
+        app.dash.message.contains("is not running"),
+        "{}",
+        app.dash.message
+    );
+    let on = app
+        .dash
+        .rows
+        .iter()
+        .find(|r| r.state == DomainState::Running)
+        .map(|r| r.name.clone())
+        .unwrap();
+    app.dash.configs.remove(&on);
+    run_ex(&mut app, &format!("backup {on} /srv/backup"));
+    assert!(
+        app.dash.message.contains("not loaded yet"),
+        "{}",
+        app.dash.message
+    );
+    assert!(app.active_job.is_none());
 }

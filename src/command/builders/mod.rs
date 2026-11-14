@@ -1,5 +1,6 @@
 //! Command builders: one module per area (lifecycle first, rest in later phases).
 
+pub mod backup;
 pub mod hardware;
 pub mod install;
 pub mod lifecycle;

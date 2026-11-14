@@ -237,6 +237,14 @@ mockup layout). Extra columns: `IP` (15, cyan, `—` when unknown) and `TAGS`
 (16, magenta, `#a #b`, cut at 16). Header and cells keep one space between
 columns; NAME (17) is always first.
 
+### Snapshot diff (`=` in Snapshots)
+
+Blue full-size modal (like `:messages`), title ` <domain> · snapshot <name> → now `,
+diff lines red `-` (in the snapshot) / green `+` (now) / comment hunks / fg2
+context, bottom title ` - in the snapshot · + now · j/k scroll · Esc close `.
+Empty diff: dim `no differences: the configuration is as in the snapshot`.
+Demo: the snapshot had 4 vCPUs and 8 GiB.
+
 ### Tags
 
 Stored as `<vt:tags xmlns:vt="https://syscallbrain.github.io/virsh-tui/xmlns/tags/1">a b</vt:tags>`.

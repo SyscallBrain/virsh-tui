@@ -29,6 +29,8 @@ pub enum ExCommand {
     Sort(String),
     /// `:run <action> [domain]`: a `[[actions]]` entry.
     Run(String, Option<String>),
+    /// `:backup <domain> <folder>`.
+    Backup(String, String),
     /// `:tag <domain> [+a -b | a b | --clear]`.
     Tag(String, Vec<String>),
     Jump(u32),
@@ -61,6 +63,10 @@ pub fn parse(line: &str) -> Result<ExCommand, String> {
         "w" => Ok(ExCommand::Write),
         "messages" => Ok(ExCommand::Messages),
         "doctor" => Ok(ExCommand::Doctor),
+        "backup" => match words.as_slice() {
+            [d, dir] => Ok(ExCommand::Backup(d.to_string(), dir.to_string())),
+            _ => Err(String::from(":backup needs <domain> <folder>")),
+        },
         "tag" => match words.split_first() {
             Some((d, rest)) => Ok(ExCommand::Tag(
                 d.to_string(),

@@ -60,6 +60,14 @@ pub(super) enum SelectionResult {
         selected: String,
         state: Box<ui::views::detail::DetailState>,
     },
+    SnapDiff {
+        uri: String,
+        serial: u64,
+        epoch: u64,
+        domain: String,
+        snapshot: String,
+        result: Result<Vec<crate::xml::diff::DiffLine>, String>,
+    },
     Guest {
         uri: String,
         serial: u64,
@@ -88,6 +96,7 @@ pub(super) enum ReadKind {
     Snapshots,
     Networks,
     Guest,
+    SnapDiff,
 }
 impl Drop for SelectionTask {
     fn drop(&mut self) {
@@ -129,6 +138,7 @@ impl App {
             ReadKind::Snapshots,
             ReadKind::Networks,
             ReadKind::Guest,
+            ReadKind::SnapDiff,
         ] {
             self.cancel_read(kind);
         }
@@ -577,6 +587,63 @@ impl App {
         );
     }
 
+    /// `=` in Snapshots: diff the selected snapshot's saved configuration
+    /// against the current one.
+    pub(super) fn request_snapshot_diff(&mut self) {
+        let Some(detail) = self.current_detail() else {
+            return;
+        };
+        let (domain, snapshot) = (detail.domain.clone(), detail.snaps.selected_name().to_string());
+        if snapshot.is_empty() {
+            self.show_message(String::from("✗ no snapshot selected"));
+            return;
+        }
+        if self.demo {
+            let now = detail.xml.clone();
+            let then = now
+                .replace(
+                    "<vcpu placement='static'>8</vcpu>",
+                    "<vcpu placement='static'>4</vcpu>",
+                )
+                .replace("16777216</memory>", "8388608</memory>");
+            self.snap_diff = Some(ui::overlays::messages::DiffView {
+                title: format!("{domain} · snapshot {snapshot} → now"),
+                lines: crate::xml::diff::diff_lines(&then, &now),
+                scroll: 0,
+            });
+            return;
+        }
+        let serial = self.begin_read(ReadKind::SnapDiff);
+        let (uri, epoch) = (self.uri.clone(), self.connection_epoch);
+        self.show_message(format!("comparing {snapshot} with the current configuration…"));
+        self.selection_task.insert(
+            ReadKind::SnapDiff,
+            SelectionTask(tokio::spawn(async move {
+                use crate::backend::virsh::exec::run;
+                let result = async {
+                    let snap = run(&uri, &["snapshot-dumpxml", &domain, &snapshot])
+                        .await
+                        .map_err(|e| format!("snapshot-dumpxml: {e}"))?;
+                    let then = crate::xml::diff::snapshot_domain(&snap)
+                        .ok_or_else(|| format!("snapshot {snapshot} has no saved domain configuration"))?;
+                    let now = run(&uri, &["dumpxml", "--inactive", &domain])
+                        .await
+                        .map_err(|e| format!("dumpxml: {e}"))?;
+                    Ok(crate::xml::diff::diff_lines(&then, &now))
+                }
+                .await;
+                SelectionResult::SnapDiff {
+                    uri,
+                    serial,
+                    epoch,
+                    domain,
+                    snapshot,
+                    result,
+                }
+            })),
+        );
+    }
+
     /// Ask the guest agent about the open domain (Overview › Guest).
     pub(super) fn request_guest_info(&mut self, domain: String) {
         if self.demo {
@@ -930,6 +997,28 @@ impl App {
                 } else {
                     self.store.picker = None;
                     self.show_message(format!("✗ {domain} has no accessible CD-ROM drive"));
+                }
+            }
+            SelectionResult::SnapDiff {
+                uri,
+                serial,
+                epoch,
+                domain,
+                snapshot,
+                result,
+            } if self.uri == uri
+                && self.read_current(ReadKind::SnapDiff, serial)
+                && self.connection_epoch == epoch =>
+            {
+                match result {
+                    Ok(lines) => {
+                        self.snap_diff = Some(ui::overlays::messages::DiffView {
+                            title: format!("{domain} · snapshot {snapshot} → now"),
+                            lines,
+                            scroll: 0,
+                        })
+                    }
+                    Err(e) => self.show_message(format!("✗ {e}")),
                 }
             }
             SelectionResult::Guest {

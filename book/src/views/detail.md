@@ -111,6 +111,24 @@ is no snapshot. In the creation form, use Tab to select the name, description, a
 | `Space s r` | revert to the selected snapshot, confirms |
 | `Space s d` | delete the selected snapshot, confirms |
 | `e` | edit the snapshot XML (`virsh snapshot-edit`) |
+| `=` | compare the snapshot's saved configuration with the current one |
+
+`=` reads the configuration saved in the selected snapshot
+(`virsh snapshot-dumpxml`) and the current one (`virsh dumpxml --inactive`)
+and shows what changed since: lines that were in the snapshot in red (`-`),
+lines that are there now in green (`+`). `j`/`k` scroll, `Esc` closes. It is
+a good look before a revert.
+
+## Backups
+
+`:backup <domain> <folder>` copies every disk of a running domain to qcow2
+files in the folder (`<domain>-<disk>-<date>-<time>.qcow2`; CD-ROMs are
+skipped) with `virsh backup-begin`, while the guest keeps running. The job
+waits for libvirt's backup job to finish and shows its progress; `Ctrl-c`
+aborts it (`domjobabort`). The folder is written by QEMU, not by you: on
+`qemu:///system` it must be writable by the `qemu` user (a folder under
+`/var/lib/libvirt` works). A shut-off domain has nothing to coordinate:
+copy its images with `cp` or `qemu-img convert`.
 
 ## Console
 
