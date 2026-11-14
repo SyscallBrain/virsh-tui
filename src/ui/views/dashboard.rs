@@ -1076,6 +1076,7 @@ fn action_chips(theme: &Theme, state: DomainState, width: usize) -> Vec<Line<'st
     let chips: &[(&str, &str)] = match state {
         DomainState::Running => &[
             ("S", "shutdown"),
+            ("D", "force off"),
             ("r", "reboot"),
             ("p", "pause"),
             ("c", "console"),
@@ -1085,7 +1086,7 @@ fn action_chips(theme: &Theme, state: DomainState, width: usize) -> Vec<Line<'st
         ],
         DomainState::Paused => &[
             ("p", "resume"),
-            ("D", "destroy"),
+            ("D", "force off"),
             ("␣s", "snapshot"),
             ("e", "edit xml"),
         ],

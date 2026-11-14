@@ -90,6 +90,7 @@ pub fn curated() -> Vec<PaletteItem> {
         ("◆", "Snapshot", "snapshot: tree view", "gs", "snapshot-list"),
         ("●", "Domain", "start", "s", "start"),
         ("●", "Domain", "shutdown", "S", "shutdown"),
+        ("●", "Domain", "force off (destroy)", "D", "destroy"),
         ("◎", "Media", "attach ISO", "␣mi", "change-media"),
         ("◫", "Storage", "volume: create", "n", "vol-create-as"),
         ("▣", "CPU", "set vcpus", "", "setvcpus"),

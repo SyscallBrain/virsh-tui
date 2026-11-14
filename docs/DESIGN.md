@@ -125,7 +125,7 @@ History windows: `t` cycles 60 s → 5 min → 1 h (ring buffers per domain per 
   Filter bar on top: `/ filter…` + state chips (`all`, `running`, `paused`, `crashed`, `off`) with counts. Footers: `sort: state › name`, `2/15 · 3 marked`.
 - **Events** panel: last 4 libvirt events (`time  glyph  domain  event  detail`), coloured by event type.
 - **Host** panel: 6 line gauges in 2 columns (CPU, RAM, Swap, pools, hugepages).
-- Right column = selected domain: **Overview** (key/value grid + action chips `S r p c v ␣s e`), **CPU** braille chart, **Memory** + **Disk I/O** side by side, **Network** mirrored chart with totals.
+- Right column = selected domain: **Overview** (key/value grid + action chips `S D r p c v ␣s e`), **CPU** braille chart, **Memory** + **Disk I/O** side by side, **Network** mirrored chart with totals.
 - For shut-off domains, the right column shows config only (no charts) plus a big hint `s to start`.
 
 ### 02 · Host monitor (`2`)
