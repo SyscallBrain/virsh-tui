@@ -730,6 +730,20 @@ async fn p1_7_clone_name_is_editable_and_running_source_refused() {
     run_ex(&mut app, &line);
     assert!(app.active_job.is_none());
     assert!(app.dash.message.contains("is running"), "{}", app.dash.message);
+    assert!(!app.dash.message.contains("pause"), "{}", app.dash.message);
+}
+
+#[tokio::test]
+async fn clone_refuses_paused_source() {
+    // virt-clone itself refuses anything but a shut-off source.
+    let mut app = fixture_app();
+    add_rows(&mut app, &[("vt-test-p", DomainState::Paused, false)]);
+    run_ex(&mut app, "clone vt-test-p vt-test-p-clone");
+    assert!(app.active_job.is_none());
+    assert_eq!(
+        app.dash.message,
+        "✗ vt-test-p is paused: shut it down before cloning"
+    );
 }
 
 #[test]

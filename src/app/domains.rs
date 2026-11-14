@@ -548,7 +548,8 @@ pub(super) fn prefill_command(
     })
 }
 
-/// `:clone` refusal reason: virt-clone needs a shut-off (or paused) source,
+/// `:clone` refusal reason: virt-clone needs a shut-off source (current
+/// virt-clone refuses paused domains too: "Domain to clone must be shutoff."),
 /// and a free, valid name.
 pub(super) fn clone_problem(
     dash: &crate::ui::views::dashboard::DashboardState,
@@ -557,12 +558,13 @@ pub(super) fn clone_problem(
 ) -> Option<String> {
     match row_state(dash, domain) {
         None => return Some(format!("✗ no domain named {domain}")),
-        Some((crate::model::DomainState::Running, _)) => {
+        Some((crate::model::DomainState::ShutOff, _)) => {}
+        Some((state, _)) => {
             return Some(format!(
-                "✗ {domain} is running: shut it down or pause it before cloning"
+                "✗ {domain} is {}: shut it down before cloning",
+                state.label()
             ));
         }
-        _ => {}
     }
     let existing: Vec<&str> = dash.rows.iter().map(|r| r.name.as_str()).collect();
     (!crate::ui::overlays::wizard::valid_name(new_name, &existing))

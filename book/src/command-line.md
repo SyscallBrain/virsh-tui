@@ -36,7 +36,7 @@ reject extra words instead of ignoring them.
 | `:shutdown <domain>` | ACPI shutdown |
 | `:destroy <domain>` | force off (confirms) |
 | `:rename <domain> <new-name>` | rename (the domain must be shut off) |
-| `:clone <domain> <new-name>` | clone with `virt-clone` (shut off or paused source; `Space c` prefills it) |
+| `:clone <domain> <new-name>` | clone with `virt-clone` (the source must be shut off; `Space c` prefills it) |
 | `:desc <domain> <text>` | set the description |
 | `:attach-disk <domain> <source> <target>` | attach a disk (format from the extension or the image header; `--live` only if the domain runs) |
 | `:detach-disk <domain> <target>` | detach a disk |
