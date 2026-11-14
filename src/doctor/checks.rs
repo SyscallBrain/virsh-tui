@@ -165,7 +165,7 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
                         .hint(hint)
                         .fix(Fix::Connect(String::from("qemu:///session")))
                         .command_opt(usermod.clone()),
-                    Some(hint @ "is libvirtd running?") if local => {
+                    Some(hint @ "is libvirtd running?") if system => {
                         check.hint(hint).command(daemon_command(runner))
                     }
                     Some(hint) => check.hint(hint),
@@ -971,5 +971,20 @@ pub(crate) mod tests {
             (e.status, e.value.as_str()),
             (Status::Ok, "event stream available")
         );
+    }
+
+    #[test]
+    fn session_daemon_down_has_no_system_command() {
+        // The session daemon is per user: `sudo systemctl` would be wrong.
+        let uri = "qemu:///session";
+        let mut r = healthy(uri);
+        r.fail(
+            &format!("virsh -c {uri} version"),
+            "error: failed to connect to socket '/run/user/1000/libvirt/virtqemud-sock'",
+        );
+        let c = run_sync(&ctx(uri), &r);
+        let conn = get(&c, "connection");
+        assert_eq!(conn.hint.as_deref(), Some("is libvirtd running?"));
+        assert_eq!(conn.command, None);
     }
 }

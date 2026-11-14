@@ -24,7 +24,7 @@ impl App {
         let doc = &mut st.doctor;
         if let Some(pending) = doc.pending.take() {
             match key.code {
-                KeyCode::Char('y') if key.modifiers.is_empty() => self.apply_doctor_fix(pending.index),
+                KeyCode::Char('y') if key.modifiers.is_empty() => self.apply_doctor_fix(pending.fix),
                 KeyCode::Char('n') | KeyCode::Esc => {}
                 _ => doc.pending = Some(pending),
             }
@@ -58,18 +58,17 @@ impl App {
                     ));
                     return true;
                 }
-                let index = doc.selected;
                 let question = match &fix {
                     Fix::Set { key, value } => format!("Set {key} to {value}?"),
                     Fix::Connect(uri) => format!("Connect to {uri}?"),
                     // The confirm modal and the editor ask by themselves.
                     Fix::Virsh(_) | Fix::Edit(_) => {
-                        self.apply_doctor_fix(index);
+                        self.apply_doctor_fix(fix);
                         return true;
                     }
                 };
                 doc.message = None;
-                doc.pending = Some(PendingFix { index, question });
+                doc.pending = Some(PendingFix { fix, question });
             }
             _ => return false,
         }
@@ -82,17 +81,8 @@ impl App {
         }
     }
 
-    /// Apply the fix of check `index` (already confirmed for Set/Connect).
-    fn apply_doctor_fix(&mut self, index: usize) {
-        let Some(fix) = self
-            .settings
-            .as_ref()
-            .and_then(|st| st.doctor.report.as_ref())
-            .and_then(|r| r.checks.get(index))
-            .and_then(|c| c.fix.clone())
-        else {
-            return;
-        };
+    /// Apply `fix` (already confirmed for Set/Connect).
+    fn apply_doctor_fix(&mut self, fix: Fix) {
         match fix {
             Fix::Set { key, value } => {
                 let message = if self.demo {
@@ -540,5 +530,42 @@ mod tests {
             .join("\n");
         assert!(text.contains("virsh net-start default"), "{text}");
         assert!(text.contains("y fix"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn doctor_hint_visible_on_short_terminals() {
+        let mut app = on_doctor_pane().await;
+        select(&mut app, "permissions");
+        for (w, h) in [(100, 28), (80, 24), (174, 20), (60, 20)] {
+            let text = render(&app, w, h);
+            assert!(text.contains("❯ ⚠ permissions"), "{w}x{h} row\n{text}");
+            assert!(text.contains("run: sudo usermod"), "{w}x{h} command\n{text}");
+            assert!(text.contains("fix: connect to"), "{w}x{h} fix\n{text}");
+        }
+        select(&mut app, "glyphs");
+        let text = render(&app, 80, 24);
+        assert!(text.contains("❯ · glyphs"), "last row\n{text}");
+    }
+
+    #[tokio::test]
+    async fn confirmed_fix_survives_a_rerun() {
+        // A re-run can land between `f` and `y`: `y` applies what was asked.
+        let mut app = on_doctor_pane().await;
+        app.config.appearance.theme = String::from("nope");
+        let uri = app.uri.clone();
+        let st = &mut app.settings.as_mut().unwrap().doctor;
+        st.report.as_mut().unwrap().checks[0].fix = Some(Fix::Set {
+            key: "theme",
+            value: String::from("tokyo-night"),
+        });
+        app.on_key(key('f')).await;
+        let st = &mut app.settings.as_mut().unwrap().doctor;
+        st.report.as_mut().unwrap().checks[0].fix = Some(Fix::Connect(String::from("qemu:///session")));
+        app.on_key(key('y')).await;
+        assert_eq!(app.uri, uri, "the other fix must not run");
+        assert_eq!(
+            doctor(&app).message.as_deref(),
+            Some("set theme=tokyo-night · demo: not saved")
+        );
     }
 }

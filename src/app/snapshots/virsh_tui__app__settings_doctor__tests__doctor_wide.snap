@@ -31,17 +31,17 @@ expression: "render(&app, 174, 43)"
  │                           │ │   ✓ colours             truecolor                                                                                                          │
  │                           │ │   · glyphs              icons unicode · graphs braille                                                                                     │
  │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
+ │                           │ │                                                                                                                                            │
  │                           │ │ → add your user to the libvirt group and log in again, or use -c qemu:///session                                                           │
  │                           │ │ fix: connect to qemu:///session                                                                                                            │
  │                           │ │ run: sudo usermod -aG libvirt demo                                                                                                         │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
- │                           │ │                                                                                                                                            │
  ╰───────────────────────────╯ ╰────────────────────────────────────────────────────────────────────────────────────────────────────── r re-run · f fix · y copy · Y report ╯
  NORMAL  settings › doctor   j/k check  r re-run  f fix  y copy command  Y copy report  h/l pane  ⎋ close
 checks are read-only · f applies a fix after asking

@@ -81,16 +81,38 @@ fn is_executable(path: &Path) -> bool {
     std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
-/// Run `program args` without a shell, stdin closed, killed after `limit`.
+/// Run `program args` without a shell, stdin closed, in its own process
+/// group (an `ssh` started by virsh must not reach the TUI's terminal); after
+/// `limit` the whole group is killed.
 pub(crate) async fn run_with_timeout(program: &str, args: &[&str], limit: Duration) -> RunOutcome {
     let child = tokio::process::Command::new(program)
         .args(args)
         .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .process_group(0)
         .kill_on_drop(true)
-        .output();
-    match tokio::time::timeout(limit, child).await {
-        Err(_) => RunOutcome::Timeout,
-        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => RunOutcome::NotFound,
+        .spawn();
+    let child = match child {
+        Ok(child) => child,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return RunOutcome::NotFound,
+        Err(e) => {
+            return RunOutcome::Exited {
+                success: false,
+                stdout: String::new(),
+                stderr: e.to_string(),
+            };
+        }
+    };
+    let pgid = child.id().and_then(|id| i32::try_from(id).ok());
+    match tokio::time::timeout(limit, child.wait_with_output()).await {
+        Err(_) => {
+            if let Some(pgid) = pgid {
+                // SAFETY: plain syscall; a negative pid addresses the group we created.
+                unsafe { libc::kill(-pgid, libc::SIGKILL) };
+            }
+            RunOutcome::Timeout
+        }
         Ok(Err(e)) => RunOutcome::Exited {
             success: false,
             stdout: String::new(),
@@ -104,7 +126,6 @@ pub(crate) async fn run_with_timeout(program: &str, args: &[&str], limit: Durati
     }
 }
 
-/// Scripted runner for tests: unknown programs are `NotFound`.
 #[cfg(test)]
 #[derive(Default)]
 pub struct FakeRunner {
@@ -234,5 +255,39 @@ mod system_tests {
 
     async fn run_short(program: &str, args: &[&str]) -> RunOutcome {
         run_with_timeout(program, args, Duration::from_millis(200)).await
+    }
+
+    #[tokio::test]
+    async fn children_get_their_own_process_group() {
+        let ours = unsafe { libc::getpgrp() };
+        match run_with_timeout("sh", &["-c", "ps -o pgid= -p $$"], Duration::from_secs(2)).await {
+            RunOutcome::Exited { stdout, .. } => {
+                let theirs: i32 = stdout.trim().parse().unwrap();
+                assert_ne!(theirs, ours, "child must not share the TUI's process group");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn timeout_kills_grandchildren() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
+        let script = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+        assert_eq!(
+            run_with_timeout("sh", &["-c", &script], Duration::from_millis(300)).await,
+            RunOutcome::Timeout
+        );
+        let pid = std::fs::read_to_string(&pid_file).unwrap().trim().to_string();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        let state = stat
+            .rsplit(')')
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
+        assert!(stat.is_empty() || state == "Z", "grandchild still alive: {stat}");
     }
 }

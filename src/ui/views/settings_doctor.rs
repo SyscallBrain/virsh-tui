@@ -15,7 +15,8 @@ use crate::theme::Theme;
 /// A fix waiting for `y`/`n`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingFix {
-    pub index: usize,
+    /// The fix that was asked about (a re-run may change the rows meanwhile).
+    pub fix: crate::doctor::Fix,
     pub question: String,
 }
 
@@ -105,9 +106,13 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Rec
         footer,
     );
     let inner = block.inner(area);
+    frame.render_widget(block, area);
     let label_width = if compact { 17 } else { 20 };
     let mut lines: Vec<Line> = Vec::new();
     let mut selected_line = 0;
+    // Hint, fix and command of the selected row: a fixed strip at the bottom
+    // so they stay visible however short the terminal is.
+    let mut detail: Vec<Line<'static>> = Vec::new();
     match &st.report {
         None => lines.push(Line::from(Span::styled("◌ checking…", theme.secondary()))),
         Some(report) => {
@@ -157,18 +162,17 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Rec
                 );
             }
             if focused && let Some(check) = st.current() {
-                lines.push(Line::from(""));
                 if let Some(hint) = &check.hint {
-                    lines.push(Line::from(Span::styled(format!("→ {hint}"), theme.secondary())));
+                    detail.push(Line::from(Span::styled(format!("→ {hint}"), theme.secondary())));
                 }
                 if let Some(fix) = &check.fix {
-                    lines.push(Line::from(vec![
+                    detail.push(Line::from(vec![
                         Span::styled("fix: ", theme.secondary()),
                         Span::styled(fix.describe(), Style::default().fg(t.cyan)),
                     ]));
                 }
                 if let Some(command) = &check.command {
-                    lines.push(Line::from(vec![
+                    detail.push(Line::from(vec![
                         Span::styled("run: ", theme.secondary()),
                         Span::styled(command.clone(), Style::default().fg(t.cyan)),
                     ]));
@@ -176,13 +180,24 @@ pub fn render(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Rec
             }
         }
     }
-    let start = selected_line.saturating_sub(inner.height.saturating_sub(6) as usize);
+    let detail = crate::ui::widgets::review::wrap_lines(detail, inner.width);
+    // Keep at least three list rows; the strip takes the rest it needs (+1 gap).
+    let strip = if detail.is_empty() {
+        0
+    } else {
+        (detail.len() as u16 + 1).min(inner.height.saturating_sub(3))
+    };
+    let list_area = Rect::new(inner.x, inner.y, inner.width, inner.height - strip);
+    let list_height = list_area.height as usize;
+    let start = (selected_line + 1).saturating_sub(list_height);
     frame.render_widget(
         Paragraph::new(lines)
             .scroll((start.min(u16::MAX as usize) as u16, 0))
-            .wrap(ratatui::widgets::Wrap { trim: false })
-            .block(block)
             .style(theme.base()),
-        area,
+        list_area,
     );
+    if strip > 0 {
+        let strip_area = Rect::new(inner.x, inner.y + list_area.height + 1, inner.width, strip - 1);
+        frame.render_widget(Paragraph::new(detail).style(theme.base()), strip_area);
+    }
 }
