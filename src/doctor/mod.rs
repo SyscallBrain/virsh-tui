@@ -2,6 +2,7 @@
 //! (`virsh-tui --doctor`, Settings › Doctor).
 
 mod checks;
+pub mod fixes;
 pub mod hints;
 mod report;
 pub mod runner;
@@ -118,6 +119,16 @@ impl Check {
 
     pub fn command(mut self, command: impl Into<String>) -> Self {
         self.command = Some(command.into());
+        self
+    }
+
+    pub fn command_opt(mut self, command: Option<String>) -> Self {
+        self.command = command.or(self.command);
+        self
+    }
+
+    pub fn fix_opt(mut self, fix: Option<Fix>) -> Self {
+        self.fix = fix.or(self.fix);
         self
     }
 }

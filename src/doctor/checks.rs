@@ -71,8 +71,19 @@ pub fn is_local(uri: &str) -> bool {
 
 /// Run every check.
 pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
+    use super::fixes::{Pkg, daemon_command, distro, install_command};
     use Section::*;
     let uri = ctx.uri.as_str();
+    let local = is_local(uri);
+    let system = local && uri.starts_with("qemu:///system");
+    let distro = runner
+        .read(std::path::Path::new("/etc/os-release"))
+        .and_then(|text| distro(&text));
+    let install = |pkg: Pkg| distro.map(|d| install_command(d, pkg));
+    let usermod = runner
+        .env("USER")
+        .filter(|u| !u.is_empty())
+        .map(|u| format!("sudo usermod -aG libvirt {u}"));
     let mut out = Vec::new();
 
     // 1. virsh
@@ -94,9 +105,9 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
             )
         }
         RunOutcome::Timeout => Check::new(Connection, "virsh", Status::Warn, "timed out after 3s"),
-        RunOutcome::NotFound => {
-            Check::new(Connection, "virsh", Status::Fail, "not found in PATH").hint(hints::VIRSH)
-        }
+        RunOutcome::NotFound => Check::new(Connection, "virsh", Status::Fail, "not found in PATH")
+            .hint(hints::VIRSH)
+            .command_opt(install(Pkg::Virsh)),
         RunOutcome::Exited { stderr, .. } => Check::new(
             Connection,
             "virsh",
@@ -119,7 +130,11 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
             .filter(|e| !e.is_empty() && e != uri)
         {
             Some(env) => Check::new(Connection, "URI", Status::Warn, uri)
-                .hint(format!("virsh in a shell uses {env}; virsh-tui uses {uri}")),
+                .hint(format!("virsh in a shell uses {env}; virsh-tui uses {uri}"))
+                .fix(Fix::Set {
+                    key: "default_uri",
+                    value: env,
+                }),
             None => Check::new(Connection, "URI", Status::Info, uri),
         },
     );
@@ -132,6 +147,13 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
             match stdout_or(outcome, "connection", |line| {
                 let check = Check::new(Connection, "connection", Status::Fail, line);
                 match crate::backend::virsh::exec::stderr_hint(line) {
+                    Some(hint @ "not in the libvirt group?") if system => check
+                        .hint(hint)
+                        .fix(Fix::Connect(String::from("qemu:///session")))
+                        .command_opt(usermod.clone()),
+                    Some(hint @ "is libvirtd running?") if local => {
+                        check.hint(hint).command(daemon_command(runner))
+                    }
                     Some(hint) => check.hint(hint),
                     None => check,
                 }
@@ -160,7 +182,7 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
     });
 
     // 4. permissions
-    out.push(if is_local(uri) && uri.starts_with("qemu:///system") {
+    out.push(if system {
         match runner.run("id", &["-nG"]).await {
             RunOutcome::Exited {
                 success: true,
@@ -172,6 +194,7 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
                 } else {
                     Check::new(Connection, "permissions", Status::Warn, "not in group libvirt")
                         .hint(hints::GROUP)
+                        .command_opt(usermod.clone())
                 }
             }
             _ => Check::new(Connection, "permissions", Status::Skip, "cannot read groups"),
@@ -216,7 +239,13 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
                         .map(|n| n.name.as_str())
                         .collect();
                     if active.is_empty() {
-                        Check::new(Connection, "networks", Status::Warn, "none active").hint(hints::NETWORKS)
+                        let check = Check::new(Connection, "networks", Status::Warn, "none active")
+                            .hint(hints::NETWORKS);
+                        if nets.iter().any(|n| n.name == "default") {
+                            check.fix(Fix::Virsh(super::start_network_plan("default")))
+                        } else {
+                            check
+                        }
                     } else {
                         Check::new(
                             Connection,
@@ -239,6 +268,7 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
                     } else {
                         Check::new(Connection, "UEFI firmware", Status::Warn, "no UEFI loader")
                             .hint(hints::UEFI)
+                            .command_opt(install(Pkg::Ovmf).filter(|_| local))
                     }
                 }
                 Err(check) => check,
@@ -250,21 +280,39 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
     let viewer = ctx.config.console.viewer.as_str();
     out.push(match runner.which(viewer) {
         Some(p) => Check::new(Tools, "graphical viewer", Status::Ok, p.display().to_string()),
-        None => Check::new(
-            Tools,
-            "graphical viewer",
-            Status::Warn,
-            format!("{viewer} not found"),
-        )
-        .hint(hints::VIEWER),
+        None => {
+            let other = if viewer == "remote-viewer" {
+                "virt-viewer"
+            } else {
+                "remote-viewer"
+            };
+            let check = Check::new(
+                Tools,
+                "graphical viewer",
+                Status::Warn,
+                format!("{viewer} not found"),
+            )
+            .hint(hints::VIEWER)
+            .command_opt(install(Pkg::Viewer));
+            if runner.which(other).is_some() {
+                check.fix(Fix::Set {
+                    key: "viewer",
+                    value: other.to_string(),
+                })
+            } else {
+                check
+            }
+        }
     });
-    for (label, hint) in [
-        ("virt-install", hints::VIRT_INSTALL),
-        ("virt-clone", hints::VIRT_CLONE),
+    for (label, hint, pkg) in [
+        ("virt-install", hints::VIRT_INSTALL, Pkg::VirtInstall),
+        ("virt-clone", hints::VIRT_CLONE, Pkg::VirtClone),
     ] {
         out.push(match runner.which(label) {
             Some(p) => Check::new(Tools, label, Status::Ok, p.display().to_string()),
-            None => Check::new(Tools, label, Status::Warn, "not found").hint(hint),
+            None => Check::new(Tools, label, Status::Warn, "not found")
+                .hint(hint)
+                .command_opt(install(pkg)),
         });
     }
     let editor = ["VISUAL", "EDITOR"]
@@ -289,7 +337,9 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
 
     // Files
     out.push(match (&ctx.config.load_error, &ctx.config_path) {
-        (Some(error), _) => Check::new(Files, "config.toml", Status::Fail, error.clone()).hint(hints::CONFIG),
+        (Some(error), path) => Check::new(Files, "config.toml", Status::Fail, error.clone())
+            .hint(hints::CONFIG)
+            .fix_opt(path.clone().map(Fix::Edit)),
         (None, Some(path)) if runner.exists(path) => {
             Check::new(Files, "config.toml", Status::Ok, tilde(runner, path))
         }
@@ -314,7 +364,9 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
                         } else {
                             format!("{n} warnings")
                         };
-                        Check::new(Files, "keymap.toml", Status::Warn, value).hint(first.clone())
+                        Check::new(Files, "keymap.toml", Status::Warn, value)
+                            .hint(first.clone())
+                            .fix(Fix::Edit(path.clone()))
                     }
                 }
             }
@@ -337,6 +389,10 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
         } else {
             Check::new(Files, "theme", Status::Warn, format!("{theme}: {error}"))
                 .hint("using tokyo-night instead")
+                .fix(Fix::Set {
+                    key: "theme",
+                    value: String::from("tokyo-night"),
+                })
         }
     });
     out.push(match &ctx.log_path {
@@ -730,5 +786,154 @@ pub(crate) mod tests {
         let conn = get(&checks, "connection");
         assert_eq!(conn.status, Status::Ok, "{conn:?}");
         assert_eq!(get(&checks, "permissions").status, Status::Skip);
+    }
+
+    #[test]
+    fn fixes_attached() {
+        // Permission denied on qemu:///system.
+        let mut r = healthy(SYS);
+        r.set_env("USER", "tiago")
+            .fail("virsh -c qemu:///system version", "error: Permission denied\n")
+            .file("/etc/os-release", "ID=arch\n");
+        let c = run_sync(&ctx(SYS), &r);
+        let conn = get(&c, "connection");
+        assert_eq!(conn.fix, Some(Fix::Connect(String::from("qemu:///session"))));
+        assert_eq!(conn.command.as_deref(), Some("sudo usermod -aG libvirt tiago"));
+
+        // Daemon down.
+        let mut r = healthy(SYS);
+        r.fail(
+            "virsh -c qemu:///system version",
+            "error: failed to connect to socket '/run/libvirt/virtqemud-sock'",
+        );
+        let c = run_sync(&ctx(SYS), &r);
+        assert_eq!(
+            get(&c, "connection").command.as_deref(),
+            Some("sudo systemctl enable --now libvirtd")
+        );
+
+        // Not in the group.
+        let mut r = healthy(SYS);
+        r.set_env("USER", "tiago").ok("id -nG", "tiago\n");
+        let c = run_sync(&ctx(SYS), &r);
+        assert_eq!(
+            get(&c, "permissions").command.as_deref(),
+            Some("sudo usermod -aG libvirt tiago")
+        );
+
+        // Env URI differs.
+        let mut r = healthy(SYS);
+        r.set_env("LIBVIRT_DEFAULT_URI", "qemu:///session");
+        let c = run_sync(&ctx(SYS), &r);
+        assert_eq!(
+            get(&c, "URI").fix,
+            Some(Fix::Set {
+                key: "default_uri",
+                value: String::from("qemu:///session")
+            })
+        );
+
+        // default network inactive.
+        let mut r = healthy(SYS);
+        r.ok("virsh -c qemu:///system net-list --all", NET_INACTIVE);
+        let c = run_sync(&ctx(SYS), &r);
+        let Some(Fix::Virsh(plan)) = &get(&c, "networks").fix else {
+            panic!("no virsh fix")
+        };
+        let argv: Vec<Vec<String>> = plan.steps.iter().map(|s| s.argv.clone()).collect();
+        assert_eq!(
+            argv,
+            [vec!["net-start", "default"], vec!["net-autostart", "default"]]
+        );
+        assert_eq!(plan.summary, "Started network default");
+
+        // Only remote-viewer installed.
+        let mut r = healthy(SYS);
+        r.paths.remove("virt-viewer");
+        r.path("remote-viewer").file("/etc/os-release", "ID=fedora\n");
+        let c = run_sync(&ctx(SYS), &r);
+        let viewer = get(&c, "graphical viewer");
+        assert_eq!(
+            viewer.fix,
+            Some(Fix::Set {
+                key: "viewer",
+                value: String::from("remote-viewer")
+            })
+        );
+        assert_eq!(viewer.command.as_deref(), Some("sudo dnf install virt-viewer"));
+
+        // Missing tools and firmware with a known distro.
+        let mut r = healthy(SYS);
+        r.paths.remove("virt-clone");
+        r.file("/etc/os-release", "ID=debian\n")
+            .ok("virsh -c qemu:///system domcapabilities", CAPS_NONE);
+        let c = run_sync(&ctx(SYS), &r);
+        assert_eq!(
+            get(&c, "virt-clone").command.as_deref(),
+            Some("sudo apt install virtinst")
+        );
+        assert_eq!(
+            get(&c, "UEFI firmware").command.as_deref(),
+            Some("sudo apt install ovmf")
+        );
+
+        // Files.
+        let mut cx = ctx(SYS);
+        cx.config.load_error = Some(String::from("bad"));
+        cx.config.appearance.theme = String::from("nope");
+        let mut r = healthy(SYS);
+        r.file(
+            "/home/u/.config/virsh-tui/keymap.toml",
+            "[normal]\nbogus = [\"x\"]\n",
+        );
+        let c = run_sync(&cx, &r);
+        assert_eq!(
+            get(&c, "config.toml").fix,
+            Some(Fix::Edit(PathBuf::from("/home/u/.config/virsh-tui/config.toml")))
+        );
+        assert_eq!(
+            get(&c, "keymap.toml").fix,
+            Some(Fix::Edit(PathBuf::from("/home/u/.config/virsh-tui/keymap.toml")))
+        );
+        assert_eq!(
+            get(&c, "theme").fix,
+            Some(Fix::Set {
+                key: "theme",
+                value: String::from("tokyo-night")
+            })
+        );
+    }
+
+    #[test]
+    fn remote_uri_has_no_root_commands() {
+        let uri = "qemu+ssh://h/system";
+        let mut r = healthy(uri);
+        r.file("/etc/os-release", "ID=arch\n")
+            .fail(&format!("virsh -c {uri} version"), "error: Permission denied")
+            .ok(&format!("virsh -c {uri} domcapabilities"), CAPS_NONE);
+        let c = run_sync(&ctx(uri), &r);
+        for check in &c {
+            if matches!(check.label, "connection" | "permissions" | "UEFI firmware") {
+                assert_eq!(check.command, None, "{}", check.label);
+            }
+        }
+        // Remote: no session switch either (that would be the local machine).
+        assert_eq!(get(&c, "connection").fix, None);
+        let mut r = healthy(uri);
+        r.file("/etc/os-release", "ID=arch\n")
+            .ok(&format!("virsh -c {uri} domcapabilities"), CAPS_NONE);
+        let c = run_sync(&ctx(uri), &r);
+        assert_eq!(get(&c, "UEFI firmware").command, None);
+    }
+
+    #[test]
+    fn unknown_distro_no_install_command() {
+        let mut r = healthy(SYS);
+        r.paths.remove("virt-clone");
+        r.file("/etc/os-release", "ID=nixos\n");
+        let c = run_sync(&ctx(SYS), &r);
+        let clone = get(&c, "virt-clone");
+        assert_eq!(clone.command, None);
+        assert_eq!(clone.hint.as_deref(), Some(hints::VIRT_CLONE));
     }
 }
