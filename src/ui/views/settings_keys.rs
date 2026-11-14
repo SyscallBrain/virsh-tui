@@ -199,7 +199,8 @@ pub fn render(
                     ""
                 };
                 let used = 2 + keys.chars().count() + mark.chars().count() + 1;
-                let label_w = width.saturating_sub(used).max(4);
+                // Keys in a column next to the labels, not at the far edge.
+                let label_w = width.saturating_sub(used).clamp(4, 30);
                 let label = format!("{:<label_w$}", truncate(info.label, label_w));
                 let label_style = if info.destructive {
                     Style::default().fg(t.red)

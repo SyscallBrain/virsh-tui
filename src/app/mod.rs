@@ -15,6 +15,7 @@ mod palette;
 mod render;
 mod requests;
 mod settings;
+mod settings_keys;
 mod storage;
 mod wizard;
 
@@ -1322,9 +1323,15 @@ impl App {
                         && key.code == KeyCode::Char('n')
                         && key.modifiers.is_empty()));
             let palette_input = self.palette.is_some() && !matches!(key.code, KeyCode::Enter);
-            let settings_input = self.settings.is_some()
-                && key.modifiers.is_empty()
-                && matches!(key.code, KeyCode::Char('h' | 'l'));
+            // Typing in the Keybindings filter changes nothing: allowed.
+            let settings_input = self.settings.as_ref().is_some_and(|st| {
+                (key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('h' | 'l')))
+                    || (st.keys.filter.is_some()
+                        && matches!(
+                            key.code,
+                            KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Enter | KeyCode::Esc
+                        ))
+            });
             let wizard_input = self.wizard.as_ref().is_some_and(|wizard| {
                 wizard.command_review
                     || (!(key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('e'))
@@ -2000,9 +2007,15 @@ impl App {
         // Settings captures navigation while open.
         if self.settings.is_some() {
             let before = self.config.clone();
-            if handle_settings_key(key, &mut self.settings, &mut self.config, &mut self.theme)
-                && (self.config.general.refresh_interval_secs != before.general.refresh_interval_secs
-                    || self.config.monitoring != before.monitoring)
+            if handle_settings_key(
+                key,
+                &mut self.settings,
+                &mut self.config,
+                &mut self.theme,
+                &mut self.engine,
+                &mut self.keymap_file,
+            ) && (self.config.general.refresh_interval_secs != before.general.refresh_interval_secs
+                || self.config.monitoring != before.monitoring)
             {
                 // Restart the poller with the new interval / memory-stats option.
                 self.poller_uri.clear();

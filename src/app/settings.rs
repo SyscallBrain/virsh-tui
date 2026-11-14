@@ -10,8 +10,16 @@ pub(super) fn handle_settings_key(
     settings: &mut Option<ui::views::settings::SettingsState>,
     config: &mut Config,
     theme: &mut Theme,
+    engine: &mut crate::input::engine::KeyEngine,
+    keymap_file: &mut crate::input::keymap_file::KeymapFile,
 ) -> bool {
     let Some(st) = settings else { return false };
+    if st.pane == ui::views::settings::SettingsPane::Options
+        && category(st) == ui::views::settings::Category::Keybindings
+        && super::settings_keys::handle(key, &mut st.keys, engine, keymap_file)
+    {
+        return true;
+    }
     match key.code {
         KeyCode::Esc => {
             config.appearance.theme = st.before_theme.clone();

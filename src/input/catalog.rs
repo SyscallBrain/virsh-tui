@@ -145,7 +145,7 @@ pub fn keys_of(map: &Keymap, action: KeyAction) -> Vec<Vec<String>> {
         .filter(|(_, a)| **a == action)
         .map(|(k, _)| k.clone())
         .collect();
-    keys.sort_by_key(|k| (k.len(), seq_text(k)));
+    keys.sort_by_key(|k| (k.len(), seq_text(k).chars().count(), seq_text(k)));
     keys
 }
 
