@@ -6,7 +6,7 @@ expression: "buffer_text(174, 43, |f| overlays::palette::render(f, &th, &st))"
                                                                                                                                                                               
                                                                                                                                                                               
              ╭ Command palette ────────────────────────────────────────────────────────────────────────────────────────────────────────────── context: arch-dev ╮             
-             │  ❯ snap                                                                                                                                  4 / 10  │             
+             │  ❯ snap                                                                                                                                  4 / 11  │             
              │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│             
              │  ◆ Snapshot: create…                                        ␣sc  │                                                                               │             
              │  ◆ Snapshot: delete…                                        ␣sd  │  virsh snapshot-create-as  — create a snapshot from a set of args             │             
