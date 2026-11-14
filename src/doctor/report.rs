@@ -92,7 +92,7 @@ impl Report {
                 out.push_str(&format!("{pad}run: {command}\n"));
             }
             if let Some(fix) = &check.fix {
-                out.push_str(&format!("{pad}fix: {}\n", fix.describe()));
+                out.push_str(&format!("{pad}fix: Settings › Doctor, f ({})\n", fix.describe()));
             }
         }
         out.push('\n');
@@ -203,7 +203,11 @@ mod tests {
         let pad = " ".repeat(22);
         assert!(lines[at + 1].starts_with(&format!("{pad}→ ")));
         assert_eq!(lines[at + 2], format!("{pad}run: sudo usermod -aG libvirt demo"));
-        assert_eq!(lines[at + 3], format!("{pad}fix: connect to qemu:///session"));
+        // The report only describes fixes: they are applied from the app.
+        assert_eq!(
+            lines[at + 3],
+            format!("{pad}fix: Settings › Doctor, f (connect to qemu:///session)")
+        );
     }
 
     #[test]

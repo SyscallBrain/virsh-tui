@@ -40,5 +40,5 @@ expression: "render(&app, 120, 40)"
  │ fix: connect to qemu:///session                                                                                    │
  │ run: sudo usermod -aG libvirt demo                                                                                 │
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-h/l pane · j/k move · Enter · Esc close
+j/k check  r re-run  f fix  y copy command  Y copy report  h/l pane  ⎋ close
 checks are read-only · f applies a fix after asking

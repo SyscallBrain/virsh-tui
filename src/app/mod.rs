@@ -332,6 +332,7 @@ pub async fn run_with_shutdown(
         editor_generation: 0,
         network_retries: Vec::new(),
         doctor_task: None,
+        flag_uri: cli.uri_from_flag.then(|| cli.connect.clone()),
     };
     if !cli.demo {
         for view in [View::Host, View::Networks, View::Storage] {
@@ -379,9 +380,7 @@ pub async fn run_with_shutdown(
                 }
             } => {
                 app.doctor_task = None;
-                if let Ok(report) = report {
-                    app.on_doctor(serial, report);
-                }
+                app.on_doctor_done(serial, report);
             }
             help = async {
                 match app.help_task.as_mut() {
@@ -574,6 +573,8 @@ struct App {
     network_retries: Vec<(String, crate::ui::widgets::form::Form)>,
     /// Settings › Doctor run in progress: its serial and task.
     doctor_task: Option<(u64, tokio::task::JoinHandle<crate::doctor::Report>)>,
+    /// URI given with `-c` (the doctor reports where the URI came from).
+    flag_uri: Option<String>,
 }
 
 /// Active Tab completion: the line before the token, candidates, selection.
@@ -1188,18 +1189,19 @@ impl App {
     }
 
     /// `:connect <uri>`: switch connection (refused with pending hardware edits).
-    pub(super) fn connect_to(&mut self, uri: String) {
+    pub(super) fn connect_to(&mut self, uri: String) -> Result<(), String> {
         if self.uri == uri {
             self.request_refresh();
-            return;
+            return Ok(());
         }
         if self
             .detail
             .as_ref()
             .is_some_and(|detail| detail.hw.pending_count() > 0)
         {
-            self.show_message("⚠ Unsaved hardware changes: use :w or :q! before connecting".into());
-            return;
+            let refused = String::from("⚠ Unsaved hardware changes: use :w or :q! before connecting");
+            self.show_message(refused.clone());
+            return Err(refused);
         }
         if self.view == View::Detail {
             self.view = View::Dashboard;
@@ -1255,6 +1257,7 @@ impl App {
         if !self.demo {
             self.request_view_load(self.view);
         }
+        Ok(())
     }
 
     /// Stage an always-asked confirmation for ready-made plans.
@@ -1755,7 +1758,7 @@ impl App {
                         return false;
                     }
                     if let Ok(crate::input::ex::ExCommand::Connect(uri)) = crate::input::ex::parse(&line) {
-                        self.connect_to(uri);
+                        let _ = self.connect_to(uri);
                         return false;
                     }
                     if self.view == View::Detail
@@ -2992,6 +2995,7 @@ mod tests {
             editor_generation: 0,
             network_retries: Vec::new(),
             doctor_task: None,
+            flag_uri: None,
         }
     }
 

@@ -124,6 +124,11 @@ The selected row shows its hint below the list:
   openSUSE). virsh-tui never runs these itself.
 - `Y` copies the whole report, ready to paste into a bug report.
 
+Being outside the `libvirt` group is only a warning when the connection
+fails; polkit can grant access without it. After you fix `config.toml`,
+the row says `fixed on disk; restart virsh-tui to load it` until the next
+start.
+
 General › **key hints** turns off the key hints once you know the keys
 (`:set key_hints=false` does the same): the status bars, the actions under the
 selected domain, panel footers and the key lines of the palette, ISO picker,

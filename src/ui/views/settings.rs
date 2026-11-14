@@ -865,10 +865,15 @@ fn apply_preview_flags(theme: Theme, _state: &SettingsState) -> Theme {
 
 fn render_statusbar(frame: &mut Frame, theme: &Theme, state: &SettingsState, area: Rect) {
     if area.width < 140 {
+        let hints = if state.pane == SettingsPane::Options && state.category() == Category::Doctor {
+            super::settings_doctor::status_hints(&state.doctor)
+        } else {
+            String::from("h/l pane · j/k move · Enter · Esc close")
+        };
         frame.render_widget(
             Paragraph::new(Line::from(crate::ui::chrome::hint_spans(
                 theme,
-                "h/l pane · j/k move · Enter · Esc close",
+                hints.trim_start(),
             )))
             .style(theme.topbar()),
             area,

@@ -15,6 +15,7 @@ fn main() -> Result<()> {
         None => Config::load(),
     };
     let uri_was_flag = !cli.connect.is_empty();
+    cli.uri_from_flag = uri_was_flag;
     // No -c: use the default connection from the config.
     if cli.connect.is_empty() {
         cli.connect = config.general.default_uri.clone();

@@ -87,6 +87,10 @@ impl App {
             Fix::Set { key, value } => {
                 let message = if self.demo {
                     format!("set {key}={value} · demo: not saved")
+                } else if let Some(error) = &self.config.load_error {
+                    // Refuse before changing anything (`:set` would apply it in
+                    // memory and then fail to save).
+                    format!("✗ not saved: fix the config file first ({error})")
                 } else {
                     let uri = self.uri.clone();
                     apply_setting(&uri, &mut self.config, &mut self.theme, key, &value)
@@ -95,8 +99,11 @@ impl App {
                 self.start_doctor();
             }
             Fix::Connect(uri) => {
-                self.connect_to(uri.clone());
-                self.doctor_message(format!("connecting to {uri}"));
+                let message = match self.connect_to(uri.clone()) {
+                    Ok(()) => format!("connecting to {uri}"),
+                    Err(refused) => refused,
+                };
+                self.doctor_message(message);
                 self.start_doctor();
             }
             Fix::Virsh(plan) => {
@@ -170,14 +177,11 @@ impl App {
         if let Some((_, old)) = self.doctor_task.take() {
             old.abort();
         }
-        let task = if self.demo {
+        // Tests never run the real checks (processes, clipboard).
+        let task = if self.demo || cfg!(test) {
             tokio::spawn(async { crate::doctor::demo_report() })
         } else {
-            let source = if self.uri == self.config.general.default_uri {
-                crate::doctor::UriSource::Config
-            } else {
-                crate::doctor::UriSource::Session
-            };
+            let source = self.doctor_uri_source();
             let size = self
                 .viewport
                 .get()
@@ -187,6 +191,34 @@ impl App {
             tokio::spawn(async move { crate::doctor::run(&ctx, &crate::doctor::runner::SystemRunner).await })
         };
         self.doctor_task = Some((serial, task));
+    }
+
+    /// The background task ended (a panic is reported, not swallowed).
+    pub(super) fn on_doctor_done(&mut self, serial: u64, result: Result<Report, tokio::task::JoinError>) {
+        match result {
+            Ok(report) => self.on_doctor(serial, report),
+            Err(e) if !e.is_cancelled() => {
+                if let Some(st) = self.settings.as_mut()
+                    && st.doctor.serial == serial
+                {
+                    st.doctor.running = false;
+                    st.doctor.message = Some(format!("✗ checks failed: {e}; r to retry"));
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    /// Where the current URI came from, for the report header.
+    pub(super) fn doctor_uri_source(&self) -> crate::doctor::UriSource {
+        use crate::doctor::UriSource;
+        if self.flag_uri.as_deref() == Some(self.uri.as_str()) {
+            UriSource::Flag
+        } else if self.uri == self.config.general.default_uri {
+            UriSource::Config
+        } else {
+            UriSource::Session
+        }
     }
 
     /// A finished run: kept only if Settings still waits for this serial.
@@ -417,6 +449,10 @@ mod tests {
             "{:?}",
             doctor(&app).message
         );
+        assert_eq!(
+            app.config.console.viewer, "virt-viewer",
+            "nothing changed in memory"
+        );
     }
 
     #[tokio::test]
@@ -567,5 +603,78 @@ mod tests {
             doctor(&app).message.as_deref(),
             Some("set theme=tokyo-night · demo: not saved")
         );
+    }
+
+    #[tokio::test]
+    async fn compact_status_bar_lists_doctor_keys() {
+        let app = on_doctor_pane().await;
+        let text = render(&app, 120, 40);
+        let bar = text.lines().nth(38).unwrap();
+        assert!(bar.contains("r re-run") && bar.contains("Y copy report"), "{bar}");
+    }
+
+    #[tokio::test]
+    async fn refused_connect_says_why() {
+        let mut app = on_doctor_pane().await;
+        let mut detail = ui::views::detail::DetailState::demo("vm");
+        detail.hw.set_field("memory", "current", "8G");
+        app.detail = Some(detail);
+        let uri = app.uri.clone();
+        select(&mut app, "permissions");
+        app.on_key(key('f')).await;
+        app.on_key(key('y')).await;
+        assert_eq!(app.uri, uri);
+        assert!(
+            doctor(&app)
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("Unsaved hardware changes"),
+            "{:?}",
+            doctor(&app).message
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_run_stops_checking() {
+        let mut app = on_doctor_pane().await;
+        app.on_key(key('r')).await;
+        let serial = doctor(&app).serial;
+        let (_, task) = app.doctor_task.take().unwrap();
+        task.abort();
+        let _ = task.await;
+        let failed: tokio::task::JoinHandle<Report> = tokio::spawn(async { panic!("boom") });
+        app.on_doctor_done(serial, failed.await);
+        assert!(!doctor(&app).running);
+        assert!(
+            doctor(&app)
+                .message
+                .as_deref()
+                .unwrap()
+                .starts_with("✗ checks failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn tests_never_run_real_checks() {
+        let mut app = on_doctor_pane().await;
+        app.demo = false;
+        app.on_key(key('r')).await;
+        finish(&mut app).await;
+        assert_eq!(doctor(&app).report, Some(crate::doctor::demo_report()));
+    }
+
+    #[test]
+    fn uri_source_follows_how_the_uri_was_chosen() {
+        use crate::doctor::UriSource;
+        let mut app = fixture_app();
+        app.config.general.default_uri = String::from("qemu:///system");
+        app.uri = String::from("qemu:///system");
+        assert_eq!(app.doctor_uri_source(), UriSource::Config);
+        app.flag_uri = Some(String::from("qemu:///session"));
+        app.uri = String::from("qemu:///session");
+        assert_eq!(app.doctor_uri_source(), UriSource::Flag);
+        app.uri = String::from("test:///default");
+        assert_eq!(app.doctor_uri_source(), UriSource::Session);
     }
 }

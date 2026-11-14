@@ -79,8 +79,16 @@ fn tilde<R: Runner>(runner: &R, path: &std::path::Path) -> String {
 
 /// True for URIs without a host part (`qemu:///system`, `test:///default`).
 pub fn is_local(uri: &str) -> bool {
+    uri.split_once("://").is_some_and(|(scheme, rest)| {
+        let transport = scheme.split_once('+').map(|(_, t)| t);
+        matches!(transport, None | Some("unix")) && rest.starts_with('/')
+    })
+}
+
+/// A QEMU driver URI (`qemu:///system`, `qemu+ssh://h/system`, …).
+fn is_qemu(uri: &str) -> bool {
     uri.split_once("://")
-        .is_some_and(|(scheme, rest)| !scheme.contains('+') && rest.starts_with('/'))
+        .is_some_and(|(scheme, _)| scheme == "qemu" || scheme.starts_with("qemu+"))
 }
 
 /// Run every check.
@@ -89,7 +97,11 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
     use Section::*;
     let uri = ctx.uri.as_str();
     let local = is_local(uri);
-    let system = local && uri.starts_with("qemu:///system");
+    let system = local
+        && is_qemu(uri)
+        && uri
+            .split_once("://")
+            .is_some_and(|(_, rest)| rest.starts_with("/system"));
     let distro = runner
         .read(std::path::Path::new("/etc/os-release"))
         .and_then(|text| distro(&text));
@@ -205,6 +217,14 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
             } => {
                 if stdout.split_whitespace().any(|g| g == "libvirt") {
                     Check::new(Connection, "permissions", Status::Ok, "in group libvirt")
+                } else if matches!(gate, Gate::Open) {
+                    // polkit or ACLs grant access without the group.
+                    Check::new(
+                        Connection,
+                        "permissions",
+                        Status::Ok,
+                        "connected (not in group libvirt)",
+                    )
                 } else {
                     Check::new(Connection, "permissions", Status::Warn, "not in group libvirt")
                         .hint(hints::GROUP)
@@ -277,6 +297,9 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
             match stdout_or(caps, "UEFI firmware", |line| {
                 Check::new(Connection, "UEFI firmware", Status::Skip, line)
             }) {
+                Ok(_) if !is_qemu(uri) => {
+                    Check::new(Connection, "UEFI firmware", Status::Skip, "not a QEMU connection")
+                }
                 Ok(xml) => {
                     if has_uefi_loader(&xml) {
                         Check::new(Connection, "UEFI firmware", Status::Ok, "OVMF found")
@@ -352,6 +375,20 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
 
     // Files
     out.push(match (&ctx.config.load_error, &ctx.config_path) {
+        // Fixed on disk since startup (e.g. with the Edit fix): the app still
+        // runs on defaults until it restarts.
+        (Some(_), Some(path))
+            if runner
+                .read(path)
+                .is_some_and(|text| toml::from_str::<crate::config::Config>(&text).is_ok()) =>
+        {
+            Check::new(
+                Files,
+                "config.toml",
+                Status::Warn,
+                "fixed on disk; restart virsh-tui to load it",
+            )
+        }
         (Some(error), path) => Check::new(Files, "config.toml", Status::Fail, error.clone())
             .hint(hints::CONFIG)
             .fix_opt(path.clone().map(Fix::Edit)),
@@ -631,7 +668,8 @@ pub(crate) mod tests {
     #[test]
     fn permissions_group() {
         let mut r = healthy(SYS);
-        r.ok("id -nG", "tiago wheel\n");
+        r.ok("id -nG", "tiago wheel\n")
+            .fail("virsh -c qemu:///system version", "error: Permission denied");
         let c = run_sync(&ctx(SYS), &r);
         let p = get(&c, "permissions");
         assert_eq!(
@@ -830,7 +868,9 @@ pub(crate) mod tests {
 
         // Not in the group.
         let mut r = healthy(SYS);
-        r.set_env("USER", "tiago").ok("id -nG", "tiago\n");
+        r.set_env("USER", "tiago")
+            .ok("id -nG", "tiago\n")
+            .fail("virsh -c qemu:///system version", "error: Permission denied");
         let c = run_sync(&ctx(SYS), &r);
         assert_eq!(
             get(&c, "permissions").command.as_deref(),
@@ -986,5 +1026,65 @@ pub(crate) mod tests {
         let conn = get(&c, "connection");
         assert_eq!(conn.hint.as_deref(), Some("is libvirtd running?"));
         assert_eq!(conn.command, None);
+    }
+
+    #[test]
+    fn unix_transport_is_local() {
+        assert!(is_local("qemu+unix:///system"));
+        assert!(is_local("qemu:///system"));
+        assert!(!is_local("qemu+ssh://h/system"));
+        assert!(!is_local("qemu+tcp://h/system"));
+        let uri = "qemu+unix:///system";
+        let mut r = healthy(uri);
+        r.ok("id -nG", "u\n")
+            .fail(&format!("virsh -c {uri} version"), "error: Permission denied");
+        let c = run_sync(&ctx(uri), &r);
+        assert_eq!(get(&c, "permissions").status, Status::Warn);
+    }
+
+    #[test]
+    fn uefi_skipped_outside_qemu() {
+        let uri = "test:///default";
+        let mut r = healthy(uri);
+        r.ok(&format!("virsh -c {uri} domcapabilities"), CAPS_NONE);
+        let c = run_sync(&ctx(uri), &r);
+        let u = get(&c, "UEFI firmware");
+        assert_eq!(
+            (u.status, u.value.as_str()),
+            (Status::Skip, "not a QEMU connection")
+        );
+        assert_eq!(u.command, None);
+    }
+
+    #[test]
+    fn permissions_ok_when_connected_without_group() {
+        // polkit (or ACLs) can grant access without the libvirt group.
+        let mut r = healthy(SYS);
+        r.ok("id -nG", "u wheel\n");
+        let c = run_sync(&ctx(SYS), &r);
+        let p = get(&c, "permissions");
+        assert_eq!(
+            (p.status, p.value.as_str()),
+            (Status::Ok, "connected (not in group libvirt)")
+        );
+        assert_eq!(p.command, None);
+    }
+
+    #[test]
+    fn config_fixed_on_disk_asks_for_restart() {
+        let mut cx = ctx(SYS);
+        cx.config.load_error = Some(String::from("config.toml: expected `=`"));
+        let mut r = healthy(SYS);
+        r.file(
+            "/home/u/.config/virsh-tui/config.toml",
+            "[general]\nkey_hints = false\n",
+        );
+        let c = run_sync(&cx, &r);
+        let config = get(&c, "config.toml");
+        assert_eq!(
+            (config.status, config.value.as_str()),
+            (Status::Warn, "fixed on disk; restart virsh-tui to load it")
+        );
+        assert_eq!(config.fix, None);
     }
 }

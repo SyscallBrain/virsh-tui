@@ -42,6 +42,10 @@ pub struct Cli {
     #[arg(long = "probe", default_value_t = false)]
     pub probe: bool,
 
+    /// Set by `main`: the URI came from `-c` (not the config's default).
+    #[arg(skip)]
+    pub uri_from_flag: bool,
+
     /// Check the environment (read-only), print a report and exit (1 if anything failed).
     #[arg(long = "doctor", default_value_t = false)]
     pub doctor: bool,

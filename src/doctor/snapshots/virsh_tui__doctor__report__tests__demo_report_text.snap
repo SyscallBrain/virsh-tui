@@ -11,11 +11,11 @@ Connection
   ⚠ permissions       not in group libvirt
                       → add your user to the libvirt group and log in again, or use -c qemu:///session
                       run: sudo usermod -aG libvirt demo
-                      fix: connect to qemu:///session
+                      fix: Settings › Doctor, f (connect to qemu:///session)
   ✓ events            event stream available
   ⚠ networks          none active
                       → guests on libvirt networks get no DHCP/IP
-                      fix: virsh net-start default && virsh net-autostart default
+                      fix: Settings › Doctor, f (virsh net-start default && virsh net-autostart default)
   ✓ UEFI firmware     OVMF found
 
 Tools
