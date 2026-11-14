@@ -42,6 +42,10 @@ pub struct Cli {
     #[arg(long = "probe", default_value_t = false)]
     pub probe: bool,
 
+    /// Check the environment (read-only), print a report and exit (1 if anything failed).
+    #[arg(long = "doctor", default_value_t = false)]
+    pub doctor: bool,
+
     /// Freeze the demo clock and pre-fill histories (used by tests).
     #[arg(long = "frozen", default_value_t = false)]
     pub frozen: bool,

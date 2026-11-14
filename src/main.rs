@@ -14,9 +14,18 @@ fn main() -> Result<()> {
         Some(path) => Config::load_file(std::path::Path::new(path)),
         None => Config::load(),
     };
+    let uri_was_flag = !cli.connect.is_empty();
     // No -c: use the default connection from the config.
     if cli.connect.is_empty() {
         cli.connect = config.general.default_uri.clone();
+    }
+
+    if cli.doctor {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let failed = runtime.block_on(doctor(&cli, &config, uri_was_flag));
+        std::process::exit(i32::from(failed));
     }
 
     if cli.probe {
@@ -51,6 +60,27 @@ async fn probe(cli: &Cli) -> Result<()> {
     });
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
+}
+
+/// `--doctor`: print the report; true when a check failed.
+async fn doctor(cli: &Cli, config: &Config, uri_was_flag: bool) -> bool {
+    use std::io::IsTerminal;
+    use virsh_tui::doctor;
+    let tty = std::io::stdout().is_terminal();
+    let report = if cli.demo {
+        doctor::demo_report()
+    } else {
+        let size = if tty {
+            crossterm::terminal::size().ok()
+        } else {
+            None
+        };
+        let ctx = doctor::ctx_from(cli, config, uri_was_flag, size);
+        doctor::run(&ctx, &doctor::runner::SystemRunner).await
+    };
+    let color = tty && std::env::var_os("NO_COLOR").is_none();
+    print!("{}", report.to_text(color));
+    report.has_failures()
 }
 
 fn run_tui(cli: &Cli, config: &Config) -> Result<()> {

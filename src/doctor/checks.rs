@@ -51,6 +51,20 @@ fn stdout_or(
     }
 }
 
+/// `virsh event --timeout` reports a quiet but working stream as exit 1.
+fn timed_out_ok(outcome: RunOutcome) -> RunOutcome {
+    match outcome {
+        RunOutcome::Exited { stdout, stderr, .. } if stdout.contains("event loop timed out") => {
+            RunOutcome::Exited {
+                success: true,
+                stdout,
+                stderr,
+            }
+        }
+        other => other,
+    }
+}
+
 /// `/home/u/x` → `~/x`.
 fn tilde<R: Runner>(runner: &R, path: &std::path::Path) -> String {
     let shown = path.display().to_string();
@@ -220,7 +234,8 @@ pub async fn run_all<R: Runner>(ctx: &Ctx, runner: &R) -> Vec<Check> {
             runner.run("virsh", &caps_args),
         );
         out.push(
-            match stdout_or(events, "events", |_| {
+            // `--timeout` without events exits 1 with "event loop timed out".
+            match stdout_or(timed_out_ok(events), "events", |_| {
                 Check::new(Connection, "events", Status::Warn, "polling only").hint(hints::EVENTS)
             }) {
                 Ok(_) => Check::new(Connection, "events", Status::Ok, "event stream available"),
@@ -457,6 +472,7 @@ fn has_uefi_loader(xml: &str) -> bool {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::runner::FakeRunner;
+    use super::RunOutcome;
     use super::*;
 
     pub(crate) const VERSION_OUT: &str = "Compiled against library: libvirt 11.6.0\nUsing library: libvirt 11.6.0\nUsing API: QEMU 11.6.0\nRunning hypervisor: QEMU 10.1.0\n";
@@ -935,5 +951,25 @@ pub(crate) mod tests {
         let clone = get(&c, "virt-clone");
         assert_eq!(clone.command, None);
         assert_eq!(clone.hint.as_deref(), Some(hints::VIRT_CLONE));
+    }
+
+    #[test]
+    fn events_timeout_exit_is_success() {
+        // Real virsh: `--timeout` with no events exits 1 and says so on stdout.
+        let mut r = healthy(SYS);
+        r.runs.insert(
+            String::from("virsh -c qemu:///system event --all --timeout 1"),
+            RunOutcome::Exited {
+                success: false,
+                stdout: String::from("event loop timed out\nevents received: 0\n"),
+                stderr: String::new(),
+            },
+        );
+        let c = run_sync(&ctx(SYS), &r);
+        let e = get(&c, "events");
+        assert_eq!(
+            (e.status, e.value.as_str()),
+            (Status::Ok, "event stream available")
+        );
     }
 }

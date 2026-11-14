@@ -218,3 +218,29 @@ pub(crate) fn os_release_value(text: &str, key: &str) -> Option<String> {
         Some(value.trim().trim_matches('"').to_string())
     })
 }
+
+/// Context for this process: `-c` or the config's default URI, the real paths.
+pub fn ctx_from(
+    cli: &crate::cli::Cli,
+    config: &crate::config::Config,
+    uri_was_flag: bool,
+    term_size: Option<(u16, u16)>,
+) -> Ctx {
+    let dirs = directories::ProjectDirs::from("", "", "virsh-tui");
+    Ctx {
+        uri: cli.connect.clone(),
+        uri_source: if uri_was_flag {
+            UriSource::Flag
+        } else {
+            UriSource::Config
+        },
+        config: config.clone(),
+        config_path: config.source.clone().or_else(crate::config::Config::path),
+        keymap_path: crate::input::keymap::path(),
+        themes_dir: dirs.as_ref().map(|d| d.config_dir().join("themes")),
+        log_path: dirs
+            .as_ref()
+            .and_then(|d| d.state_dir().map(|s| s.join("virsh-tui.log"))),
+        term_size,
+    }
+}
