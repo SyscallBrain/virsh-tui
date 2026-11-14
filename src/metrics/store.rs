@@ -28,6 +28,17 @@ pub fn cycle_window() -> &'static str {
     WINDOWS[next].1
 }
 
+/// Select a window by label (`60s`, `5m`, `1h`); false when unknown.
+pub fn set_window(label: &str) -> bool {
+    match WINDOWS.iter().position(|(_, l)| *l == label) {
+        Some(i) => {
+            WINDOW.store(i, std::sync::atomic::Ordering::Relaxed);
+            true
+        }
+        None => false,
+    }
+}
+
 /// Samples in the selected window at the configured refresh interval.
 pub fn window_len() -> usize {
     let secs = WINDOWS[WINDOW.load(std::sync::atomic::Ordering::Relaxed) % WINDOWS.len()].0;

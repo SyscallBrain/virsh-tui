@@ -17,6 +17,11 @@ refresh_interval_secs = 1        # how often stats are sampled
 editor = "vi"                    # used when $VISUAL and $EDITOR are unset
 start_view = "domains"           # domains, host, networks, storage, events
 key_hints = true                 # key hints in bars, panels and dialogs
+default_sort = "state"           # state, name, cpu, mem, uptime
+default_filter = "all"           # all, running, paused, crashed, off
+history_size = 500               # `:` lines kept across sessions; 0: not saved
+shutdown_timeout_secs = 90       # wait this long after S before warning
+log_level = "info"               # error, warn, info, debug, trace, off
 
 [appearance]
 theme = "tokyo-night"            # built-in name or a file in themes/
@@ -39,6 +44,7 @@ default = "qemu:///system"
 balloon_on = false               # set a balloon stats period on running guests
 balloon_period_secs = 2
 thread_sampling = true           # per-thread CPU meters in the Host view
+history_window = "60s"           # graph window at start: 60s, 5m, 1h
 
 [confirmations]
 destroy = true
@@ -48,6 +54,7 @@ revert = true                    # snapshot revert
 delete_volume = true
 wipe = true
 type_name_for_undefine = true    # type the domain name to undefine
+bulk_threshold = 0               # always ask from this many marked domains; 0: off
 
 [console]
 viewer = "virt-viewer"           # or "remote-viewer"
@@ -75,6 +82,30 @@ reads (one level deep, `*.iso`). `~/` is expanded. When it is empty, the
 picker uses your download folder as `xdg-user-dirs` reports it, so a
 localized name works without configuration. Folders are only read for local
 connections.
+
+`general.default_sort`, `general.default_filter` and
+`monitoring.history_window` set how the domain list and the graphs open;
+`o`, `f` and `t` still change them for the session.
+
+`general.history_size` keeps the last lines typed at `:` in
+`~/.local/state/virsh-tui/history` (mode 0600), so `Up` recalls them after a
+restart. A line that starts with a space is kept for the session only, like
+`HISTCONTROL=ignorespace` in bash: use it for arguments you do not want on
+disk. `0` stops saving and empties the file; turning it back on takes effect
+at the next start. The demo neither reads nor writes the file.
+
+`general.shutdown_timeout_secs` is how long virsh-tui watches a domain after
+`S` before saying that the guest ignored the ACPI request.
+
+`general.log_level` sets the detail of the log file. `RUST_LOG` still
+overrides it, and a change takes effect at the next start.
+
+`confirmations.bulk_threshold` is a safety net for the toggles above: with
+`destroy = false`, `D` on one domain runs at once, but with
+`bulk_threshold = 3` it asks again as soon as three or more domains are
+marked. It applies to destroy, reset, undefine, delete volume and wipe.
+Lifecycle actions on several domains (start, shutdown, reboot, …) always
+show the commands first.
 
 `console.escape` accepts `C-x` or `^x` notation and is passed to
 `virsh console` as `-e ^x`.
@@ -148,7 +179,9 @@ wizard and hardware editor. The mode pill, breadcrumb and dialog buttons
 
 Supported keys: `theme`, `transparent`, `borders`, `icons`, `graphs`,
 `gradient`, `dim_modals`, `key_hints`, `default_uri`, `editor`, `start_view`, `viewer`,
-`escape`, `refresh_interval_secs`. `Tab` completes them. Values are checked
+`escape`, `refresh_interval_secs`, `default_sort`, `default_filter`,
+`history_size`, `history_window`, `shutdown_timeout_secs`, `bulk_threshold`
+and `log_level`. `Tab` completes them. Values are checked
 (booleans take `true`/`false`, `refresh_interval_secs` 1-60, `viewer`
 `virt-viewer` or `remote-viewer`, …); a rejected value changes nothing. A new
 value takes effect at once: a new refresh interval restarts sampling, and the

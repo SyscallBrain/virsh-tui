@@ -19,7 +19,8 @@ knows about:
 
 ## Editing the line
 
-`Up` / `Down` recall earlier lines of the session. `Left` / `Right`,
+`Up` / `Down` recall earlier lines, also from earlier sessions
+(`general.history_size`; a line that starts with a space is not saved). `Left` / `Right`,
 `Home` / `End` (or `Ctrl-a` / `Ctrl-e`) move the cursor; `Delete` deletes
 under it, `Ctrl-w` deletes the previous word and `Ctrl-u` everything before
 the cursor. Pasted text (bracketed paste) is inserted as text; outside the

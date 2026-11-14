@@ -243,3 +243,45 @@ fn theme_list_cursor_is_dim_when_another_pane_has_focus() {
         assert_eq!(cell.bg == th.tokens.sel, highlighted, "pane {pane:?}");
     }
 }
+
+#[test]
+fn settings_lists_the_start_preferences_history_and_bulk_rows() {
+    let cfg = Config::default();
+    let th = theme::builtin::tokyo_night();
+    for (w, h) in [(174, 43), (80, 24)] {
+        for (cat, idx, wanted) in [
+            (
+                0,
+                4,
+                &[
+                    "default sort",
+                    "state",
+                    "default state filter",
+                    "report ignored after",
+                    "90s",
+                    "500 lines",
+                ][..],
+            ),
+            (4, 3, &["history window at start", "60s"][..]),
+            (5, 7, &["always ask from", "off"][..]),
+        ] {
+            let mut st = settings::SettingsState::open(&cfg);
+            st.cat = cat;
+            st.pane = settings::SettingsPane::Options;
+            st.opt_idx = idx;
+            let text = draw(w, h, |f| {
+                settings::render(
+                    f,
+                    &th,
+                    &cfg,
+                    &st,
+                    &virsh_tui::input::keymap::default_map(),
+                    &virsh_tui::input::keymap_file::KeymapFile::in_memory(),
+                )
+            });
+            for value in wanted {
+                assert!(text.contains(value), "{w}x{h}: missing {value}:\n{text}");
+            }
+        }
+    }
+}

@@ -125,6 +125,18 @@ pub(super) fn change_option(cat: ui::views::settings::Category, idx: usize, conf
             g.start_view = next(&g.start_view, &views);
         }
         (C::General, 3) => g.key_hints = !g.key_hints,
+        (C::General, 4) => {
+            let names = ui::views::dashboard::Sort::NAMES.map(String::from);
+            g.default_sort = next(&g.default_sort, &names);
+        }
+        (C::General, 5) => {
+            let names = ui::views::dashboard::Chip::NAMES.map(String::from);
+            g.default_filter = next(&g.default_filter, &names);
+        }
+        (C::General, 6) => {
+            g.shutdown_timeout_secs = next(&g.shutdown_timeout_secs, &[30, 60, 90, 180, 300]);
+        }
+        (C::General, 7) => g.history_size = next(&g.history_size, &[0, 200, 500, 1000, 5000]),
         (C::Connections, i) => {
             if let Some(u) = config.connections.uris.get(i) {
                 g.default_uri = u.clone();
@@ -134,6 +146,10 @@ pub(super) fn change_option(cat: ui::views::settings::Category, idx: usize, conf
         (C::Monitoring, 0) => m.balloon_on = !m.balloon_on,
         (C::Monitoring, 1) => m.balloon_period_secs = next(&m.balloon_period_secs, &[2, 5, 10, 30]),
         (C::Monitoring, 2) => m.thread_sampling = !m.thread_sampling,
+        (C::Monitoring, 3) => {
+            m.history_window = next(&m.history_window, &["60s", "5m", "1h"].map(String::from));
+            crate::metrics::store::set_window(&m.history_window);
+        }
         (C::Confirmations, 0) => c.destroy = !c.destroy,
         (C::Confirmations, 1) => c.reset = !c.reset,
         (C::Confirmations, 2) => c.undefine = !c.undefine,
@@ -141,6 +157,7 @@ pub(super) fn change_option(cat: ui::views::settings::Category, idx: usize, conf
         (C::Confirmations, 4) => c.revert = !c.revert,
         (C::Confirmations, 5) => c.delete_volume = !c.delete_volume,
         (C::Confirmations, 6) => c.wipe = !c.wipe,
+        (C::Confirmations, 7) => c.bulk_threshold = next(&c.bulk_threshold, &[0, 3, 5, 10, 20]),
         (C::Console, 0) => {
             let viewers = ["virt-viewer", "remote-viewer"].map(String::from);
             config.console.viewer = next(&config.console.viewer, &viewers);
@@ -272,6 +289,37 @@ pub(super) fn apply_setting(
                     .filter(|n| (1..=60).contains(n))
                     .ok_or_else(|| format!("✗ {key} takes 1-60 (seconds)"))?;
             }
+            "default_sort" => {
+                next.general.default_sort = one_of(&ui::views::dashboard::Sort::NAMES)?;
+            }
+            "default_filter" => {
+                next.general.default_filter = one_of(&ui::views::dashboard::Chip::NAMES)?;
+            }
+            "history_window" => next.monitoring.history_window = one_of(&["60s", "5m", "1h"])?,
+            "log_level" => {
+                next.general.log_level = one_of(&["error", "warn", "info", "debug", "trace", "off"])?;
+            }
+            "history_size" => {
+                next.general.history_size = v
+                    .parse()
+                    .ok()
+                    .filter(|n| *n <= 100_000)
+                    .ok_or_else(|| format!("✗ {key} takes 0-100000 (lines; 0: not saved)"))?;
+            }
+            "shutdown_timeout_secs" => {
+                next.general.shutdown_timeout_secs = v
+                    .parse()
+                    .ok()
+                    .filter(|n| (5..=3600).contains(n))
+                    .ok_or_else(|| format!("✗ {key} takes 5-3600 (seconds)"))?;
+            }
+            "bulk_threshold" => {
+                next.confirmations.bulk_threshold = v
+                    .parse()
+                    .ok()
+                    .filter(|n| *n <= 1000)
+                    .ok_or_else(|| format!("✗ {key} takes 0-1000 (domains; 0: off)"))?;
+            }
             "default_uri" | "editor" | "escape" => return Err(format!("✗ {key} cannot be empty")),
             _ => return Err(format!("✗ unknown setting: {key}")),
         }
@@ -280,13 +328,21 @@ pub(super) fn apply_setting(
     if let Err(message) = result {
         return message;
     }
+    if key == "history_window" {
+        crate::metrics::store::set_window(v);
+    }
     *config = next;
     *theme = current_theme(config);
     // Code without a handle on the config (viewer, editor, confirmations)
     // reads the runtime copy.
     crate::config::set_runtime(config);
+    let note = match key {
+        "log_level" => "  (takes effect at the next start)",
+        "default_sort" | "default_filter" => "  (used at the next start; o / f change the list now)",
+        _ => "",
+    };
     match config.save() {
-        Ok(()) => format!("set {key}={v}"),
+        Ok(()) => format!("set {key}={v}{note}"),
         Err(e) => format!("✗ save failed: {e}"),
     }
 }

@@ -179,6 +179,29 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
             ),
             row("Start", "start view", g.start_view.clone(), true),
             row("Help", "key hints", on_off(g.key_hints), true),
+            row("Domain list", "default sort", g.default_sort.clone(), true),
+            row(
+                "Domain list",
+                "default state filter",
+                g.default_filter.clone(),
+                true,
+            ),
+            row(
+                "Shutdown",
+                "report ignored after",
+                format!("{}s", g.shutdown_timeout_secs),
+                true,
+            ),
+            row(
+                "History",
+                "command history",
+                if g.history_size == 0 {
+                    String::from("not saved")
+                } else {
+                    format!("{} lines", g.history_size)
+                },
+                true,
+            ),
             row(
                 "Editor",
                 "editor",
@@ -214,6 +237,12 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
                 true,
             ),
             row("Host", "per-thread CPU meters", on_off(m.thread_sampling), true),
+            row(
+                "Graphs",
+                "history window at start",
+                m.history_window.clone(),
+                true,
+            ),
         ],
         Category::Confirmations => vec![
             row("Ask before", "destroy", on_off(c.destroy), true),
@@ -228,6 +257,16 @@ pub fn category_rows(cat: Category, config: &Config) -> Vec<OptRow> {
             row("Ask before", "snapshot revert", on_off(c.revert), true),
             row("Ask before", "delete volume", on_off(c.delete_volume), true),
             row("Ask before", "wipe volume", on_off(c.wipe), true),
+            row(
+                "Bulk",
+                "always ask from",
+                if c.bulk_threshold == 0 {
+                    String::from("off")
+                } else {
+                    format!("{} domains", c.bulk_threshold)
+                },
+                true,
+            ),
         ],
         Category::Console => vec![
             row("Viewer", "graphical viewer", config.console.viewer.clone(), true),
@@ -257,6 +296,18 @@ fn option_hint(cat: Category, idx: usize) -> &'static str {
         (Category::General, 1) => "How often domstats is sampled (charts use 60 samples).",
         (Category::General, 3) => {
             "Off hides the key hints in status bars, panels and dialogs; `?` still lists every key."
+        }
+        (Category::General, 4 | 5) => "Applied at start; o and f change the list for this session.",
+        (Category::General, 6) => {
+            "After an ACPI shutdown (S), how long to wait before saying the guest ignored it."
+        }
+        (Category::General, 7) => {
+            "`:` lines kept in ~/.local/state/virsh-tui/history. Lines that start with a space are never saved."
+        }
+        (Category::Monitoring, 3) => "Window the graphs open with; t cycles 60s / 5m / 1h.",
+        (Category::Confirmations, 7) => {
+            "Destroy, reset, undefine and volume actions on this many marked domains always ask, \
+             even with their toggle off."
         }
         _ => "",
     }

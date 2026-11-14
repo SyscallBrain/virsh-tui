@@ -29,6 +29,21 @@ pub enum Chip {
 }
 
 impl Chip {
+    /// Names accepted by `general.default_filter`.
+    pub const NAMES: [&'static str; 5] = ["all", "running", "paused", "crashed", "off"];
+
+    /// Parse a `general.default_filter` value.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "all" => Self::All,
+            "running" => Self::Running,
+            "paused" => Self::Paused,
+            "crashed" => Self::Crashed,
+            "off" => Self::Off,
+            _ => return None,
+        })
+    }
+
     fn matches(self, state: DomainState) -> bool {
         match self {
             Self::All => true,
@@ -52,6 +67,21 @@ pub enum Sort {
 }
 
 impl Sort {
+    /// Names accepted by `:sort` and `general.default_sort`.
+    pub const NAMES: [&'static str; 5] = ["state", "name", "cpu", "mem", "uptime"];
+
+    /// Parse a `:sort` / `general.default_sort` value.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "state" => Self::State,
+            "name" => Self::Name,
+            "cpu" => Self::Cpu,
+            "mem" => Self::Mem,
+            "uptime" => Self::Uptime,
+            _ => return None,
+        })
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::State => "state › name",
@@ -132,7 +162,8 @@ pub struct PendingShutdown {
     pub since: std::time::Instant,
 }
 
-/// Seconds to wait for a guest to honour a shutdown request.
+/// Default seconds to wait for a guest to honour a shutdown request
+/// (`general.shutdown_timeout_secs`).
 pub const SHUTDOWN_TIMEOUT_SECS: u64 = 90;
 
 impl DashboardState {
@@ -274,6 +305,10 @@ impl DashboardState {
 
     /// Resolve tracked shutdowns against the current rows (call after a refresh).
     pub fn check_shutdowns(&mut self) {
+        if self.shutdowns.is_empty() {
+            return;
+        }
+        let timeout = crate::config::runtime().general.shutdown_timeout_secs.max(1);
         let mut done = Vec::new();
         for p in &self.shutdowns {
             let state = self.rows.iter().find(|r| r.name == p.name).map(|r| r.state);
@@ -282,10 +317,10 @@ impl DashboardState {
                     done.push(p.name.clone());
                     self.message = format!("✓ {} shut off", p.name);
                 }
-                Some(_) if p.since.elapsed().as_secs() >= SHUTDOWN_TIMEOUT_SECS => {
+                Some(_) if p.since.elapsed().as_secs() >= timeout => {
                     done.push(p.name.clone());
                     self.message = format!(
-                        "⚠ {} is still running {SHUTDOWN_TIMEOUT_SECS}s after the ACPI request: the guest ignored it. \
+                        "⚠ {} is still running {timeout}s after the ACPI request: the guest ignored it. \
                          Try :shutdown {} --mode agent (needs qemu-ga) or D to force off",
                         p.name, p.name
                     );

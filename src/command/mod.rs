@@ -2,6 +2,7 @@
 
 pub mod builders;
 pub mod display;
+pub mod ex_history;
 pub mod exec;
 pub mod history;
 pub mod job;

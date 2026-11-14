@@ -9,11 +9,14 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let mut cli = Cli::parse();
     install_panic_hook();
-    init_logging()?;
     let config = match &cli.config {
         Some(path) => Config::load_file(std::path::Path::new(path)),
         None => Config::load(),
     };
+    init_logging(&config.general.log_level)?;
+    if let Some(error) = &config.load_error {
+        tracing::warn!("ignoring invalid config {error}");
+    }
     let uri_was_flag = !cli.connect.is_empty();
     cli.uri_from_flag = uri_was_flag;
     // No -c: use the default connection from the config.
@@ -165,10 +168,22 @@ fn install_panic_hook() {
     }));
 }
 
+/// `general.log_level`, or `info` when it is not a level name.
+fn log_level(level: &str) -> &'static str {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "error" => "error",
+        "warn" | "warning" => "warn",
+        "debug" => "debug",
+        "trace" => "trace",
+        "off" => "off",
+        _ => "info",
+    }
+}
+
 /// Log to `$XDG_STATE_HOME/virsh-tui/virsh-tui.log` (appending; the previous
 /// log is kept as `.old` past 4 MiB). Logging is best effort: without a state
 /// directory, or when the file cannot be opened, the app runs without it.
-fn init_logging() -> Result<()> {
+fn init_logging(level: &str) -> Result<()> {
     let Some(dir) = directories::ProjectDirs::from("", "", "virsh-tui")
         .and_then(|d| d.state_dir().map(|p| p.to_path_buf()))
     else {
@@ -185,7 +200,8 @@ fn init_logging() -> Result<()> {
     tracing_subscriber::fmt()
         // RUST_LOG overrides the default level (e.g. RUST_LOG=virsh_tui=debug).
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("virsh_tui=info")),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(format!("virsh_tui={}", log_level(level)))),
         )
         .with_writer(std::sync::Mutex::new(file))
         .with_ansi(false)

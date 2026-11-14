@@ -1164,3 +1164,87 @@ async fn remote_wizard_uses_the_node_sample() {
     assert!((host.free_gib - 48.0).abs() < 0.01);
     assert!(!host.local && !host.no_kvm);
 }
+
+#[tokio::test]
+async fn bulk_threshold_asks_even_when_the_action_confirmation_is_off() {
+    let mut config = Config::default();
+    config.confirmations.destroy = false;
+    config.confirmations.bulk_threshold = 2;
+    crate::config::set_runtime(&config);
+    let mut app = fixture_app();
+    let names: Vec<String> = app
+        .dash
+        .visible_rows()
+        .iter()
+        .take(2)
+        .map(|r| r.name.clone())
+        .collect();
+    assert_eq!(names.len(), 2, "fixture has two domains");
+    app.dash.marks = names.into_iter().collect();
+    app.handle_key_event(shift('D'));
+    assert!(app.confirm.is_some(), "two marked domains reach the threshold");
+    assert!(app.active_job.is_none());
+    app.handle_key_event(plain('n'));
+    assert!(app.confirm.is_none());
+    assert!(app.active_job.is_none());
+    crate::config::set_runtime(&Config::default());
+}
+
+#[tokio::test]
+async fn set_accepts_the_start_preferences_and_rejects_bad_values() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = fixture_app();
+    app.config.source = Some(dir.path().join("config.toml"));
+    for (line, ok) in [
+        ("set default_sort=cpu", true),
+        ("set default_sort=size", false),
+        ("set default_filter=running", true),
+        ("set default_filter=up", false),
+        ("set history_size=0", true),
+        ("set history_size=-1", false),
+        ("set shutdown_timeout_secs=1", false),
+        ("set shutdown_timeout_secs=30", true),
+        ("set bulk_threshold=3", true),
+        ("set log_level=loud", false),
+        ("set log_level=debug", true),
+        // The window is process-wide: only the default, so parallel tests see no change.
+        ("set history_window=60s", true),
+        ("set history_window=2h", false),
+    ] {
+        run_ex(&mut app, line);
+        assert_eq!(
+            !app.dash.message.starts_with('✗'),
+            ok,
+            "{line}: {}",
+            app.dash.message
+        );
+    }
+    let g = &app.config.general;
+    assert_eq!(
+        (g.default_sort.as_str(), g.default_filter.as_str(), g.history_size),
+        ("cpu", "running", 0)
+    );
+    assert_eq!(g.shutdown_timeout_secs, 30);
+    assert_eq!(app.config.confirmations.bulk_threshold, 3);
+    let saved = std::fs::read_to_string(dir.path().join("config.toml")).unwrap();
+    assert!(saved.contains("default_sort = \"cpu\""), "{saved}");
+    crate::config::set_runtime(&Config::default());
+}
+
+#[test]
+fn start_preferences_set_the_sort_chip_and_window() {
+    let mut config = Config::default();
+    config.general.default_sort = String::from("mem");
+    config.general.default_filter = String::from("off");
+    let mut dash = ui::views::dashboard::DashboardState::demo();
+    super::apply_start_preferences(&config, &mut dash);
+    assert_eq!(dash.sort, ui::views::dashboard::Sort::Mem);
+    assert_eq!(dash.chip, ui::views::dashboard::Chip::Off);
+    config.general.default_sort = String::from("bogus");
+    super::apply_start_preferences(&config, &mut dash);
+    assert_eq!(
+        dash.sort,
+        ui::views::dashboard::Sort::Mem,
+        "unknown values change nothing"
+    );
+}

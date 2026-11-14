@@ -35,6 +35,18 @@ pub struct General {
     /// Key hints in status bars, panels and dialogs. Off once the keys are
     /// known; `?` still lists them and dialog buttons stay.
     pub key_hints: bool,
+    /// Domain list order at start: state, name, cpu, mem, uptime.
+    pub default_sort: String,
+    /// Domain state chip at start: all, running, paused, crashed, off.
+    pub default_filter: String,
+    /// `:` lines kept across sessions (0: not saved).
+    pub history_size: usize,
+    /// Seconds after an ACPI shutdown before the guest is reported as
+    /// ignoring it.
+    pub shutdown_timeout_secs: u64,
+    /// Log level of the log file: error, warn, info, debug, trace
+    /// (`RUST_LOG` overrides it).
+    pub log_level: String,
 }
 
 impl Default for General {
@@ -45,6 +57,11 @@ impl Default for General {
             editor: String::from("vi"),
             start_view: String::from("domains"),
             key_hints: true,
+            default_sort: String::from("state"),
+            default_filter: String::from("all"),
+            history_size: 500,
+            shutdown_timeout_secs: crate::ui::views::dashboard::SHUTDOWN_TIMEOUT_SECS,
+            log_level: String::from("info"),
         }
     }
 }
@@ -102,6 +119,8 @@ pub struct Monitoring {
     pub balloon_period_secs: u64,
     pub balloon_on: bool,
     pub thread_sampling: bool,
+    /// Graph history window at start: 60s, 5m, 1h.
+    pub history_window: String,
 }
 
 impl Default for Monitoring {
@@ -111,6 +130,7 @@ impl Default for Monitoring {
             // Opt-in: enabling it changes running guests (dommemstat --period --live).
             balloon_on: false,
             thread_sampling: true,
+            history_window: String::from("60s"),
         }
     }
 }
@@ -204,6 +224,9 @@ pub struct Confirmations {
     pub delete_volume: bool,
     pub wipe: bool,
     pub type_name_for_undefine: bool,
+    /// Ask before a destructive action on this many marked domains or more,
+    /// even when its own confirmation is off (0: never).
+    pub bulk_threshold: usize,
 }
 
 impl Default for Confirmations {
@@ -216,6 +239,7 @@ impl Default for Confirmations {
             delete_volume: true,
             wipe: true,
             type_name_for_undefine: true,
+            bulk_threshold: 0,
         }
     }
 }
@@ -260,7 +284,6 @@ impl Config {
             Ok(text) => match toml::from_str(&text) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    tracing::warn!("ignoring invalid config {}: {e}", path.display());
                     let mut cfg = Self::default();
                     let first = e.to_string().lines().next().unwrap_or_default().to_string();
                     cfg.load_error = Some(format!("{}: {first}", path.display()));

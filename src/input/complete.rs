@@ -69,6 +69,13 @@ const SET_KEYS: &[&str] = &[
     "escape=",
     "editor=",
     "refresh_interval_secs=",
+    "default_sort=",
+    "default_filter=",
+    "history_size=",
+    "history_window=",
+    "shutdown_timeout_secs=",
+    "bulk_threshold=",
+    "log_level=",
 ];
 
 /// App commands whose first argument is a domain.

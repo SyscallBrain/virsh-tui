@@ -185,6 +185,7 @@ pub async fn run_with_shutdown(
         Some(crate::backend::virsh::events::subscribe(&cli.connect))
     };
     crate::config::set_runtime(&config);
+    apply_start_preferences(&config, &mut dash);
     let start_view = if cli.screen.is_some() {
         ""
     } else {
@@ -236,6 +237,14 @@ pub async fn run_with_shutdown(
         crate::input::keymap::path().as_deref(),
     );
     let history = crate::command::history::History::new(200);
+    // `:` history across sessions; the demo neither reads nor writes it.
+    let ex_history_path = (!cli.demo && config.general.history_size > 0)
+        .then(crate::command::ex_history::path)
+        .flatten();
+    let ex_history = ex_history_path
+        .as_deref()
+        .map(|p| crate::command::ex_history::load(p, config.general.history_size))
+        .unwrap_or_default();
     let uri = cli.connect.clone();
     let dry_run = cli.dry_run;
     let demo = cli.demo;
@@ -279,8 +288,9 @@ pub async fn run_with_shutdown(
         help_scroll: 0,
         confirm_scroll: std::cell::Cell::new(0),
         viewport: std::cell::Cell::new(None),
-        ex_history: Vec::new(),
+        ex_history,
         ex_history_pos: None,
+        ex_history_path,
         events_rx,
         view,
         pending_quit_z,
@@ -449,6 +459,19 @@ pub async fn run_with_shutdown(
     Ok(())
 }
 
+/// Start-up preferences that are not views: domain order, state chip and
+/// graph window. Unknown values keep the defaults.
+fn apply_start_preferences(config: &Config, dash: &mut ui::views::dashboard::DashboardState) {
+    use ui::views::dashboard::{Chip, Sort};
+    if let Some(sort) = Sort::from_name(&config.general.default_sort) {
+        dash.sort = sort;
+    }
+    if let Some(chip) = Chip::from_name(&config.general.default_filter) {
+        dash.chip = chip;
+    }
+    crate::metrics::store::set_window(&config.monitoring.history_window);
+}
+
 #[derive(Default)]
 struct MessageLog {
     lines: Vec<String>,
@@ -515,6 +538,8 @@ struct App {
     /// `:` lines entered this session (Up/Down recall) and the recall position.
     ex_history: Vec<String>,
     ex_history_pos: Option<usize>,
+    /// Where `:` lines are saved (None: demo or `history_size = 0`).
+    ex_history_path: Option<std::path::PathBuf>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
@@ -722,10 +747,12 @@ impl App {
     /// Settings › Confirmations: skip the modal for actions the user turned off,
     /// and drop the type-the-name step when that is disabled.
     fn apply_confirm_settings(&mut self) {
-        let Some((c, _, _)) = self.confirm.as_mut() else {
+        let Some((c, _, targets)) = self.confirm.as_mut() else {
             return;
         };
         let cfg = crate::config::confirmations();
+        // Many targets always ask, whatever the per-action toggle says.
+        let many = cfg.bulk_threshold > 0 && targets.len() >= cfg.bulk_threshold;
         use crate::ui::overlays::confirm::ConfirmKind as K;
         if c.kind == K::DomainUndefine && !cfg.type_name_for_undefine {
             c.type_name = None;
@@ -738,8 +765,17 @@ impl App {
             K::VolumeWipe => cfg.wipe,
             K::Always => true,
         };
-        if !ask {
+        if !ask && !many {
             self.run_confirmed();
+        }
+    }
+
+    /// Write the `:` history (best effort: a failure is logged, not shown).
+    fn save_ex_history(&self) {
+        let Some(path) = &self.ex_history_path else { return };
+        let limit = self.config.general.history_size;
+        if let Err(e) = crate::command::ex_history::save(path, &self.ex_history, limit) {
+            tracing::warn!("cannot save {}: {e}", path.display());
         }
     }
 
@@ -1739,9 +1775,11 @@ impl App {
                     self.ex_history_pos = None;
                     if !line.trim().is_empty() && self.ex_history.last() != Some(&line) {
                         self.ex_history.push(line.clone());
-                        if self.ex_history.len() > 200 {
+                        let limit = self.config.general.history_size.max(200);
+                        if self.ex_history.len() > limit {
                             self.ex_history.remove(0);
                         }
+                        self.save_ex_history();
                     }
                     if matches!(
                         crate::input::ex::parse(&line),
@@ -2944,6 +2982,7 @@ mod tests {
             viewport: std::cell::Cell::new(None),
             ex_history: Vec::new(),
             ex_history_pos: None,
+            ex_history_path: None,
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,

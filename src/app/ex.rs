@@ -195,13 +195,7 @@ pub(super) fn run_ex_line(
             dash.selection = (n.saturating_sub(1) as usize).min(dash.visible_rows().len().saturating_sub(1));
         }
         Ok(crate::input::ex::ExCommand::Sort(col)) => {
-            dash.sort = match col.as_str() {
-                "name" => crate::ui::views::dashboard::Sort::Name,
-                "cpu" => crate::ui::views::dashboard::Sort::Cpu,
-                "mem" => crate::ui::views::dashboard::Sort::Mem,
-                "uptime" => crate::ui::views::dashboard::Sort::Uptime,
-                _ => crate::ui::views::dashboard::Sort::State,
-            };
+            dash.sort = crate::ui::views::dashboard::Sort::from_name(&col).unwrap_or_default();
         }
         Ok(crate::input::ex::ExCommand::Theme(name)) => {
             dash.message = apply_setting(uri, config, theme, "theme", &name);
