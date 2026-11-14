@@ -127,6 +127,19 @@ pub struct DetailState {
     pub snap_modal: SnapModal,
     /// Live metrics for this domain (refreshed every tick); `None` in demo.
     pub live_series: Option<crate::metrics::store::DomainSeries>,
+    /// What the guest agent reports (Overview).
+    pub guest: GuestPanel,
+}
+
+/// Guest agent section of the Overview.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum GuestPanel {
+    /// Not running, or no agent channel: the section is not shown.
+    #[default]
+    Hidden,
+    Loading,
+    Info(crate::backend::virsh::parse_guestinfo::GuestInfo),
+    Error(String),
 }
 
 /// Snapshot tab modal.
@@ -163,6 +176,19 @@ impl DetailState {
             snaps: snapshots::SnapshotState::demo(),
             snap_modal: SnapModal::None,
             live_series: None,
+            guest: GuestPanel::Info(crate::backend::virsh::parse_guestinfo::GuestInfo {
+                os: String::from("Arch Linux"),
+                kernel: String::from("6.11.2-arch1-1"),
+                hostname: String::from("arch-dev"),
+                timezone: String::from("Europe/Lisbon"),
+                users: vec![String::from("tiago")],
+                filesystems: vec![crate::backend::virsh::parse_guestinfo::GuestFs {
+                    mountpoint: String::from("/"),
+                    fstype: String::from("btrfs"),
+                    total_bytes: Some(64 << 30),
+                    used_bytes: Some(21 << 30),
+                }],
+            }),
         }
     }
 
@@ -369,12 +395,69 @@ fn render_overview(frame: &mut Frame, theme: &Theme, state: &DetailState, area: 
         ("Persistent   ", String::from("yes")),
         ("UUID         ", c.uuid.clone()),
     ];
-    let lines: Vec<Line> = kv
+    let mut lines: Vec<Line> = kv
         .iter()
         .map(|(k, v)| Line::from(vec![Span::styled(*k, theme.dim()), Span::raw(v.clone())]))
         .collect();
+    lines.extend(guest_lines(theme, &state.guest));
     let block = panel_block(theme, &format!("Overview · {}", state.domain), None);
     frame.render_widget(Paragraph::new(lines).block(block).style(theme.base()), area);
+}
+
+/// `Guest (qemu-ga)` lines of the Overview.
+fn guest_lines(theme: &Theme, guest: &GuestPanel) -> Vec<Line<'static>> {
+    let row = |k: &'static str, v: String| Line::from(vec![Span::styled(k, theme.dim()), Span::raw(v)]);
+    let mut out = match guest {
+        GuestPanel::Hidden => return Vec::new(),
+        _ => vec![
+            Line::from(""),
+            Line::from(Span::styled("Guest (qemu-ga)", theme.secondary())),
+        ],
+    };
+    match guest {
+        GuestPanel::Hidden => {}
+        GuestPanel::Loading => out.push(row("             ", String::from("asking the agent…"))),
+        GuestPanel::Error(e) => out.push(Line::from(vec![
+            Span::styled("             ", theme.dim()),
+            Span::styled(e.clone(), Style::default().fg(theme.tokens.yellow)),
+        ])),
+        GuestPanel::Info(info) => {
+            let join = |a: &str, b: &str| match (a.is_empty(), b.is_empty()) {
+                (false, false) => format!("{a} · {b}"),
+                (false, true) => a.to_string(),
+                (true, false) => b.to_string(),
+                (true, true) => String::from("—"),
+            };
+            out.push(row("Guest OS     ", join(&info.os, &info.kernel)));
+            out.push(row("Hostname     ", join(&info.hostname, &info.timezone)));
+            out.push(row(
+                "Users        ",
+                if info.users.is_empty() {
+                    String::from("none logged in")
+                } else {
+                    info.users.join(", ")
+                },
+            ));
+            for fs in &info.filesystems {
+                let usage = match (fs.used_bytes, fs.total_bytes) {
+                    (Some(u), Some(t)) if t > 0 => format!(
+                        "{:.1}/{:.1} GiB  {:.0}%",
+                        u as f64 / 1073741824.0,
+                        t as f64 / 1073741824.0,
+                        u as f64 * 100.0 / t as f64
+                    ),
+                    _ => String::new(),
+                };
+                out.push(row(
+                    "File system  ",
+                    format!("{} {} {usage}", fs.mountpoint, fs.fstype)
+                        .trim_end()
+                        .to_string(),
+                ));
+            }
+        }
+    }
+    out
 }
 
 /// vCPU meters, per-disk and per-interface rates (Monitor tab, bottom row).

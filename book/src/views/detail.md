@@ -8,6 +8,19 @@ between the tabs; `Backspace` or `q` returns to the list.
 The domain's configuration at a glance: machine type, firmware, vCPUs,
 memory, disks, network interfaces, graphics, autostart, persistence and UUID.
 
+For a running domain with a guest agent channel, a **Guest (qemu-ga)**
+section adds what the agent reports (`virsh guestinfo`): the guest's OS and
+kernel, its hostname and time zone, the users logged in, and each mounted
+file system with its usage. It is read when the detail opens and on `Ctrl-r`.
+If `qemu-guest-agent` is not running in the guest the section says so; on a
+read-only connection it is not asked (libvirt allows it only read-write).
+
+The guest agent also gives the IP address of domains on a bridge, where
+there is no DHCP lease to read, and `:shutdown <domain> --mode agent` for
+guests that ignore ACPI. To set a password in the guest, type the virsh
+command with a leading space so it is not saved in the history:
+`: set-user-password <domain> <user> <password>`.
+
 ## Monitor
 
 ![Monitor tab](../images/monitor.png)

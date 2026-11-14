@@ -1440,3 +1440,47 @@ async fn long_jobs_notify_when_they_finish() {
     app.finish_job(outcome);
     assert_eq!(super::notify::SENT.with(|s| s.borrow().len()), 1);
 }
+
+#[tokio::test]
+async fn guest_info_lands_in_the_open_detail_and_stale_results_are_dropped() {
+    let mut app = fixture_app();
+    let name = app.dash.selected().name.clone();
+    let mut detail = DetailState::demo(&name);
+    detail.guest = ui::views::detail::GuestPanel::Hidden;
+    app.detail = Some(detail);
+    app.view = View::Detail;
+    let serial = app.begin_read(requests::ReadKind::Guest);
+    let result = |serial, panel| requests::SelectionResult::Guest {
+        uri: app.uri.clone(),
+        serial,
+        epoch: app.connection_epoch,
+        domain: name.clone(),
+        panel,
+    };
+    let stale = result(serial.wrapping_sub(1), ui::views::detail::GuestPanel::Loading);
+    let fresh = result(
+        serial,
+        ui::views::detail::GuestPanel::Error(String::from("agent not responding")),
+    );
+    app.apply_selection_result(stale);
+    assert_eq!(
+        app.detail.as_ref().unwrap().guest,
+        ui::views::detail::GuestPanel::Hidden
+    );
+    app.apply_selection_result(fresh);
+    assert_eq!(
+        app.detail.as_ref().unwrap().guest,
+        ui::views::detail::GuestPanel::Error(String::from("agent not responding"))
+    );
+    // Read-only: libvirt refuses guestinfo, so it is not asked.
+    let mut config = Config::default();
+    config.general.read_only = true;
+    crate::config::set_runtime(&config);
+    app.request_guest_info(name.clone());
+    assert!(!app.selection_task.contains_key(&requests::ReadKind::Guest));
+    assert_eq!(
+        app.detail.as_ref().unwrap().guest,
+        ui::views::detail::GuestPanel::Error(String::from("needs a read-write connection"))
+    );
+    crate::config::set_runtime(&Config::default());
+}

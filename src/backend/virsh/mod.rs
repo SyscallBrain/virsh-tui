@@ -4,6 +4,7 @@ pub mod events;
 pub mod exec;
 pub mod host_local;
 pub mod parse_domstats;
+pub mod parse_guestinfo;
 pub mod parse_help;
 pub mod parse_jobinfo;
 pub mod parse_leases;

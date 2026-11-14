@@ -614,6 +614,7 @@ pub(super) fn detail_initial(
             ..Default::default()
         };
         st.xml = String::new();
+        st.guest = ui::views::detail::GuestPanel::Hidden;
         st.fold = ui::views::detail::XmlFold::new(0);
         st.hw = ui::views::detail::hardware::HardwareState::from_config(&st.config, "", false);
         st.snaps.rows.clear();

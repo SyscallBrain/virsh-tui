@@ -60,6 +60,13 @@ pub(super) enum SelectionResult {
         selected: String,
         state: Box<ui::views::detail::DetailState>,
     },
+    Guest {
+        uri: String,
+        serial: u64,
+        epoch: u64,
+        domain: String,
+        panel: ui::views::detail::GuestPanel,
+    },
     Networks {
         uri: String,
         serial: u64,
@@ -80,6 +87,7 @@ pub(super) enum ReadKind {
     Hardware,
     Snapshots,
     Networks,
+    Guest,
 }
 impl Drop for SelectionTask {
     fn drop(&mut self) {
@@ -120,6 +128,7 @@ impl App {
             ReadKind::Hardware,
             ReadKind::Snapshots,
             ReadKind::Networks,
+            ReadKind::Guest,
         ] {
             self.cancel_read(kind);
         }
@@ -568,6 +577,47 @@ impl App {
         );
     }
 
+    /// Ask the guest agent about the open domain (Overview › Guest).
+    pub(super) fn request_guest_info(&mut self, domain: String) {
+        if self.demo {
+            return;
+        }
+        let serial = self.begin_read(ReadKind::Guest);
+        if let Some(detail) = self.detail.as_mut()
+            && detail.domain == domain
+        {
+            detail.guest = if crate::config::read_only() {
+                ui::views::detail::GuestPanel::Error(String::from("needs a read-write connection"))
+            } else {
+                ui::views::detail::GuestPanel::Loading
+            };
+        }
+        if crate::config::read_only() {
+            return;
+        }
+        let uri = self.uri.clone();
+        let epoch = self.connection_epoch;
+        self.selection_task.insert(
+            ReadKind::Guest,
+            SelectionTask(tokio::spawn(async move {
+                use crate::backend::virsh::parse_guestinfo;
+                let panel = match crate::backend::virsh::exec::run(&uri, &["guestinfo", &domain]).await {
+                    Ok(text) => ui::views::detail::GuestPanel::Info(parse_guestinfo::parse(&text)),
+                    Err(e) => {
+                        ui::views::detail::GuestPanel::Error(parse_guestinfo::error_reason(&e.to_string()))
+                    }
+                };
+                SelectionResult::Guest {
+                    uri,
+                    serial,
+                    epoch,
+                    domain,
+                    panel,
+                }
+            })),
+        );
+    }
+
     pub(super) fn request_view_load(&mut self, view: View) {
         if self
             .view_load_tasks
@@ -882,6 +932,22 @@ impl App {
                     self.show_message(format!("✗ {domain} has no accessible CD-ROM drive"));
                 }
             }
+            SelectionResult::Guest {
+                uri,
+                serial,
+                epoch,
+                domain,
+                panel,
+            } if self.uri == uri
+                && self.read_current(ReadKind::Guest, serial)
+                && self.connection_epoch == epoch =>
+            {
+                if let Some(detail) = self.detail.as_mut()
+                    && detail.domain == domain
+                {
+                    detail.guest = panel;
+                }
+            }
             SelectionResult::Detail {
                 uri,
                 serial,
@@ -898,6 +964,9 @@ impl App {
                     .is_some_and(|detail| detail.domain == selected) =>
             {
                 self.detail_loading = false;
+                if state.state == crate::model::DomainState::Running && state.config.has_agent {
+                    self.request_guest_info(selected.clone());
+                }
                 if let Some(detail) = self.detail.as_mut() {
                     let selected_device = detail
                         .hw

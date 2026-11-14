@@ -17,11 +17,11 @@ expression: "buffer_text(DetailTab::Overview)"
  │ Persistent   yes                                                                                                                                                         │ 
  │ UUID         6f1d2c3b-4a5e-4f60-9b7a-0d1e2f3a4b5c                                                                                                                        │ 
  │                                                                                                                                                                          │ 
- │                                                                                                                                                                          │ 
- │                                                                                                                                                                          │ 
- │                                                                                                                                                                          │ 
- │                                                                                                                                                                          │ 
- │                                                                                                                                                                          │ 
+ │ Guest (qemu-ga)                                                                                                                                                          │ 
+ │ Guest OS     Arch Linux · 6.11.2-arch1-1                                                                                                                                 │ 
+ │ Hostname     arch-dev · Europe/Lisbon                                                                                                                                    │ 
+ │ Users        tiago                                                                                                                                                       │ 
+ │ File system  / btrfs 21.0/64.0 GiB  33%                                                                                                                                  │ 
  │                                                                                                                                                                          │ 
  │                                                                                                                                                                          │ 
  │                                                                                                                                                                          │ 

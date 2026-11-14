@@ -210,6 +210,17 @@ Counts (`3j`) and `.` (repeat last action on the current/marked selection) work 
 - Bold only for: titles, selected names, mode pills, keys in hints, active tab.
 - Glyph vocabulary: `◆ ● ○ ‖ ✗ ◌ ▌ ◎ ◫ ▣ ▤ ⏻ ⇄ ▭ ▢ ⌨ ⛨ ⇢ ⌁ ⟳ ❯ ✓ ⚠ ↓ ↑ ━ ─ ░ █ ▁…█ ⠀…⣿`.
 
+### Detail Overview › Guest (qemu-ga)
+
+Running domain with an agent channel: a blank line, `Guest (qemu-ga)` (fg2), then
+`Guest OS` (`<pretty-name> · <kernel>`), `Hostname` (`<hostname> · <timezone>`),
+`Users` (comma list or `none logged in`) and one `File system` row per mount
+(`/ btrfs 21.0/64.0 GiB  33%`), labels dim like the rows above. While reading:
+`asking the agent…`; errors in yellow (`agent not responding (is
+qemu-guest-agent running in the guest?)`, `needs a read-write connection`).
+Demo arch-dev: Arch Linux · 6.11.2-arch1-1 · arch-dev · Europe/Lisbon · tiago ·
+`/ btrfs 21.0/64.0 GiB  33%`.
+
 ### Background job message (work in progress)
 
 Live command jobs show activity on the message line:
