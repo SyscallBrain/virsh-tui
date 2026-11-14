@@ -106,3 +106,11 @@ edits remain visible and another apply is blocked. Record any values you need,
 discard the draft and reopen domain details to reload the configuration before
 retrying. A successful hardware job also waits for its read-back before another
 apply can start.
+
+## Doctor
+
+The doctor's checks only read (`virsh` queries, `PATH` lookups, files). A fix
+runs only after you press `f` and confirm it, through the same paths as the
+rest of the app: `:set`, the confirmation dialog with the commands, the
+editor, or `:connect`. Fixes that need root are shown and copied, never run:
+virsh-tui does not use `sudo` or `pkexec`.

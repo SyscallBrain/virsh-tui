@@ -50,6 +50,7 @@ reject extra words instead of ignoring them.
 | `:set <key>=<value>` | change a setting, validated, applied at once and saved |
 | `:42` | jump to row 42 |
 | `:messages` | open the message history (job output included; `j`/`k` scroll) |
+| `:doctor` | open Settings › Doctor (environment checks and fixes) |
 | `:help [topic]` | open the help |
 | `:w` | apply hardware changes |
 | `:q` | close the current screen, or quit from the dashboard |

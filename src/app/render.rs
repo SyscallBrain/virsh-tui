@@ -187,6 +187,14 @@ pub(super) fn dump_frame(
             &crate::input::keymap::default_map(),
             &crate::input::keymap_file::KeymapFile::in_memory(),
         ),
+        "doctor" => ui::views::settings::render(
+            f,
+            theme,
+            &crate::config::Config::default(),
+            &ui::views::settings::SettingsState::demo_doctor(&crate::config::Config::default()),
+            &crate::input::keymap::default_map(),
+            &crate::input::keymap_file::KeymapFile::in_memory(),
+        ),
         "events" => ui::views::events::render(f, theme, &ui::views::events::EventsState::demo()),
         "wizard" => {
             ui::views::dashboard::render(f, theme, dash);

@@ -13,6 +13,7 @@ virsh-tui [OPTIONS]
 | `--config <PATH>` | use this config file instead of `~/.config/virsh-tui/config.toml` |
 | `--screen <NAME>` | open on a given screen (see below) |
 | `--probe` | print the parsed domains, host, networks and pools as JSON and exit (read-only) |
+| `--doctor` | check the environment, print a report with hints and exit; exit code 1 when a check failed (read-only) |
 | `--dump <FILE>` | render one frame to an ANSI file and exit |
 | `--size <WxH>` | frame size for `--dump`, default `174x43` |
 | `--frozen` | freeze the demo clock and fill the graph history (for tests and screenshots) |
@@ -20,8 +21,8 @@ virsh-tui [OPTIONS]
 | `-V`, `--version` | print the version |
 
 `--screen` accepts `dashboard`, `host`, `networks`, `storage`, `events`,
-`detail`, `monitor`, `hardware`, `snapshots`, `wizard`, `palette`, `help`
-and `settings`. Without `--dump` it only changes the start view for the five
+`detail`, `monitor`, `hardware`, `snapshots`, `wizard`, `palette`, `help`,
+`settings` and `doctor`. Without `--dump` it only changes the start view for the five
 top-level views.
 
 ## Examples
@@ -35,6 +36,9 @@ virsh-tui -c qemu+ssh://admin@hv01/system
 
 # See what the keys would do, without changing anything
 virsh-tui --dry-run
+
+# Check the environment before reporting a problem
+virsh-tui --doctor
 
 # Check what virsh-tui parses from your host
 virsh-tui --probe | jq '.domains[].name'

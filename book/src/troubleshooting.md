@@ -1,5 +1,10 @@
 # Troubleshooting
 
+Start with `virsh-tui --doctor` (or `:doctor` inside the app). It checks
+the client, the connection, permissions, networks, firmware, tools, your
+config files and the terminal, and prints a hint for each problem. Fixes that
+need root are printed as commands for you to run.
+
 Most problems come from `virsh` itself. Run the same thing in a shell first:
 `virsh -c <uri> list --all`. If that fails, virsh-tui fails the same way.
 
@@ -90,7 +95,7 @@ current state before retrying: earlier steps may already have succeeded.
 
 ## Reporting a bug
 
-Include the version (`virsh-tui -V`), `virsh --version`, the URI type
-(system, session, remote), what you pressed, and the log from
+Include the output of `virsh-tui --doctor` (it has the versions, OS and URI;
+`Y` in Settings › Doctor copies it), what you pressed, and the log from
 `~/.local/state/virsh-tui/virsh-tui.log`. Start with
 `RUST_LOG=virsh_tui=debug` for a detailed log.

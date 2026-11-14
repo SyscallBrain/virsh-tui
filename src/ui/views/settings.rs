@@ -106,6 +106,19 @@ impl SettingsState {
         }
     }
 
+    /// Doctor with the demo report, `permissions` selected (screenshots).
+    pub fn demo_doctor(config: &Config) -> Self {
+        let mut st = Self::open_doctor(config);
+        let report = crate::doctor::demo_report();
+        st.doctor.selected = report
+            .checks
+            .iter()
+            .position(|c| c.label == "permissions")
+            .unwrap_or(0);
+        st.doctor.report = Some(report);
+        st
+    }
+
     /// Selected category.
     pub fn category(&self) -> Category {
         Category::ALL[self.cat.min(Category::ALL.len() - 1)].0

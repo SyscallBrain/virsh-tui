@@ -86,7 +86,8 @@ The editor is chosen in this order: `$VISUAL`, `$EDITOR`,
 ## Settings screen
 
 `,` opens the settings. The categories on the left are General, Appearance,
-Keybindings, Connections, Monitoring, Confirmations, and Console & viewer;
+Keybindings, Connections, Monitoring, Confirmations, Console & viewer, and
+Doctor;
 it opens on General with the category list focused (`Enter` or `l` enters a
 category). `j` and `k` move through the options; in the theme list they also preview the
 theme live. `Enter` applies and saves, `h` and `l` switch panes, `Esc`
@@ -94,6 +95,34 @@ reverts unsaved previews and closes.
 
 Keybindings lists every remappable action with its keys and lets you change
 them in place; see [Remapping keys](keys.md#from-the-settings).
+
+### Doctor
+
+![Settings › Doctor](images/doctor.png)
+
+Doctor checks the environment and says what to do about each problem: the
+`virsh` client, the connection and your permissions on it, the event stream,
+active networks, UEFI firmware, the graphical viewer, `virt-install` and
+`virt-clone`, the editor, the clipboard, `config.toml`, `keymap.toml`, the
+theme, the log file and the terminal (size, colours, glyph settings).
+`:doctor` opens it directly, and `virsh-tui --doctor` prints the same report
+in the shell (see [Troubleshooting](troubleshooting.md)).
+
+The checks only read: they run `virsh` queries, look up programs in `PATH`
+and read files. They start when the category is shown; `r` runs them again.
+The selected row shows its hint below the list:
+
+- `f` applies a fix that virsh-tui can do itself, after asking: set
+  `default_uri` to your `LIBVIRT_DEFAULT_URI`, switch the viewer to the one
+  you have installed, go back to the default theme, connect to
+  `qemu:///session` when `qemu:///system` refuses you, start and autostart
+  the inactive `default` network (the usual confirmation with the
+  commands), or open a broken `config.toml` / `keymap.toml` in the editor.
+- `y` copies the command for a fix that needs root, such as
+  `sudo usermod -aG libvirt <user>`, `sudo systemctl enable --now …` or the
+  package install for your distribution (Arch, Debian/Ubuntu, Fedora/RHEL,
+  openSUSE). virsh-tui never runs these itself.
+- `Y` copies the whole report, ready to paste into a bug report.
 
 General › **key hints** turns off the key hints once you know the keys
 (`:set key_hints=false` does the same): the status bars, the actions under the

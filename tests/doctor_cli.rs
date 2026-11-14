@@ -18,3 +18,18 @@ fn doctor_demo_prints_report_and_fails_on_errors() {
     // stdout is a pipe: no colours.
     assert!(!stdout.contains('\x1b'));
 }
+
+#[test]
+fn doctor_screen_dump() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("doctor.ans");
+    let status = Command::new(env!("CARGO_BIN_EXE_virsh-tui"))
+        .args(["--demo", "--frozen", "--screen", "doctor", "--dump"])
+        .arg(&path)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("not in group libvirt"), "{text}");
+    assert!(text.contains("sudo usermod -aG libvirt demo"));
+}
