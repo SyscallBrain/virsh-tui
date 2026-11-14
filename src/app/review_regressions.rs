@@ -1357,3 +1357,61 @@ fn run_completes_action_names_then_domains() {
     let (_, items) = crate::input::complete::complete("run ssh ", &ctx, &none);
     assert_eq!(items[0].value, "web");
 }
+
+#[tokio::test]
+async fn libvirt_job_progress_and_abort_show_on_the_job_line() {
+    use crate::command::job::CommandEvent;
+    let mut app = fixture_app();
+    let plan = crate::command::plan::CommandPlan::single("sh", vec!["-c", "exit 0"], "Migrated");
+    assert!(app.submit_plans(vec![("vt-test-vm".into(), plan)]));
+    app.active_job.as_ref().unwrap().task.abort();
+    let argv: Vec<String> = [
+        "migrate",
+        "--live",
+        "--timeout",
+        "30",
+        "vt-test-vm",
+        "qemu+ssh://h/system",
+    ]
+    .map(String::from)
+    .to_vec();
+    let job = app.active_job.as_mut().unwrap();
+    job.progress = Some(CommandEvent {
+        target: "vt-test-vm".into(),
+        step: 1,
+        total: 1,
+        command: "virsh migrate".into(),
+        program: "virsh".into(),
+        argv,
+    });
+    assert_eq!(
+        job.libvirt_job_domain(|n| n == "vt-test-vm").as_deref(),
+        Some("vt-test-vm"),
+        "flag values (30) are not domains"
+    );
+    assert_eq!(job.libvirt_job_domain(|_| false), None);
+    job.domain_job = crate::backend::virsh::parse_jobinfo::parse(
+        "Job type: Unbounded\nTime elapsed: 10000 ms\nData remaining: 3 GiB\nData total: 4 GiB\n",
+    );
+    let line = |app: &App| {
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 30)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        (0..120)
+            .map(|x| buf[(x, 29)].symbol().to_string())
+            .collect::<String>()
+    };
+    assert!(
+        line(&app).contains("step 1/1 · 25% · 1.0/4.0 GiB · ~30s left"),
+        "{}",
+        line(&app)
+    );
+    let job = app.active_job.as_mut().unwrap();
+    let _ = job.cancel.send(true);
+    job.abort_sent = Some("vt-test-vm".into());
+    assert!(
+        line(&app).contains("cancelling (domjobabort vt-test-vm)"),
+        "{}",
+        line(&app)
+    );
+}

@@ -215,7 +215,9 @@ Counts (`3j`) and `.` (repeat last action on the current/marked selection) work 
 Live command jobs show activity on the message line:
 `⠋ Job #<id> · <target> · step <i>/<n> · <elapsed>s · C-c cancel`.
 Before the first step the status is `preparing`; after a cancellation request
-it is `cancelling`. ASCII icons use `| / - \\` instead of braille. The
+it is `cancelling` (`cancelling (domjobabort <domain>)` for a libvirt job).
+While a migration, save, dump or snapshot runs, libvirt's progress follows the
+step: `step 1/1 · 25% · 1.0/4.0 GiB · ~30s left`. ASCII icons use `| / - \\` instead of braille. The
 complete route and platform acceptance inventory remains in progress.
 
 

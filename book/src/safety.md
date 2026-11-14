@@ -123,9 +123,16 @@ libvirt permissions, nothing more.
 
 ## Cancelling a background job
 
-`Ctrl-c` stops the local client for an active background job. Libvirt may
-continue an operation after the client stops, so verify the object state
-before retrying. Previously completed steps are not rolled back.
+`Ctrl-c` stops the local client for an active background job. When the
+running step is a migration, a save (`managedsave`, `save`), a dump or a
+snapshot, virsh-tui also sends `virsh domjobabort <domain>`, which asks
+libvirt to stop its own job (the job line says
+`cancelling (domjobabort <domain>)`). Other operations may continue in
+libvirt after the client stops, so verify the object state before retrying.
+Previously completed steps are not rolled back.
+
+While such a job runs, the job line shows libvirt's progress from
+`virsh domjobinfo`, read once a second: `25% · 1.0/4.0 GiB · ~30s left`.
 
 If a hardware job may have changed the domain but did not finish, its pending
 edits remain visible and another apply is blocked. Record any values you need,

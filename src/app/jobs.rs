@@ -39,6 +39,13 @@ pub(super) struct ActiveJob {
     pub editor_draft: Option<EditorDraft>,
     pub started_ledger: crate::command::job::StartedLedger,
     pub task: tokio::task::JoinHandle<BatchOutcome>,
+    /// Latest `domjobinfo` of the domain the running step works on.
+    pub domain_job: Option<crate::backend::virsh::parse_jobinfo::DomainJob>,
+    /// A `domjobinfo` read in flight.
+    pub jobinfo_rx:
+        Option<tokio::sync::oneshot::Receiver<Option<crate::backend::virsh::parse_jobinfo::DomainJob>>>,
+    /// `domjobabort` was sent for this domain (C-c).
+    pub abort_sent: Option<String>,
 }
 
 impl Drop for ActiveJob {
@@ -80,12 +87,42 @@ impl ActiveJob {
             editor_draft: None,
             started_ledger,
             task,
+            domain_job: None,
+            jobinfo_rx: None,
+            abort_sent: None,
         }
+    }
+
+    /// The domain whose libvirt job the running step drives (migrate, save,
+    /// dump, snapshots), if any. `known` tells domain names apart from flag
+    /// values.
+    pub(super) fn libvirt_job_domain(&self, known: impl Fn(&str) -> bool) -> Option<String> {
+        const JOBS: &[&str] = &[
+            "migrate",
+            "managedsave",
+            "save",
+            "dump",
+            "snapshot-create-as",
+            "snapshot-create",
+            "snapshot-revert",
+        ];
+        let progress = self.progress.as_ref()?;
+        if progress.program != "virsh" {
+            return None;
+        }
+        let mut words = progress.argv.iter().map(String::as_str);
+        let sub = words.find(|a| !a.starts_with('-'))?;
+        if !JOBS.contains(&sub) {
+            return None;
+        }
+        words
+            .filter(|a| !a.starts_with('-'))
+            .find(|a| known(a))
+            .map(String::from)
     }
 }
 
 impl App {
-    /// One job at a time: say so (and flash the job line) when busy.
     /// Refuse `what` on a read-only connection, saying why. True: refused.
     pub(super) fn refuse_if_read_only(&mut self, what: &str) -> bool {
         let Some(reason) = crate::config::read_only_reason() else {
@@ -110,6 +147,7 @@ impl App {
         self.refuse_if_read_only(&what)
     }
 
+    /// One job at a time: say so (and flash the job line) when busy.
     pub(super) fn refuse_if_busy(&mut self) -> bool {
         let Some(job) = &self.active_job else {
             return false;
@@ -571,9 +609,63 @@ impl App {
     }
 
     pub(super) fn cancel_job(&mut self) {
-        if let Some(job) = &self.active_job {
-            let _ = job.cancel.send(true);
+        let Some(job) = &self.active_job else { return };
+        let _ = job.cancel.send(true);
+        // Stopping virsh does not stop libvirt's job: abort it too.
+        let known = |n: &str| self.dash.rows.iter().any(|r| r.name == n);
+        if job.abort_sent.is_none()
+            && !self.demo
+            && !self.dry_run
+            && let Some(domain) = job.libvirt_job_domain(known)
+        {
+            let uri = job.uri.clone();
+            let name = domain.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::backend::virsh::exec::run(&uri, &["domjobabort", &name]).await {
+                    tracing::warn!("domjobabort {name}: {e}");
+                }
+            });
+            self.messages.push(format!("virsh domjobabort {domain}"));
+            if let Some(job) = self.active_job.as_mut() {
+                job.abort_sent = Some(domain);
+            }
         }
+    }
+
+    /// Once a second: read the progress of the running libvirt job.
+    pub(super) fn poll_domain_job(&mut self) {
+        if self.demo || self.dry_run {
+            return;
+        }
+        let known: std::collections::HashSet<String> =
+            self.dash.rows.iter().map(|r| r.name.clone()).collect();
+        let Some(job) = self.active_job.as_mut() else {
+            return;
+        };
+        if let Some(rx) = job.jobinfo_rx.as_mut() {
+            match rx.try_recv() {
+                Ok(info) => {
+                    job.domain_job = info;
+                    job.jobinfo_rx = None;
+                }
+                Err(tokio::sync::oneshot::error::TryRecvError::Empty) => return,
+                Err(tokio::sync::oneshot::error::TryRecvError::Closed) => job.jobinfo_rx = None,
+            }
+        }
+        let Some(domain) = job.libvirt_job_domain(|n| known.contains(n)) else {
+            job.domain_job = None;
+            return;
+        };
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let uri = job.uri.clone();
+        tokio::spawn(async move {
+            let info = crate::backend::virsh::exec::run(&uri, &["domjobinfo", &domain])
+                .await
+                .ok()
+                .and_then(|text| crate::backend::virsh::parse_jobinfo::parse(&text));
+            let _ = tx.send(info);
+        });
+        job.jobinfo_rx = Some(rx);
     }
 
     pub(super) fn submit_snapshot(&mut self, key: KeyEvent) -> bool {

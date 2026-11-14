@@ -5,6 +5,7 @@ pub mod exec;
 pub mod host_local;
 pub mod parse_domstats;
 pub mod parse_help;
+pub mod parse_jobinfo;
 pub mod parse_leases;
 pub mod parse_list;
 pub mod parse_xml;

@@ -967,9 +967,21 @@ impl App {
                 ),
             };
             let step = if *job.cancel.borrow() {
-                "cancelling".to_string()
+                match &job.abort_sent {
+                    Some(domain) => format!("cancelling (domjobabort {domain})"),
+                    None => "cancelling".to_string(),
+                }
             } else {
-                step
+                // A migration, save or snapshot: libvirt's own progress.
+                match job
+                    .domain_job
+                    .as_ref()
+                    .map(|i| i.summary())
+                    .filter(|s| !s.is_empty())
+                {
+                    Some(progress) => format!("{step} · {progress}"),
+                    None => step,
+                }
             };
             let text = format!(
                 "{spinner} Job #{} · {target} · {step} · {}s · C-c cancel",
@@ -1103,6 +1115,7 @@ impl App {
                 self.events_state.push(ev);
             }
         }
+        self.poll_domain_job();
         self.enter_view_if_changed();
     }
 
