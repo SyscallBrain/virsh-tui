@@ -299,6 +299,7 @@ pub async fn run_with_shutdown(
         tags_rx: None,
         tags_names: Vec::new(),
         migrate: None,
+        pool_form: None,
         events_rx,
         view,
         pending_quit_z,
@@ -554,6 +555,8 @@ struct App {
     tags_names: Vec<String>,
     /// `Space M` dialog.
     migrate: Option<ui::overlays::migrate::MigrateState>,
+    /// Storage › `N` dialog.
+    pool_form: Option<ui::overlays::pool::PoolState>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
@@ -914,6 +917,9 @@ impl App {
             }
             if let Some(m) = &self.migrate {
                 crate::ui::overlays::migrate::render(f, &self.theme, m);
+            }
+            if let Some(p) = &self.pool_form {
+                crate::ui::overlays::pool::render(f, &self.theme, p);
             }
             if let Some(pal) = &self.palette {
                 crate::ui::overlays::palette::render(f, &self.theme, pal);
@@ -2087,6 +2093,18 @@ impl App {
             self.submit_wizard(wizard.clone());
             return false;
         }
+        if let Some(dialog) = self.pool_form.as_mut() {
+            use crate::ui::overlays::pool::Outcome;
+            match dialog.key(key) {
+                Outcome::None => {}
+                Outcome::Close => self.pool_form = None,
+                Outcome::Submit(name, plan) => {
+                    self.pool_form = None;
+                    self.submit_pool_create(name, plan);
+                }
+            }
+            return false;
+        }
         if let Some(dialog) = self.migrate.as_mut() {
             use crate::ui::overlays::migrate::Outcome;
             match dialog.key(key) {
@@ -2210,6 +2228,20 @@ impl App {
         // An unfinished key sequence takes precedence over view-specific raw keys.
         let sequence_in_progress = self.engine.pending_prefix().is_some() || self.engine.has_pending_digits();
         // Storage raw keys (picker, forms, pool/vol actions) bypass the engine.
+        if self.view == View::Storage
+            && self.store.picker.is_none()
+            && !sequence_in_progress
+            && key.code == KeyCode::Char('N')
+            && !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            if !self.refuse_if_read_only("pool-define-as") {
+                let existing = self.store.pools.iter().map(|p| p.name.clone()).collect();
+                self.pool_form = Some(ui::overlays::pool::PoolState::new(existing));
+            }
+            return false;
+        }
         if self.store.picker.is_some() && !self.demo && !self.dry_run && self.submit_picker(key) {
             return false;
         }
@@ -3150,6 +3182,7 @@ mod tests {
             tags_rx: None,
             tags_names: Vec::new(),
             migrate: None,
+            pool_form: None,
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,

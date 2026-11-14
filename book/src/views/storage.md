@@ -15,11 +15,30 @@ that use it. `h` and `l` move the focus between the two lists.
 | `b` | build the pool (create its directory or format its device) |
 | `r` | refresh the volume list |
 | `a` | toggle autostart |
+| `N` | create a pool (dialog) |
 
 Inactive pools are listed too, so `s` can start them. The volumes of every
 active pool are read when the view opens: moving between pools does not run
 `virsh` again, and the volume cursor stays on the same volume after a
 refresh or a job.
+
+### Creating a pool
+
+`N` opens the new-pool dialog. Pick the type with `←` / `→`:
+
+| Type | Source | Default target |
+|------|--------|----------------|
+| `dir` | a folder on this host | `/var/lib/libvirt/images/<name>` |
+| `netfs` | NFS server and export path | `/mnt/libvirt/<name>` (libvirt mounts it) |
+| `logical` | an existing LVM volume group | `/dev/<vg>` |
+| `fs` | a block device with a file system (`/dev/sdb1`) | `/mnt/libvirt/<name>` |
+
+Typing in **Target** starts from the suggested path. The dialog runs
+`pool-define-as`, then, if checked, `pool-build` (only for `dir` and
+`netfs`, where it just creates the folder; for `fs` it could format the
+device, so it is never offered), `pool-start` and `pool-autostart`. The
+commands are shown as you fill in the form; `Enter` runs them as one job
+and the view reloads afterwards.
 
 ## Volumes
 

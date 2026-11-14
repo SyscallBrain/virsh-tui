@@ -221,6 +221,15 @@ live / persistent / undefine on this host afterwards, `disks` radios (shared
 command, `✗ <error>` in red after a refused Enter, then `⎋ cancel` / `⏎ migrate`
 (blue) and dim `⇥/↑↓ move · ␣ toggle · ←→ disks`.
 
+### New pool dialog (Storage `N`)
+
+Blue modal `◫ New storage pool`, 78 wide, height fits: `Name`, `Type` radios
+(dir · netfs · logical · fs) with a dim one-line description, type fields
+(`Server`/`Export` · `VG` · `Device`), `Target` (dim suggestion until typed),
+checkboxes build (dir/netfs only) · start now · autostart, blank, one
+`$ virsh …` line per command (or the yellow problem), `✗` error after a refused
+Enter, then `⎋ cancel` / `⏎ create`.
+
 ### Tags
 
 Stored as `<vt:tags xmlns:vt="https://syscallbrain.github.io/virsh-tui/xmlns/tags/1">a b</vt:tags>`.

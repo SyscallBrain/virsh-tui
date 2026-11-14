@@ -611,6 +611,21 @@ impl App {
         true
     }
 
+    /// Run the new-pool dialog's commands, then reload Storage.
+    pub(super) fn submit_pool_create(&mut self, name: String, plan: CommandPlan) {
+        if self.demo || self.dry_run {
+            let shown: Vec<String> = plan.steps.iter().map(crate::command::display::display).collect();
+            let prefix = if self.demo { "✓" } else { "[dry-run]" };
+            self.show_message(format!("{prefix} {}  ── {}", plan.summary, shown.join(" ; ")));
+            return;
+        }
+        if self.submit_plans(vec![(name, plan)])
+            && let Some(job) = self.active_job.as_mut()
+        {
+            job.refresh_storage = true;
+        }
+    }
+
     /// Run the migrate dialog's command.
     pub(super) fn submit_migration(&mut self, domain: String, argv: Vec<String>) {
         let step = crate::command::plan::CommandStep {

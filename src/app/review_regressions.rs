@@ -1591,3 +1591,34 @@ async fn space_m_opens_the_migrate_dialog_and_enter_runs_it() {
     app.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert!(app.migrate.is_none() && app.active_job.is_none());
 }
+
+#[tokio::test]
+async fn capital_n_in_storage_opens_the_pool_dialog_and_creates_the_pool() {
+    let mut app = fixture_app();
+    app.view = View::Storage;
+    app.handle_key_event(shift('N'));
+    assert!(app.pool_form.is_some());
+    for c in "vt-test-pool".chars() {
+        app.handle_key_event(plain(c));
+    }
+    if std::env::var_os("VT_PRINT").is_some() {
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 36)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        for y in 0..36 {
+            println!(
+                "{}",
+                (0..120)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            );
+        }
+    }
+    app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(app.pool_form.is_none());
+    let job = app.active_job.take().expect("pool creation runs as a job");
+    assert!(job.refresh_storage);
+    let first = &job.plans[0].1.steps[0].argv;
+    assert_eq!(first[..3], ["pool-define-as", "vt-test-pool", "dir"]);
+    job.task.abort();
+}
