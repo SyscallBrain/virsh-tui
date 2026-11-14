@@ -210,6 +210,17 @@ Counts (`3j`) and `.` (repeat last action on the current/marked selection) work 
 - Bold only for: titles, selected names, mode pills, keys in hints, active tab.
 - Glyph vocabulary: `◆ ● ○ ‖ ✗ ◌ ▌ ◎ ◫ ▣ ▤ ⏻ ⇄ ▭ ▢ ⌨ ⛨ ⇢ ⌁ ⟳ ❯ ✓ ⚠ ↓ ↑ ━ ─ ░ █ ▁…█ ⠀…⣿`.
 
+### Migrate dialog (`␣M`)
+
+Blue-bordered modal `⇄ Migrate <domain>`, 76 wide, height fits the content:
+`❯ To   <uri>▏` (cyan), dim `C-n / C-p: <saved URIs>` line, blank, checkboxes
+live / persistent / undefine on this host afterwards, `disks` radios (shared
+(no copy) · copy all disks · copy incremental), auto-converge, compressed
+(options that need a running domain are dim when it is shut off, with a yellow
+`Shut off: only the definition moves…` note), blank, the `$ virsh migrate …`
+command, `✗ <error>` in red after a refused Enter, then `⎋ cancel` / `⏎ migrate`
+(blue) and dim `⇥/↑↓ move · ␣ toggle · ←→ disks`.
+
 ### Tags
 
 Stored as `<vt:tags xmlns:vt="https://syscallbrain.github.io/virsh-tui/xmlns/tags/1">a b</vt:tags>`.

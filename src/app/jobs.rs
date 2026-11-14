@@ -611,6 +611,27 @@ impl App {
         true
     }
 
+    /// Run the migrate dialog's command.
+    pub(super) fn submit_migration(&mut self, domain: String, argv: Vec<String>) {
+        let step = crate::command::plan::CommandStep {
+            program: String::from("virsh"),
+            argv,
+            stdin: None,
+        };
+        let dest = step.argv.last().cloned().unwrap_or_default();
+        if self.demo || self.dry_run {
+            let shown = crate::command::display::display(&step);
+            let prefix = if self.demo { "✓" } else { "[dry-run]" };
+            self.show_message(format!("{prefix} Migrate {domain} to {dest}  ── {shown}"));
+            return;
+        }
+        let plan = CommandPlan {
+            summary: format!("Migrated {domain} to {dest}"),
+            steps: vec![step],
+        };
+        self.submit_plans(vec![(domain, plan)]);
+    }
+
     pub(super) fn cancel_job(&mut self) {
         let Some(job) = &self.active_job else { return };
         let _ = job.cancel.send(true);

@@ -73,7 +73,8 @@ one to the clipboard.
 
 Some actions prefill the `:` line with the full `virsh` command instead of
 running it, so you can adjust flags first. Disk and NIC attachment
-(`Space d a`, `Space i a`) and migration (`Space M`) work this way.
+(`Space d a`, `Space i a`) work this way. Migration (`Space M`) opens a
+dialog that builds the command (see [Domains](views/domains.md#migrating)).
 
 ## Confirmations
 

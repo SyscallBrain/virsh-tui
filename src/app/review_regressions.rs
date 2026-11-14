@@ -1555,3 +1555,39 @@ fn visual_mode_extends_to_the_last_row_with_capital_g() {
     app.handle_key_event(shift('G'));
     assert_eq!(app.dash.marks.len(), app.dash.visible_rows().len());
 }
+
+#[tokio::test]
+async fn space_m_opens_the_migrate_dialog_and_enter_runs_it() {
+    let mut app = fixture_app();
+    app.config.connections.uris = vec![app.uri.clone(), String::from("qemu+ssh://hv02/system")];
+    let name = app.dash.selected().name.clone();
+    app.handle_key_event(plain(' '));
+    app.handle_key_event(shift('M'));
+    let dialog = app.migrate.as_ref().expect("dialog open");
+    assert_eq!(dialog.domain, name);
+    if std::env::var_os("VT_PRINT").is_some() {
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(140, 40)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        for y in 0..40 {
+            println!(
+                "{}",
+                (0..140)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            );
+        }
+    }
+    app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(app.migrate.is_none());
+    let job = app.active_job.take().expect("migration runs as a job");
+    let argv = &job.plans[0].1.steps[0].argv;
+    assert_eq!(argv.first().map(String::as_str), Some("migrate"));
+    assert_eq!(argv.last().map(String::as_str), Some("qemu+ssh://hv02/system"));
+    job.task.abort();
+    // Esc closes without running.
+    app.handle_key_event(plain(' '));
+    app.handle_key_event(shift('M'));
+    app.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(app.migrate.is_none() && app.active_job.is_none());
+}

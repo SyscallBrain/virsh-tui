@@ -298,6 +298,7 @@ pub async fn run_with_shutdown(
         ex_history_path,
         tags_rx: None,
         tags_names: Vec::new(),
+        migrate: None,
         events_rx,
         view,
         pending_quit_z,
@@ -551,6 +552,8 @@ struct App {
     /// Domain tags read in flight, and the names they were read for.
     tags_rx: Option<tags::TagsRx>,
     tags_names: Vec<String>,
+    /// `Space M` dialog.
+    migrate: Option<ui::overlays::migrate::MigrateState>,
     events_rx: Option<tokio::sync::mpsc::Receiver<crate::model::LibvirtEvent>>,
     view: View,
     pending_quit_z: bool,
@@ -908,6 +911,9 @@ impl App {
             if let Some(wz) = &self.wizard {
                 crate::ui::overlays::wizard::render(f, &self.theme, wz);
                 render_wizard_status(f, &self.theme, wz);
+            }
+            if let Some(m) = &self.migrate {
+                crate::ui::overlays::migrate::render(f, &self.theme, m);
             }
             if let Some(pal) = &self.palette {
                 crate::ui::overlays::palette::render(f, &self.theme, pal);
@@ -2081,6 +2087,19 @@ impl App {
             self.submit_wizard(wizard.clone());
             return false;
         }
+        if let Some(dialog) = self.migrate.as_mut() {
+            use crate::ui::overlays::migrate::Outcome;
+            match dialog.key(key) {
+                Outcome::None => {}
+                Outcome::Close => self.migrate = None,
+                Outcome::Submit(argv) => {
+                    let domain = dialog.domain.clone();
+                    self.migrate = None;
+                    self.submit_migration(domain, argv);
+                }
+            }
+            return false;
+        }
         if self.wizard.is_some()
             && handle_wizard_key(
                 key,
@@ -2732,6 +2751,24 @@ impl App {
                     open_wizard(&mut self.wizard, facts);
                     continue;
                 }
+                (View::Dashboard | View::Detail, A::Migrate) => {
+                    let (domain, running) = match self.current_detail() {
+                        Some(d) => (d.domain.clone(), d.state == crate::model::DomainState::Running),
+                        None => {
+                            let r = self.dash.selected();
+                            (r.name.clone(), r.state == crate::model::DomainState::Running)
+                        }
+                    };
+                    if !domain.is_empty() {
+                        self.migrate = Some(ui::overlays::migrate::MigrateState::new(
+                            &domain,
+                            running,
+                            &self.uri,
+                            &self.config.connections.uris,
+                        ));
+                    }
+                    continue;
+                }
                 (_, A::DiskAttach | A::DiskResize | A::NicAttach | A::NicLink | A::Migrate) => {
                     let (domain, running) = match &self.detail {
                         Some(d) if self.view == View::Detail => {
@@ -3112,6 +3149,7 @@ mod tests {
             ex_history_path: None,
             tags_rx: None,
             tags_names: Vec::new(),
+            migrate: None,
             events_rx: None,
             view: View::Dashboard,
             pending_quit_z: false,

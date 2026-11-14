@@ -49,6 +49,28 @@ After `S`, virsh-tui watches the domain. If it is still running after the
 grace period, the message line says the guest ignored the request, and you
 can retry or use `D`.
 
+## Migrating
+
+`Space M` (in the list or the detail view) opens the migrate dialog for the
+selected domain:
+
+- **To**: the destination URI. `Ctrl-n` / `Ctrl-p` cycle through
+  `connections.uris` (minus the current one); add your hosts there.
+- **live** keeps a running guest running while its memory moves;
+  **persistent** defines it on the destination; **undefine on this host
+  afterwards** removes the source definition.
+- **disks**: leave *shared* when both hosts see the same storage (NFS, Ceph,
+  iSCSI); otherwise *copy all disks* or *copy incremental* (the destination
+  needs the disk images' paths to exist).
+- **auto-converge** slows a busy guest so a live migration can finish;
+  **compressed** trades CPU for less traffic.
+
+A shut-off domain moves only its definition (`--offline --persistent`).
+The dialog shows the exact `virsh migrate` command; `Enter` runs it as a
+job, whose line shows libvirt's progress (`45% · 3.6/8.0 GiB · ~20s left`),
+and `Ctrl-c` aborts it with `domjobabort`. virsh cannot ask for passwords
+here: use SSH keys (or an agent) for `qemu+ssh://` destinations.
+
 ## Tags
 
 Tags group domains your way (`web`, `prod`, `k8s`). They are stored in the
