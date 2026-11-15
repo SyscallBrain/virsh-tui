@@ -16,6 +16,9 @@ virsh-tui follows the XDG base directory layout.
 Temporary files fall back to the system temp directory when
 `$XDG_RUNTIME_DIR` is not set.
 
+On macOS all of these files except the temporary XML ones live in
+`~/Library/Application Support/virsh-tui/`.
+
 Each session appends to the log. `general.log_level = "debug"` or
 `RUST_LOG=virsh_tui=debug virsh-tui` makes it verbose; include it when you
 report a bug.

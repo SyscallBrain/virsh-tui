@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// History file path.
 pub fn path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", "virsh-tui").and_then(|d| d.state_dir().map(|p| p.join("history")))
+    crate::config::state_dir().map(|p| p.join("history"))
 }
 
 /// The last `limit` lines of the file (missing or unreadable: empty).

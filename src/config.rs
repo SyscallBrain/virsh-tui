@@ -570,9 +570,30 @@ impl Config {
     }
 }
 
+/// Directory for the log, the `:` history and the wizard draft:
+/// `$XDG_STATE_HOME/virsh-tui` on Linux. Other platforms have no state
+/// directory, so it falls back to the local data directory
+/// (`~/Library/Application Support/virsh-tui` on macOS, next to the config).
+pub fn state_dir() -> Option<std::path::PathBuf> {
+    let dirs = directories::ProjectDirs::from("", "", "virsh-tui")?;
+    Some(
+        dirs.state_dir()
+            .unwrap_or_else(|| dirs.data_local_dir())
+            .to_path_buf(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::Config;
+
+    #[test]
+    fn state_dir_exists_on_every_platform() {
+        // `ProjectDirs::state_dir` is Linux-only; without a fallback macOS
+        // had no log, no `:` history and no wizard draft.
+        let dir = super::state_dir().expect("a state directory");
+        assert!(dir.ends_with("virsh-tui"), "{}", dir.display());
+    }
 
     #[test]
     fn defaults_match_spec() {

@@ -869,9 +869,7 @@ impl WizardState {
 
     /// Draft file path.
     pub fn draft_path() -> Option<std::path::PathBuf> {
-        directories::ProjectDirs::from("", "", "virsh-tui")
-            .and_then(|d| d.state_dir().map(|p| p.to_path_buf()))
-            .map(|p| p.join("wizard-draft.toml"))
+        crate::config::state_dir().map(|p| p.join("wizard-draft.toml"))
     }
 
     /// Save the draft.

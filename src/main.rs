@@ -196,9 +196,7 @@ fn log_level(level: &str) -> &'static str {
 /// log is kept as `.old` past 4 MiB). Logging is best effort: without a state
 /// directory, or when the file cannot be opened, the app runs without it.
 fn init_logging(level: &str) -> Result<()> {
-    let Some(dir) = directories::ProjectDirs::from("", "", "virsh-tui")
-        .and_then(|d| d.state_dir().map(|p| p.to_path_buf()))
-    else {
+    let Some(dir) = virsh_tui::config::state_dir() else {
         return Ok(());
     };
     let _ = std::fs::create_dir_all(&dir);

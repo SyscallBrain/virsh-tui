@@ -253,9 +253,7 @@ impl Ctx {
             config_path: config.source.clone().or_else(crate::config::Config::path),
             keymap_path: crate::input::keymap::path(),
             themes_dir: dirs.as_ref().map(|d| d.config_dir().join("themes")),
-            log_path: dirs
-                .as_ref()
-                .and_then(|d| d.state_dir().map(|s| s.join("virsh-tui.log"))),
+            log_path: crate::config::state_dir().map(|s| s.join("virsh-tui.log")),
             term_size,
         }
     }
