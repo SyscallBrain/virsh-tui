@@ -30,6 +30,26 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  macos:
+    name: clippy, test on macOS
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install virsh (for the help-parser tests)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: brew install libvirt
+      - name: Install the Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
   msrv:
     name: build on Rust 1.88
     runs-on: ubuntu-latest
