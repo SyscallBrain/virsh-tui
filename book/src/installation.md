@@ -31,6 +31,15 @@ with `SHA256SUMS` listing the checksum of every file. x86_64 files are named
 static (musl), so it does not depend on your distribution's glibc. Releases
 after 0.1.0 have these packages; 0.1.0 has only an x86_64 archive.
 
+Releases after 0.3.1 also carry signed build provenance, which proves a file
+was built by this repository's release workflow. With the
+[GitHub CLI](https://cli.github.com) you can check it:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify virsh-tui_*_amd64.deb --repo SyscallBrain/virsh-tui
+```
+
 | System | File | Install |
 |--------|------|---------|
 | Debian, Ubuntu | `virsh-tui_VERSION-1_amd64.deb` | `sudo apt install ./virsh-tui_*_amd64.deb` |
