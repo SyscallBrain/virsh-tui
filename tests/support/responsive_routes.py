@@ -11,6 +11,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 binary, route = sys.argv[1:]
@@ -74,7 +76,7 @@ elif command == 'vol-dumpxml':
     env = os.environ.copy()
     env.update(TERM="xterm-256color", PATH=str(binaries) + os.pathsep + env.get("PATH", ""),
                XDG_CONFIG_HOME=directory, XDG_STATE_HOME=directory, XDG_CACHE_HOME=directory,
-               VT_ROOT=directory, VT_ROUTE=route)
+               HOME=directory, VT_ROOT=directory, VT_ROUTE=route)
     def controlling_terminal():
         os.setsid()
         fcntl.ioctl(0, termios.TIOCSCTTY, 0)
@@ -156,7 +158,10 @@ elif command == 'vol-dumpxml':
             os.write(master, b" n")
             wait_for(lambda: b"New domain" in output, "new wizard did not open while busy")
             os.write(master, b"vt-test-new\r")
-            draft = root / "virsh-tui" / "wizard-draft.toml"
+            # macOS has no XDG state directory: the app falls back to the
+            # local data directory under $HOME.
+            state = root / "Library" / "Application Support" if sys.platform == "darwin" else root
+            draft = state / "virsh-tui" / "wizard-draft.toml"
             wait_for(lambda: draft.exists() and 'name = "vt-test-new"' in draft.read_text()
                      and 'step = 1' in draft.read_text(), "new draft did not accept input or advance")
             os.write(master, b"\x1b")
@@ -210,12 +215,6 @@ elif command == 'vol-dumpxml':
         wait_for(lambda: child.poll() is not None, "application did not quit")
         assert child.returncode == 0, f"unexpected exit status: {child.returncode}"
     finally:
-        if child.poll() is None:
-            child.send_signal(signal.SIGTERM)
-            try:
-                child.wait(timeout=6)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+        ptywait.stop(child, master)
         os.close(master)
         os.close(slave)

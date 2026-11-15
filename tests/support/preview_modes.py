@@ -12,6 +12,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 binary, mode = sys.argv[1:]
@@ -98,12 +100,6 @@ elif program == 'virsh' and args[:1] == ['dumpxml']:
                 assert not (words[0] == "virt-install" or
                             (words[0] == "virsh" and len(words) > 1 and words[1] in forbidden)), lines
     finally:
-        if child.poll() is None:
-            child.send_signal(signal.SIGTERM)
-            try:
-                child.wait(timeout=6)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+        ptywait.stop(child, master)
         os.close(master)
         os.close(slave)

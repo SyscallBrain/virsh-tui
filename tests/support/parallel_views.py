@@ -19,6 +19,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 NETWORKS = 12
@@ -120,12 +122,7 @@ def main() -> int:
                     if b"\x1b[6n" in chunk:
                         os.write(master, b"\x1b[1;1R")
         finally:
-            child.send_signal(signal.SIGTERM)
-            try:
-                child.wait(timeout=6)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+            ptywait.stop(child, master)
             os.close(master)
             os.close(slave)
         # The ratatui backend writes changed cells individually, so the network

@@ -11,6 +11,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 with tempfile.TemporaryDirectory() as directory:
@@ -81,13 +83,13 @@ time.sleep(30)
                 next_key = time.monotonic() + 0.3
         assert (root / "ready").exists(), "foreground editor did not start"
         child.send_signal(signal.SIGTERM)
-        assert child.wait(timeout=7) == 143, "unexpected signal exit status"
-        assert termios.tcgetattr(slave) == before, "terminal attributes were not restored"
+        assert ptywait.wait(child, master, 7) == 143, "unexpected signal exit status"
+        # Through the master: macOS revokes the slave fds once the session
+        # leader exits, and both ends report the slave's attributes.
+        assert termios.tcgetattr(master) == before, "terminal attributes were not restored"
         time.sleep(1.7)
         assert not (root / "survived").exists(), "editor descendant survived shutdown"
     finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait()
+        ptywait.kill(child, master)
         os.close(master)
         os.close(slave)

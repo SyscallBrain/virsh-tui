@@ -11,6 +11,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 mode = sys.argv[2] if len(sys.argv) > 2 else "domain"
@@ -166,11 +168,6 @@ else:
             time.sleep(0.02)
         assert not any(Path(path).exists() for path in paths), "validation XML file leaked"
     finally:
-        if child.poll() is None:
-            child.send_signal(signal.SIGTERM)
-            try: child.wait(timeout=6)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+        ptywait.stop(child, master)
         os.close(master)
         os.close(slave)

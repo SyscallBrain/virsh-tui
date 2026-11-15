@@ -11,6 +11,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 with tempfile.TemporaryDirectory() as directory:
@@ -145,12 +147,6 @@ elif cmd == 'dumpxml':
         wait_for(lambda: child.poll() is not None, frame_deadline, "application did not quit after cancellation")
         assert child.returncode == 0, f"unexpected exit status {child.returncode}"
     finally:
-        if child.poll() is None:
-            child.send_signal(signal.SIGTERM)
-            try:
-                child.wait(timeout=6)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+        ptywait.stop(child, master)
         os.close(master)
         os.close(slave)

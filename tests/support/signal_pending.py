@@ -11,6 +11,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 binary, mode, signal_name = sys.argv[1:]
@@ -104,8 +106,6 @@ if command == 'domstats':
             time.sleep(1.4)
             assert not (root / "survived").exists(), "held read descendant survived shutdown"
     finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait()
+        ptywait.kill(child, master)
         os.close(master)
         os.close(slave)

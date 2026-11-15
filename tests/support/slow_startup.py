@@ -10,6 +10,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 with tempfile.TemporaryDirectory() as directory:
@@ -58,12 +60,7 @@ with tempfile.TemporaryDirectory() as directory:
                 if b"\x1b[6n" in chunk: os.write(master, b"\x1b[1;1R")
         assert any("test:///vt-test-next" in path.read_text() for path in args_dir.iterdir()), "connect waited for backend"
     finally:
-        child.send_signal(signal.SIGTERM)
-        try:
-            child.wait(timeout=6)
-        except subprocess.TimeoutExpired:
-            child.kill()
-            child.wait()
+        ptywait.stop(child, master)
         if sys.platform.startswith("linux"):
             def alive(pid):
                 try:

@@ -9,6 +9,8 @@ import tempfile
 import termios
 import time
 
+import ptywait
+
 master, slave = pty.openpty()
 before = termios.tcgetattr(slave)
 with tempfile.TemporaryDirectory() as directory:
@@ -30,13 +32,11 @@ with tempfile.TemporaryDirectory() as directory:
         # Allow the runtime to register its signal hooks after terminal setup.
         time.sleep(0.3)
         child.send_signal(signal.SIGTERM)
-        code = child.wait(timeout=6)
+        code = ptywait.wait(child, master, 6)
         after = termios.tcgetattr(slave)
         assert code == 143, f"unexpected exit status: {code}"
         assert after == before, "terminal attributes were not restored"
     finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait()
+        ptywait.kill(child, master)
 os.close(master)
 os.close(slave)

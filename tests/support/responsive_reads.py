@@ -11,6 +11,8 @@ import sys
 import tempfile
 import termios
 import time
+
+import ptywait
 from pathlib import Path
 
 binary, mode = sys.argv[1:]
@@ -177,12 +179,6 @@ elif command == 'domdisplay':
         wait_for(lambda: child.poll() is not None, 8, "application did not quit")
         assert child.returncode == 0, f"unexpected exit status: {child.returncode}"
     finally:
-        if child.poll() is None:
-            child.send_signal(signal.SIGTERM)
-            try:
-                child.wait(timeout=6)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+        ptywait.stop(child, master)
         os.close(master)
         os.close(slave)
