@@ -61,7 +61,7 @@ You need Rust 1.88 or newer. Install it with [rustup](https://rustup.rs) if your
 distribution ships an older version.
 
 ```sh
-cargo install --locked --git https://github.com/SyscallBrain/virsh-tui
+cargo install --locked virsh-tui
 ```
 
 This puts the `virsh-tui` binary in `~/.cargo/bin`. To build from a clone

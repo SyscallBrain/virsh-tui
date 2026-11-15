@@ -118,10 +118,11 @@ static, so it runs on any distribution whatever its glibc. (Releases after
 | openSUSE | `sudo zypper install --allow-unsigned-rpm ./virsh-tui-*.x86_64.rpm` |
 | Any other Linux | unpack the `.tar.gz` and put `virsh-tui` on your `PATH` |
 
-To build it yourself you need Rust 1.88 or newer:
+To build it yourself you need Rust 1.88 or newer. It is on
+[crates.io](https://crates.io/crates/virsh-tui):
 
 ```sh
-cargo install --locked --git https://github.com/SyscallBrain/virsh-tui
+cargo install --locked virsh-tui
 ```
 
 Or from a clone:

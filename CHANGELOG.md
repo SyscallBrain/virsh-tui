@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-15
+
+### Added
+
+- virsh-tui is on [crates.io](https://crates.io/crates/virsh-tui):
+  `cargo install --locked virsh-tui`.
+
+### Fixed
+
+- virsh-tui builds on macOS: the Linux-only ACL xattr read is skipped there.
+- On macOS the log, the `:` history and the wizard draft were never written,
+  because there is no state directory. They now go to
+  `~/Library/Application Support/virsh-tui`, next to the config.
+- The test helpers that drive a pty no longer hang on macOS, and CI builds and
+  tests on macOS too.
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
@@ -188,7 +204,8 @@ page, or build from source with
 The [user guide](https://syscallbrain.github.io/virsh-tui/) covers
 requirements and setup.
 
-[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SyscallBrain/virsh-tui/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/SyscallBrain/virsh-tui/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SyscallBrain/virsh-tui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SyscallBrain/virsh-tui/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SyscallBrain/virsh-tui/releases/tag/v0.1.0
