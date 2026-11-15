@@ -1,0 +1,60 @@
+# cargo-deny configuration for the virsh-tui crate.
+#
+# `cargo deny check` runs in CI (.github/workflows/ci.yml).
+# Without this file cargo-deny falls back to an empty allow list and rejects
+# every dependency, so the check is unusable.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Permissive licences, plus the two weak-copyleft ones the tree cannot avoid:
+#   MPL-2.0       — nucleo-matcher (a direct dependency) and option-ext
+#   BSL-1.0       — clipboard-win / error-code (Windows and process helpers)
+# File-level copyleft is compatible with distributing virsh-tui as a binary as
+# long as the MPL/BSL sources stay available; they are on crates.io.
+version = 2
+confidence-threshold = 0.9
+# The list is a policy, not an inventory: allow entries that no current
+# dependency happens to use (e.g. a licence behind an off-by-default feature)
+# rather than fail the gate on an unused line.
+unused-allowed-license = "allow"
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "Unlicense",
+    "WTFPL",
+    "BSL-1.0",
+    "MPL-2.0",
+]
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
