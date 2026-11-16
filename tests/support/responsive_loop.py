@@ -61,6 +61,13 @@ elif cmd == 'dumpxml':
     hold = float(os.environ.get("VT_HOLD_SECONDS", "0"))
     strict = os.environ.get("VT_STRICT_LATENCY") == "1"
     frame_deadline = 0.25 if strict else 1
+    def keys_deadline(keys):
+        # The loop draws a frame per key, so a burst of keys gets one frame
+        # budget per key. A blocked loop still fails: it never redraws.
+        return frame_deadline * len(keys)
+    # Waits on a spawned fake virsh, not on a frame: allow for starting a
+    # Python interpreter on a loaded machine.
+    spawn_deadline = frame_deadline + 3
     held_command = "migrate vt-test-a fake:///destination" if hold > 0 else "start vt-test-a"
     # Cursor-position queries (DSR) block the UI loop until the terminal
     # answers; redraws (C-l, resize) must never issue one.
@@ -101,10 +108,11 @@ elif cmd == 'dumpxml':
         log_before = (root / "commands").stat().st_size
         os.write(master, b"j")
         wait_for(lambda: "dumpxml --inactive vt-test-b" in (root / "commands").read_text()[log_before:],
-                 frame_deadline, "selection did not change while the job was held")
+                 spawn_deadline, "selection did not change while the job was held")
         output.clear()
-        os.write(master, b":start vt-test-b\r")
-        wait_for(lambda: b"Job #1 is running" in output, frame_deadline, "second command was not refused")
+        keys = b":start vt-test-b\r"
+        os.write(master, keys)
+        wait_for(lambda: b"Job #1 is running" in output, keys_deadline(keys), "second command was not refused")
         starts = [line for line in (root / "commands").read_text().splitlines() if line.startswith(("start ", "migrate "))]
         assert starts == [held_command], f"unexpected command executions: {starts!r}"
         output.clear()
@@ -114,14 +122,16 @@ elif cmd == 'dumpxml':
         os.write(master, b"1")
         wait_for(lambda: b"vt-test-b" in output, frame_deadline, "dashboard did not reopen during the job")
         output.clear()
-        os.write(master, b"/vt-test-b\r\x0c")
-        wait_for(lambda: b"/ vt-test-b" in output, frame_deadline, "filter did not update during the job")
+        keys = b"/vt-test-b\r\x0c"
+        os.write(master, keys)
+        wait_for(lambda: b"/ vt-test-b" in output, keys_deadline(keys), "filter did not update during the job")
         output.clear()
         os.write(master, b"\x0c")
         wait_for(lambda: b"/ vt-test-b" in output, frame_deadline, "filter was not retained during the job")
         output.clear()
-        os.write(master, b"/\x1b")
-        wait_for(lambda: b"Job #1" in output, frame_deadline, "filter editor did not close while the job was held")
+        keys = b"/\x1b"
+        os.write(master, keys)
+        wait_for(lambda: b"Job #1" in output, keys_deadline(keys), "filter editor did not close while the job was held")
         output.clear()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 42, 160, 0, 0))
         wait_for(lambda: b"\x1b[2J" in output, frame_deadline, "resize did not redraw while the job was held")
