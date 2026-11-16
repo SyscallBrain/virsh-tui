@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `C-l`, terminal resizes and returning from `$EDITOR` no longer ask the
+  terminal for the cursor position before repainting. The UI could stall for
+  up to two seconds waiting for the reply, and quit with an error if none came.
+
 ## [0.3.1] - 2026-11-15
 
 ### Added

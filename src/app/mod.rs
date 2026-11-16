@@ -94,6 +94,23 @@ impl<B: ratatui::backend::Backend> std::ops::DerefMut for TerminalGuard<B> {
     }
 }
 
+impl<B: ratatui::backend::Backend> TerminalGuard<B> {
+    /// Clears the screen and forces the next draw to repaint every cell.
+    ///
+    /// `Terminal::clear` first asks the terminal for the cursor position
+    /// (`ESC [6n`) and blocks for up to two seconds on the reply, which
+    /// competes with the input thread for stdin. A slow reply stalls the UI
+    /// loop, and a missing one ends the app with an error. The fullscreen
+    /// viewport never needs the cursor position, so skip the query.
+    fn repaint(&mut self) -> std::result::Result<(), B::Error> {
+        use ratatui::backend::ClearType;
+        self.backend_mut().clear_region(ClearType::All)?;
+        // Resets the back buffer, so the next diff covers the whole screen.
+        self.swap_buffers();
+        Ok(())
+    }
+}
+
 impl<B: ratatui::backend::Backend> Drop for TerminalGuard<B> {
     fn drop(&mut self) {
         if let Some(mut terminal) = self.0.take()
@@ -226,7 +243,7 @@ pub async fn run_with_shutdown(
 
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut terminal = TerminalGuard(Some(Terminal::new(backend)?));
-    terminal.clear()?;
+    terminal.repaint()?;
 
     let mut ticker = interval(Duration::from_secs(1));
     let mut events = external::spawn_input_thread();
@@ -374,7 +391,7 @@ pub async fn run_with_shutdown(
         }
         // After $EDITOR / console: repaint every cell, not just the diff.
         if external::take_full_redraw() {
-            terminal.clear()?;
+            terminal.repaint()?;
         }
         terminal.draw(|f| app.draw(f))?;
         app.sync_poller();
@@ -456,11 +473,11 @@ pub async fn run_with_shutdown(
                             break;
                         }
                         if std::mem::take(&mut app.dash.redraw_requested) {
-                            terminal.clear()?;
+                            terminal.repaint()?;
                         }
                     }
                     // Terminal resized: repaint everything at the new size.
-                    Some(Event::Resize(..)) => terminal.clear()?,
+                    Some(Event::Resize(..)) => terminal.repaint()?,
                     // Bracketed paste: text, never keys (a pasted `D` must not destroy).
                     Some(Event::Paste(text)) => app.on_paste(&text),
                     Some(Event::Mouse(m)) => {
