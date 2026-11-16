@@ -29,6 +29,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: Build the disposable libvirt environment
+        run: docker build -f scripts/ci/libvirt.Dockerfile -t virsh-tui-libvirt-test .
+      - name: Real backend and lifecycle integration (TCG, no KVM)
+        run: docker run --rm --network none virsh-tui-libvirt-test
 
   macos:
     name: clippy, test on macOS

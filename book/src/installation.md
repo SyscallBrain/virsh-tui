@@ -14,9 +14,10 @@ source with a Rust toolchain.
 | `ip` | `iproute2` | host interfaces in the Networks view |
 
 A terminal with truecolor support gives the best result. On terminals without
-it, virsh-tui falls back to the xterm 256-colour palette. The layout needs at
-least 100 columns by 30 rows; 153 columns or more gives the side-by-side layout
-shown in the screenshots.
+it, virsh-tui falls back to the xterm 256-colour palette. The minimum terminal
+size is 40 columns by 12 rows, with a reduced single-column layout. At least
+100×30 is recommended; at least 153 columns and 30 rows are needed for the
+side-by-side layout shown in the screenshots.
 
 A font with box-drawing and braille characters is needed for the borders and
 graphs. Most modern monospace fonts have them (Fira Code, JetBrains Mono,

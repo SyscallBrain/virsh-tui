@@ -18,9 +18,33 @@ env:
   CARGO_GENERATE_RPM_VERSION: 0.21.1
 
 jobs:
+  validate:
+    name: Release validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install virsh (for the help-parser tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvirt-clients
+      - name: Install the release Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt --component clippy
+          rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - name: Build the disposable libvirt environment
+        run: docker build -f scripts/ci/libvirt.Dockerfile -t virsh-tui-libvirt-test .
+      - name: Real backend and lifecycle integration (TCG, no KVM)
+        run: docker run --rm --network none virsh-tui-libvirt-test
+
   # A static (musl) binary per architecture, each built natively, so it runs
   # on any Linux distribution whatever its glibc.
   build:
+    needs: validate
     strategy:
       matrix:
         include:

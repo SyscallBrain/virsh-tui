@@ -1,6 +1,9 @@
 # Release checklist
 
-1. The gates are green: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
+1. The gates are green: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`,
+   plus the disposable real-libvirt lifecycle check documented in
+   `CONTRIBUTING.md`. Release validation reruns these checks on the tagged
+   commit with `virsh` installed, and blocks builds and publication if any fail.
 2. `CHANGELOG.md` has the release section `## [X.Y.Z] - YYYY-MM-DD`; the
    Release workflow uses it as the release notes and fails without it.
 3. The new version is in `Cargo.toml` (and `Cargo.lock`), in
@@ -8,7 +11,7 @@
    `book/src/installation.md`.
 4. The book (`book/src/`) matches the behaviour; screenshots and the
    presentation GIF are regenerated if the UI changed.
-5. Tag `vX.Y.Z` and push the tag. The Release workflow builds static (musl)
+5. Tag `vX.Y.Z` and push the tag. After validation, the Release workflow builds static (musl)
    binaries for x86_64 and aarch64, the `.tar.gz`, `.deb`, `.rpm` and Arch
    `.pkg.tar.zst` files and `SHA256SUMS`, installs each x86_64 package on
    Debian, Ubuntu, Fedora, openSUSE and Arch, and publishes the GitHub
