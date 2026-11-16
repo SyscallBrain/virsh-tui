@@ -137,8 +137,8 @@ cargo build --release
 To manage `qemu:///system`, your user must be allowed to use it, which on
 most distributions means being in the `libvirt` group. Use a terminal with
 truecolor and a font with box-drawing and braille characters. The minimum is
-40×12 with a reduced single-column layout; 100×30 or larger is recommended,
-and from 153 columns the metrics sit next to the domain list.
+40×12 with a reduced single-column layout; 100×30 or larger is recommended.
+With at least 153 columns and 30 rows, the metrics sit next to the domain list.
 The [installation guide](https://syscallbrain.github.io/virsh-tui/installation.html)
 has the details.
 
