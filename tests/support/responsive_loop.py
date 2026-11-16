@@ -62,6 +62,9 @@ elif cmd == 'dumpxml':
     strict = os.environ.get("VT_STRICT_LATENCY") == "1"
     frame_deadline = 0.25 if strict else 1
     held_command = "migrate vt-test-a fake:///destination" if hold > 0 else "start vt-test-a"
+    # Cursor-position queries (DSR) block the UI loop until the terminal
+    # answers; redraws (C-l, resize) must never issue one.
+    cursor_queries = [0]
     def pump(seconds):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
@@ -72,7 +75,9 @@ elif cmd == 'dumpxml':
                 except OSError:
                     return
                 output.extend(chunk)
-                if b"\x1b[6n" in chunk: os.write(master, b"\x1b[1;1R")
+                if b"\x1b[6n" in chunk:
+                    cursor_queries[0] += chunk.count(b"\x1b[6n")
+                    os.write(master, b"\x1b[1;1R")
     def wait_for(predicate, seconds, message):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
@@ -82,6 +87,7 @@ elif cmd == 'dumpxml':
         raise AssertionError(f"{message}; commands={log!r}; terminal={bytes(output)[-600:]!r}")
     try:
         wait_for(lambda: b"vt-test-a" in output and b"vt-test-b" in output, 8, "fake dashboard did not load")
+        startup_queries = cursor_queries[0]
         os.write(master, f":{held_command}\r".encode())
         wait_for(lambda: (root / "started").exists(), 4,
                  "fake job did not start; commands=" + ((root / "commands").read_text() if (root / "commands").exists() else "missing"))
@@ -146,6 +152,8 @@ elif cmd == 'dumpxml':
         os.write(master, b"q")
         wait_for(lambda: child.poll() is not None, frame_deadline, "application did not quit after cancellation")
         assert child.returncode == 0, f"unexpected exit status {child.returncode}"
+        assert cursor_queries[0] == startup_queries, \
+            f"redraw queried the cursor position {cursor_queries[0] - startup_queries} time(s)"
     finally:
         ptywait.stop(child, master)
         os.close(master)
