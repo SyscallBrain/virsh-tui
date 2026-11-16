@@ -30,13 +30,28 @@ output from `tests/fixtures/` and compare rendered screens with
 the UI on purpose, review and accept the new snapshots with
 `cargo insta review`.
 
-Integration tests that talk to a real libvirt daemon are behind the `it`
-feature. They only create, change and delete objects whose name starts with
-`vt-test-`, on `qemu:///session`:
+The required Linux CI check also runs a real backend/lifecycle target in a
+disposable Docker container. To reproduce that check:
 
 ```sh
-cargo test --features it
+docker build -f scripts/ci/libvirt.Dockerfile -t virsh-tui-libvirt-test .
+docker run --rm --network none virsh-tui-libvirt-test
 ```
+
+The image builds with Rust 1.99.1 on Debian 12, then runs an unprivileged
+`qemu:///session` daemon and a QEMU software-emulated (TCG) guest. It uses no
+KVM, host sockets, host disks or network. The tests exercise the app's real
+backend, builders and executor through lifecycle and snapshot operations,
+dry-run, failed-plan short-circuiting and cleanup after an assertion fails.
+Each domain has a unique `vt-test-*` name and UUID; cleanup verifies ownership.
+Missing tools, a failed daemon or leaked domains fail the check. The container
+prints the libvirt and QEMU versions used, and release validation runs it too.
+
+Other real-daemon targets are behind the `it` feature. Some still use fixed
+names or require KVM, so run them only in a disposable libvirt environment.
+The automated image runs only `it_lifecycle`, not the entire `it` suite.
+Never touch objects you did not create, even if their name starts with
+`vt-test-`, and never use `sudo` in tests.
 
 ## Project layout
 
