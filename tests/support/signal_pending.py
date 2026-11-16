@@ -90,7 +90,8 @@ if command == 'domstats':
             if sys.platform.startswith("linux"):
                 try:
                     text = Path(f"/proc/{pid}/stat").read_text()
-                except FileNotFoundError:
+                # ESRCH: the process was reaped between open and read.
+                except (FileNotFoundError, ProcessLookupError):
                     return False
                 return text[text.rfind(")") + 2] != "Z"
             try:
