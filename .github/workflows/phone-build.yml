@@ -1,42 +1,44 @@
-# Compila o virsh-tui para o telemóvel (Ubuntu no proot, aarch64) SÓ quando o dono
-# o lança à mão. Não publica nada: o binário fica como "artifact" do run e é
-# apagado ao fim de 7 dias.
+# Builds virsh-tui for the owner's phone (Ubuntu in proot, aarch64), only when it
+# is started by hand. Nothing is published: the binary is kept as a run
+# artifact for 7 days.
 #
-# Lançar (no Termux, ou em qualquer sítio com o gh):
+# Start it (from Termux, or anywhere with gh):
 #   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch>
-#   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch> -f testes=false
-# Seguir e descarregar:
+#   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch> -f checks=false
+# Follow it and fetch the binary (artifacts are zips, which drop the
+# executable bit):
 #   gh run watch -R SyscallBrain/virsh-tui --exit-status
 #   gh run download -R SyscallBrain/virsh-tui --pattern 'virsh-tui-*'
+#   chmod +x virsh-tui-*/virsh-tui
 name: Phone build (manual)
 
-# Único gatilho: o botão "Run workflow" ou o "gh workflow run". Nada de push,
-# pull_request ou schedule, por isso nunca corre sozinho.
+# The only trigger is "Run workflow" / "gh workflow run": no push,
+# pull_request or schedule, so it never starts on its own.
 on:
   workflow_dispatch:
     inputs:
-      testes:
-        description: Correr fmt, clippy e os testes antes de compilar
+      checks:
+        description: Run fmt, clippy and the tests before building
         type: boolean
         default: true
 
-# O token automático do run só pode ler o repo.
-permissions:
-  contents: read
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: 1.99.1
-  # Binário estático (musl): corre em qualquer Linux aarch64, incluindo o
-  # Ubuntu do proot, seja qual for a versão da glibc lá dentro.
+  # Static (musl) binary: runs on any aarch64 Linux, the proot Ubuntu
+  # included, whatever its glibc.
   TARGET: aarch64-unknown-linux-musl
 
 jobs:
   build:
-    # Runner ARM nativo (grátis em repos públicos): compila e testa já na
-    # mesma arquitectura do telemóvel, sem cross-compile.
+    # Native ARM runner (free on public repos): builds and tests on the
+    # phone's architecture, no cross-compiling.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,15 +52,15 @@ jobs:
           rustup default "$RUST_VERSION"
           sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
 
-      # Guarda ~/.cargo e target/ entre runs: o segundo build é muito mais rápido.
+      # Keeps ~/.cargo and target/ between runs, so later builds are faster.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Install virsh (the help-parser tests call it)
-        if: inputs.testes
+        if: inputs.checks
         run: sudo apt-get install -y -qq --no-install-recommends libvirt-clients
 
       - name: Format, lints and tests
-        if: inputs.testes
+        if: inputs.checks
         run: |
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings
