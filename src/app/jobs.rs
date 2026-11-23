@@ -672,7 +672,7 @@ impl App {
                 }
             },
         };
-        let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
+        let stamp = jiff::ZonedDateTime::now().strftime("%Y%m%d-%H%M%S").to_string();
         let xml = match crate::command::builders::backup::xml(&domain, &disks, &dir, &stamp) {
             Ok(xml) => xml,
             Err(e) => {

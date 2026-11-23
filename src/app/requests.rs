@@ -406,7 +406,8 @@ impl App {
             self.pending_snapshot_modal = Some((self.read_serial, modal, false));
         } else if let Some(detail) = self.detail.as_mut() {
             if modal == ui::views::detail::SnapModal::Create && !self.demo {
-                detail.snaps.create_name = format!("snap-{}", jiff::Zoned::now().strftime("%Y%m%d-%H%M%S"));
+                detail.snaps.create_name =
+                    format!("snap-{}", jiff::ZonedDateTime::now().strftime("%Y%m%d-%H%M%S"));
                 detail.snaps.create_focus = 0;
             }
             detail.snap_modal = modal;
@@ -1084,7 +1085,7 @@ impl App {
                     {
                         if modal == ui::views::detail::SnapModal::Create && !self.demo {
                             detail.snaps.create_name =
-                                format!("snap-{}", jiff::Zoned::now().strftime("%Y%m%d-%H%M%S"));
+                                format!("snap-{}", jiff::ZonedDateTime::now().strftime("%Y%m%d-%H%M%S"));
                             detail.snaps.create_focus = 0;
                         }
                         detail.snap_modal = modal;

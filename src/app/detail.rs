@@ -694,7 +694,8 @@ pub(super) fn dispatch_detail(
             }
             A::SnapshotNew => {
                 if !demo {
-                    d.snaps.create_name = format!("snap-{}", jiff::Zoned::now().strftime("%Y%m%d-%H%M%S"));
+                    d.snaps.create_name =
+                        format!("snap-{}", jiff::ZonedDateTime::now().strftime("%Y%m%d-%H%M%S"));
                 }
                 d.snaps.create_focus = 0;
                 d.snap_modal = SnapModal::Create;

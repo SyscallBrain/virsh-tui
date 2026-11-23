@@ -24,7 +24,7 @@ pub fn revert(domain: &str, snap: &str, after: Option<&str>, force: bool, safety
     let mut steps = Vec::new();
     if safety {
         // Date and seconds: two reverts in the same minute (or day) must not collide.
-        let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S").to_string();
+        let stamp = jiff::ZonedDateTime::now().strftime("%Y%m%d-%H%M%S").to_string();
         steps.push(
             create(domain, &format!("auto-before-revert-{stamp}"), "", true, false)
                 .steps

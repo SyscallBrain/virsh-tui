@@ -1725,7 +1725,7 @@ impl App {
     fn record_action_event(&mut self, message: &str, target: &str, success: bool) {
         let (head, _) = message.split_once("  ── ").unwrap_or((message, ""));
         let event = crate::model::LibvirtEvent {
-            timestamp: jiff::Zoned::now().strftime("%H:%M:%S").to_string(),
+            timestamp: jiff::ZonedDateTime::now().strftime("%H:%M:%S").to_string(),
             object: target.to_string(),
             event: String::from(if success { "done" } else { "failed" }),
             detail: crate::model::sanitize(head.trim_start_matches(['✓', '✗', ' '])),

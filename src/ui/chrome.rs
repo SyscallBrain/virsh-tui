@@ -56,9 +56,9 @@ const TABS: [(&str, &str); 5] = [
 
 fn now_hms() -> String {
     match crate::config::clock() {
-        "12h" => jiff::Zoned::now().strftime("%I:%M:%S %p").to_string(),
+        "12h" => jiff::ZonedDateTime::now().strftime("%I:%M:%S %p").to_string(),
         "off" => String::new(),
-        _ => jiff::Zoned::now().strftime("%H:%M:%S").to_string(),
+        _ => jiff::ZonedDateTime::now().strftime("%H:%M:%S").to_string(),
     }
 }
 
