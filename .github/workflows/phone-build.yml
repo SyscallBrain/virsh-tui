@@ -5,10 +5,12 @@
 # Start it (from Termux, or anywhere with gh):
 #   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch>
 #   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch> -f checks=false
-# Follow it and fetch the binary (artifacts are zips, which drop the
-# executable bit):
-#   gh run watch -R SyscallBrain/virsh-tui --exit-status
-#   gh run download -R SyscallBrain/virsh-tui --pattern 'virsh-tui-*'
+# Follow it and fetch the binary from that same run (the newest run of this
+# workflow; gh run download without a run id would ask which run):
+#   run=$(gh run list -R SyscallBrain/virsh-tui -w phone-build.yml -L 1 --json databaseId -q '.[0].databaseId')
+#   gh run watch "$run" -R SyscallBrain/virsh-tui --exit-status
+#   gh run download "$run" -R SyscallBrain/virsh-tui
+# Artifacts are zips, which drop the executable bit, so then:
 #   chmod +x virsh-tui-*/virsh-tui
 name: Phone build (manual)
 
