@@ -1,0 +1,93 @@
+# Compila o virsh-tui para o telemóvel (Ubuntu no proot, aarch64) SÓ quando o dono
+# o lança à mão. Não publica nada: o binário fica como "artifact" do run e é
+# apagado ao fim de 7 dias.
+#
+# Lançar (no Termux, ou em qualquer sítio com o gh):
+#   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch>
+#   gh workflow run phone-build.yml -R SyscallBrain/virsh-tui --ref <branch> -f testes=false
+# Seguir e descarregar:
+#   gh run watch -R SyscallBrain/virsh-tui --exit-status
+#   gh run download -R SyscallBrain/virsh-tui --pattern 'virsh-tui-*'
+name: Phone build (manual)
+
+# Único gatilho: o botão "Run workflow" ou o "gh workflow run". Nada de push,
+# pull_request ou schedule, por isso nunca corre sozinho.
+on:
+  workflow_dispatch:
+    inputs:
+      testes:
+        description: Correr fmt, clippy e os testes antes de compilar
+        type: boolean
+        default: true
+
+# O token automático do run só pode ler o repo.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.99.1
+  # Binário estático (musl): corre em qualquer Linux aarch64, incluindo o
+  # Ubuntu do proot, seja qual for a versão da glibc lá dentro.
+  TARGET: aarch64-unknown-linux-musl
+
+jobs:
+  build:
+    # Runner ARM nativo (grátis em repos públicos): compila e testa já na
+    # mesma arquitectura do telemóvel, sem cross-compile.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal \
+            --component rustfmt --component clippy --target "$TARGET"
+          rustup default "$RUST_VERSION"
+          sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+
+      # Guarda ~/.cargo e target/ entre runs: o segundo build é muito mais rápido.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Install virsh (the help-parser tests call it)
+        if: inputs.testes
+        run: sudo apt-get install -y -qq --no-install-recommends libvirt-clients
+
+      - name: Format, lints and tests
+        if: inputs.testes
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Build the static binary
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Smoke-test and label the binary
+        run: |
+          bin="target/$TARGET/release/virsh-tui"
+          "$bin" --version
+          mkdir out
+          cp "$bin" out/
+          short=$(git rev-parse --short HEAD)
+          echo "SHORT_SHA=$short" >> "$GITHUB_ENV"
+          {
+            echo "repo:   $GITHUB_REPOSITORY"
+            echo "branch: $GITHUB_REF_NAME"
+            echo "commit: $(git rev-parse HEAD)"
+            echo "run:    $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "target: $TARGET"
+          } > out/BUILD-INFO.txt
+          (cd out && sha256sum virsh-tui > SHA256SUMS && cat SHA256SUMS BUILD-INFO.txt)
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: virsh-tui-aarch64-${{ env.SHORT_SHA }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
